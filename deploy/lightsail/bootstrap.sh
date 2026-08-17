@@ -200,13 +200,18 @@ chmod 0755 /usr/local/bin/dahaze-env-sync
 # 하나뿐이다 — 도메인 등록기관의 A 레코드는 사람이 등록하고, 그 전에는 Let's Encrypt 의
 # HTTP-01 검증이 반드시 실패한다.
 log "dahaze-tls-bootstrap"
-cat >/usr/local/bin/dahaze-tls-bootstrap <<'SH'
+# 값은 여기서 박아 넣는다. 따옴표 heredoc 안은 확장되지 않으므로, 생성된 스크립트가
+# 환경변수를 기대하게 두면 나중에 단독 실행할 때 unbound variable 로 죽는다.
+# (실제로 그렇게 한 번 실패했다.)
+cat >/usr/local/bin/dahaze-tls-bootstrap <<SH
 #!/usr/bin/env bash
 set -euo pipefail
 
 DOMAIN="${API_DOMAIN}"
 EMAIL="${ACME_EMAIL}"
 APP_DIR="${APP_DIR}"
+SH
+cat >>/usr/local/bin/dahaze-tls-bootstrap <<'SH' 
 SITE_SRC="$APP_DIR/deploy/nginx/api.conf"
 
 if [ ! -f "$SITE_SRC" ]; then
