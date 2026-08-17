@@ -1,0 +1,70 @@
+# 프로덕션 compose. Lightsail 인스턴스의 /opt/dahaze 에 놓인다.
+#
+# 컨테이너는 전부 127.0.0.1 에만 바인딩한다. 바깥으로 나가는 길은 호스트 nginx 하나뿐이고,
+# TLS 종단과 접근 로그도 거기 있다 (deploy/nginx/api.conf).
+#
+# 하드닝 근거: 인접 프로젝트에서 2026년 8월 Next.js RSC RCE(CVE-2025-55182)로 컨테이너
+# /tmp 에 XMRig 가 심어져 2주간 root 로 돌았던 사고가 있었다 (ADR-0004). 코드 실행
+# 취약점이 또 나와도 페이로드를 놓을 자리가 없게 만든다. 이 설정으로 실제 이미지가
+# 뜨는 것은 확인했다.
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  db:
+    # pgvector 포함본을 쓴다. 지금 벡터 검색을 쓰지 않지만, LLM 임베딩이 필요해질 때
+    # 이미지를 바꾸면 로컬과 프로덕션이 갈라진다. 개발 compose 와 같은 이미지다.
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dahaze}
+      POSTGRES_USER: ${POSTGRES_USER:-dahaze}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 가 필요하다}
+    # 바깥에 포트를 열지 않는다. api 컨테이너만 compose 네트워크로 붙는다.
+    expose:
+      - "5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dahaze} -d ${POSTGRES_DB:-dahaze}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # DB 는 read_only 로 둘 수 없다. 데이터 디렉터리에 계속 쓴다.
+
+  api:
+    image: ${API_IMAGE:?API_IMAGE 가 필요하다}
+    <<: *hardening
+    # uvicorn 과 파이썬이 임시 파일을 쓴다. noexec 라 여기에 바이너리를 놓고 실행할 수 없다.
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    ports:
+      - "127.0.0.1:8400:8400"
+    env_file: .env
+    environment:
+      ENVIRONMENT: production
+      PORT: "8400"
+      # compose 네트워크 안에서 db 를 부른다. .env 의 DATABASE_URL 은 이 호스트명을 쓴다.
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # 컴파일러가 실제로 로드되는지까지 확인한다. 네이티브 확장이 플랫폼 불일치로
+      # 열리지 않으면 여기서 드러난다.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8400/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  pgdata:

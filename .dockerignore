@@ -1,0 +1,19 @@
+# 빌드 컨텍스트는 저장소 루트다. 프론트와 개발 부산물이 이미지 빌드에 들어갈 이유가 없다.
+**/node_modules
+**/.next
+**/.turbo
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/dist
+**/generated
+.git
+apps/web
+packages
+infra
+docs
+fixtures
+*.md

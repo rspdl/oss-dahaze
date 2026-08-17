@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+#
+# 인스턴스 위에서 도는 롤아웃 스크립트. GitHub Actions 가 `ssm send-command` 로 실행한다.
+#
+#   rollout.sh <이미지 태그>
+#
+# **시크릿이 밖에서 들어오지 않는다.** 이 인스턴스는 SSM 관리형으로 등록돼 있어 IAM 역할을
+# 가지므로, Parameter Store 에서 직접 읽는다 (ADR-0004). 배포 파이프라인 로그·아티팩트에
+# 값이 남지 않는다.
+#
+# 순서가 중요하다.
+#   1. 아키텍처 확인 — 여기서 틀리면 뒤가 전부 무의미하다
+#   2. Parameter Store → .env
+#   3. 새 이미지 pull
+#   4. 마이그레이션 (트래픽 받기 전)
+#   5. api 교체
+#   6. 헬스체크. 실패하면 이전 이미지로 되돌린다
+
+set -euo pipefail
+
+# 기본값은 인스턴스의 실제 경로다. 테스트에서만 다른 곳을 가리킨다.
+APP_DIR="${DAHAZE_APP_DIR:-/opt/dahaze}"
+SSM_PREFIX="${DAHAZE_SSM_PREFIX:-/dahaze/prod}"
+IMAGE_TAG="${1:?이미지 태그가 필요하다}"
+
+cd "$APP_DIR"
+
+log() { printf '\n\033[1m▸ %s\033[0m\n' "$1"; }
+
+compose() { docker compose -f docker-compose.prod.yml --env-file .env "$@"; }
+
+log "아키텍처 확인"
+ARCH=$(uname -m)
+if [ "$ARCH" != "x86_64" ]; then
+  echo "✗ $ARCH 에서는 배포할 수 없다." >&2
+  echo "  RSPDL 은 linux aarch64 wheel 도 sdist 도 배포하지 않아 API 이미지가 뜨지 못한다." >&2
+  echo "  근거: docs/adr/0002-rspdl-compiler-integration.md" >&2
+  exit 1
+fi
+echo "✓ $ARCH"
+
+# 롤백 대상. 첫 배포면 비어 있다.
+PREVIOUS_IMAGE=$(grep -E '^API_IMAGE=' .env 2>/dev/null | cut -d= -f2- || true)
+
+if [ "${DAHAZE_SKIP_SSM:-0}" != "1" ]; then
+  log "Parameter Store 에서 설정 읽기"
+  # 임시 파일에 먼저 쓰고 원자적으로 교체한다. 중간에 실패했을 때 반쪽짜리 .env 를
+  # 남기면 다음 배포가 이유를 알 수 없게 깨진다.
+  TMP_ENV=$(mktemp "${APP_DIR}/.env.XXXXXX")
+  chmod 600 "$TMP_ENV"
+  trap 'rm -f "$TMP_ENV"' EXIT
+
+  aws ssm get-parameters-by-path \
+    --path "$SSM_PREFIX" --with-decryption --recursive \
+    --query 'Parameters[].{Name:Name,Value:Value}' --output json \
+  | python3 -c '
+import json, sys, os
+prefix = os.environ["SSM_PREFIX"].rstrip("/")
+for p in json.load(sys.stdin):
+    key = p["Name"][len(prefix):].lstrip("/")
+    # 개행이 든 값은 .env 형식을 깨뜨린다. 그런 값은 여기 있으면 안 된다.
+    if "\n" in p["Value"]:
+        sys.exit(f"{key} 에 개행이 들어 있다. .env 로 옮길 수 없다.")
+    print(f"{key}={p[\"Value\"]}")
+' > "$TMP_ENV"
+
+  # 읽어 온 키만 로그에 남긴다. 값은 절대 찍지 않는다.
+  echo "주입된 키:"
+  cut -d= -f1 "$TMP_ENV" | sed 's/^/  /'
+
+  mv "$TMP_ENV" .env
+  chmod 600 .env
+  trap - EXIT
+fi
+
+# API_IMAGE 는 Parameter Store 가 아니라 배포가 정한다.
+if grep -qE '^API_IMAGE=' .env; then
+  sed -i "s|^API_IMAGE=.*|API_IMAGE=${IMAGE_TAG}|" .env
+else
+  echo "API_IMAGE=${IMAGE_TAG}" >> .env
+fi
+
+# 이미지가 비공개면 레지스트리 로그인이 필요하다. 토큰이 Parameter Store 에 있을 때만 한다.
+GHCR_TOKEN=$(grep -E '^GHCR_TOKEN=' .env | cut -d= -f2- || true)
+GHCR_USER=$(grep -E '^GHCR_USER=' .env | cut -d= -f2- || true)
+if [ -n "$GHCR_TOKEN" ] && [ -n "$GHCR_USER" ]; then
+  log "레지스트리 로그인"
+  echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+fi
+
+log "새 이미지 받기: $IMAGE_TAG"
+docker pull "$IMAGE_TAG"
+
+log "DB 기동 확인"
+compose up -d db
+for _ in $(seq 1 30); do
+  if compose exec -T db pg_isready -q 2>/dev/null; then break; fi
+  sleep 2
+done
+
+log "마이그레이션 (트래픽 받기 전)"
+# 실패하면 여기서 멈춘다. 이전 버전이 계속 뜬 채로 남는다 — 반쯤 마이그레이션된 스키마에
+# 옛 코드가 붙는 것보다 낫다.
+compose run --rm api alembic upgrade head
+
+log "api 교체"
+compose up -d --no-deps api
+
+log "헬스체크"
+HEALTHY=0
+for _ in $(seq 1 30); do
+  if curl -sf --max-time 5 http://127.0.0.1:8400/health >/dev/null; then
+    HEALTHY=1
+    break
+  fi
+  sleep 2
+done
+
+if [ "$HEALTHY" -ne 1 ]; then
+  echo "✗ 헬스체크 실패" >&2
+  compose logs --tail 50 api >&2
+
+  if [ -n "$PREVIOUS_IMAGE" ]; then
+    echo "이전 이미지로 되돌린다: $PREVIOUS_IMAGE" >&2
+    sed -i "s|^API_IMAGE=.*|API_IMAGE=${PREVIOUS_IMAGE}|" .env
+    compose up -d --no-deps api
+    echo >&2
+    echo "되돌렸지만 **마이그레이션은 되돌리지 않았다.** 스키마가 새 버전인 채로 옛 코드가" >&2
+    echo "도는 상태이므로 사람이 확인해야 한다." >&2
+  else
+    echo "첫 배포라 되돌릴 이미지가 없다." >&2
+  fi
+  exit 1
+fi
+
+log "정리"
+docker image prune -f --filter "until=168h" >/dev/null || true
+
+curl -s http://127.0.0.1:8400/health
+printf '\n\033[32m배포 완료: %s\033[0m\n' "$IMAGE_TAG"
