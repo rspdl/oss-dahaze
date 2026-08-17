@@ -1,0 +1,9 @@
+/**
+ * 앱의 전역 스타일 진입점.
+ *
+ * Tailwind 자체와 스캔 범위는 design-system 이 소유한다 (ADR-0006). 여기서
+ * `@import "tailwindcss"` 를 다시 하지 않는다 — 두 군데서 가져오면 어느 쪽 설정이
+ * 적용되는지 추적하기 어려워진다.
+ */
+
+@import "@dahaze/design-system/theme.css";

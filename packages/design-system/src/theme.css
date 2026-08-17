@@ -1,0 +1,113 @@
+/**
+ * dahaze 테마. Tailwind v4 는 CSS 가 설정이므로 (ADR-0006) 스타일 설정의 원본이 여기 하나다.
+ *
+ * 이 파일이 Tailwind 를 가져오고 스캔 범위까지 정한다. 앱은 이 파일 한 줄만 import 한다 —
+ * 두 번째 앱이 생겨도 `@source` 목록을 복제하지 않기 위해서다.
+ */
+
+@import "tailwindcss";
+
+/**
+ * Tailwind 는 클래스 이름을 소스 파일에서 훑어 찾는다. 자동 탐지 범위에 워크스페이스
+ * 패키지는 들어오지 않으므로, `packages/ui` 안에서만 쓰인 클래스는 명시하지 않으면
+ * **조용히 빠진다.** 스타일 없이 렌더링되므로 빌드는 성공하고 화면만 깨진다.
+ *
+ * 경로는 이 CSS 파일 기준이다. 새 워크스페이스 패키지가 클래스를 쓰기 시작하면 추가한다.
+ */
+@source "../../ui/src";
+@source "../../rspdl-editor/src";
+
+/**
+ * Tailwind 는 클래스 이름을 소스에서 훑어 찾는다. 기본 스캔 범위는 이 CSS 가 속한
+ * 프로젝트뿐이라, 워크스페이스 패키지 안에서만 쓰인 클래스는 앱 빌드에서 **조용히 빠진다.**
+ * 스타일이 없는 채로 렌더링되므로 빌드는 성공하고 화면만 깨진다.
+ *
+ * 새 워크스페이스 패키지가 클래스를 쓰기 시작하면 여기에 추가해야 한다.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* --- 표면과 글자 --- */
+  --color-canvas: oklch(99% 0.002 250);
+  --color-surface: oklch(100% 0 0);
+  --color-surface-raised: oklch(97.5% 0.003 250);
+  --color-border: oklch(91% 0.005 250);
+  --color-border-strong: oklch(84% 0.008 250);
+
+  --color-text: oklch(21% 0.015 250);
+  --color-text-muted: oklch(52% 0.012 250);
+  --color-text-subtle: oklch(64% 0.01 250);
+
+  /* --- 강조 --- */
+  --color-accent: oklch(55% 0.16 255);
+  --color-accent-hover: oklch(49% 0.17 255);
+  --color-accent-fg: oklch(99% 0 0);
+  --color-accent-subtle: oklch(95% 0.03 255);
+
+  /*
+   * --- 진단 ---
+   * 심각도는 색으로만 구분하지 않는다. 아이콘과 텍스트를 함께 쓴다 (ADR-0006, UI 스킬).
+   * 색각 이상 사용자가 error 와 warning 을 구분하지 못하면 제품의 핵심 기능이 죽는다.
+   */
+  --color-diagnostic-error: oklch(55% 0.19 27);
+  --color-diagnostic-error-subtle: oklch(95% 0.03 27);
+  --color-diagnostic-warning: oklch(66% 0.15 75);
+  --color-diagnostic-warning-subtle: oklch(96% 0.04 75);
+  --color-diagnostic-info: oklch(58% 0.11 235);
+  --color-diagnostic-info-subtle: oklch(95% 0.025 235);
+
+  /* --- 타이포 --- */
+  --font-sans: "Pretendard Variable", Pretendard, system-ui, sans-serif;
+  /* RSPDL 소스는 한글과 라틴 문자가 섞인다. 한글 글리프가 있는 등폭 글꼴을 앞에 둔다. */
+  --font-mono: "D2Coding", "Sarasa Mono K", ui-monospace, "SFMono-Regular", monospace;
+
+  --radius-control: 0.5rem;
+  --radius-panel: 0.75rem;
+}
+
+/*
+ * 다크 테마는 토큰 값만 바꾼다. 컴포넌트는 어느 테마인지 몰라야 한다 —
+ * 컴포넌트 안에 `dark:` 분기가 쌓이기 시작하면 토큰이 없다는 뜻이다.
+ */
+@layer base {
+  .dark {
+    --color-canvas: oklch(17% 0.012 250);
+    --color-surface: oklch(21% 0.014 250);
+    --color-surface-raised: oklch(25% 0.016 250);
+    --color-border: oklch(30% 0.014 250);
+    --color-border-strong: oklch(38% 0.016 250);
+
+    --color-text: oklch(96% 0.004 250);
+    --color-text-muted: oklch(73% 0.012 250);
+    --color-text-subtle: oklch(60% 0.012 250);
+
+    --color-accent: oklch(70% 0.14 255);
+    --color-accent-hover: oklch(76% 0.13 255);
+    --color-accent-fg: oklch(17% 0.012 250);
+    --color-accent-subtle: oklch(28% 0.05 255);
+
+    --color-diagnostic-error: oklch(70% 0.17 27);
+    --color-diagnostic-error-subtle: oklch(28% 0.06 27);
+    --color-diagnostic-warning: oklch(78% 0.14 75);
+    --color-diagnostic-warning-subtle: oklch(29% 0.05 75);
+    --color-diagnostic-info: oklch(72% 0.11 235);
+    --color-diagnostic-info-subtle: oklch(27% 0.05 235);
+  }
+
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+  }
+
+  /* 키보드 사용자가 지금 어디에 있는지 항상 보여야 한다. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}

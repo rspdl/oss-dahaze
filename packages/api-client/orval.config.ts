@@ -30,7 +30,13 @@ export default defineConfig({
         query: {
           useQuery: true,
           useMutation: true,
+          // 조회 훅에 AbortSignal 을 넘긴다. 사용자가 화면을 떠나면 진행 중인 컴파일
+          // 요청이 끊긴다 — 서버에서 실제 solver 가 도는 작업이라 낭비가 크다.
+          signal: true,
         },
+        // 오류 타입을 고정한다. 기본값(unknown)이면 화면마다 캐스팅이 생기고,
+        // 그 캐스팅은 서로 다르게 틀린다.
+        useTypeOverInterfaces: true,
       },
     },
   },

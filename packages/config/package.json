@@ -2,8 +2,18 @@
   "name": "@dahaze/config",
   "version": "0.0.0",
   "private": true,
-  "files": ["tsconfig"],
+  "type": "module",
+  "files": [
+    "tsconfig",
+    "eslint"
+  ],
   "exports": {
-    "./tsconfig/*": "./tsconfig/*"
+    "./tsconfig/*": "./tsconfig/*",
+    "./eslint/*": "./eslint/*"
+  },
+  "dependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.1",
+    "typescript-eslint": "^8.67.0"
   }
 }

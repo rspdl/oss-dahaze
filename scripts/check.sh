@@ -24,6 +24,9 @@ step "플랫폼 확인"
 step "아키텍처 경계 (ADR-0001)"
 python3 scripts/check_boundaries.py
 
+step "프론트 경계 (ADR-0006)"
+node scripts/check_web_boundaries.mjs
+
 step "API 린트"
 (cd apps/api && uv run ruff check .)
 
@@ -45,7 +48,7 @@ pnpm typecheck
 
 # api 는 위에서 이미 검사했다. turbo 가 apps/api 의 lint(uv 필요)를 다시 끌고 오지 않도록
 # 걸러낸다 — CI 의 web 잡도 같은 필터를 쓴다.
-step "프론트 린트 + 빌드"
-pnpm exec turbo lint build --filter='!api'
+step "프론트 테스트 + 린트 + 빌드"
+pnpm exec turbo test lint build --filter='!api'
 
 printf '\n\033[32m모든 게이트 통과\033[0m\n'

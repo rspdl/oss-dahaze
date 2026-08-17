@@ -28,6 +28,9 @@ jobs:
       - name: 계층·import 경계 (ADR-0001)
         run: python3 scripts/check_boundaries.py
 
+      - name: 프론트 패키지 경계 (ADR-0006)
+        run: node scripts/check_web_boundaries.mjs
+
   api:
     name: API
     # ubuntu-latest 는 x86_64 다. RSPDL 은 linux aarch64 wheel 을 배포하지 않으므로
@@ -121,6 +124,9 @@ jobs:
 
       # 이 잡에는 Python·uv 가 없다. `pnpm lint` 를 그대로 돌리면 turbo 가 apps/api 의
       # lint(`uv run ruff check .`)까지 끌고 와서 실패한다. api 는 위 잡이 이미 검사한다.
+      - name: 테스트
+        run: pnpm exec turbo test --filter='!api'
+
       - name: 린트
         run: pnpm exec turbo lint --filter='!api'
 

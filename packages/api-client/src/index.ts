@@ -12,3 +12,8 @@
 export * from './generated/endpoints'
 export * from './generated/model'
 export { ApiError, customFetch } from './fetcher'
+export {
+  createQueryClient,
+  deterministicAnalysisOptions,
+  shouldRetry,
+} from './query-client'
