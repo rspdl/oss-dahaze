@@ -9,9 +9,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-accent text-accent-fg hover:bg-accent/90",
+        default: "bg-accent text-on-solid hover:bg-accent/90",
         destructive:
-          "bg-diagnostic-error text-accent-fg hover:bg-diagnostic-error/90 focus-visible:ring-diagnostic-error/20",
+          "bg-diagnostic-error text-on-solid hover:bg-diagnostic-error/90 focus-visible:ring-diagnostic-error/20",
         outline:
           "border bg-surface shadow-xs hover:bg-surface-raised hover:text-text",
         secondary:

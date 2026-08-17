@@ -31,6 +31,15 @@ export {
 export { Badge, badgeVariants } from './components/badge'
 export { Button, buttonVariants } from './components/button'
 export {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from './components/card'
+export {
   Dialog,
   DialogClose,
   DialogContent,
@@ -61,6 +70,24 @@ export {
 } from './components/dropdown-menu'
 export { Input } from './components/input'
 export { Label } from './components/label'
+export {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from './components/popover'
+/*
+ * 편집기와 진단 목록을 나란히 두는 화면은 사용자가 폭을 조절할 수 있어야 한다. 다만
+ * **조절한 폭은 서버에 없는 상태**이므로 zustand 쪽이고, 이 컴포넌트는 값을 받기만 한다.
+ */
+export {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from './components/resizable'
 export { ScrollArea, ScrollBar } from './components/scroll-area'
 export {
   Select,

@@ -35,11 +35,10 @@ function DialogOverlay({
 }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
   return (
     // 딤 처리는 두 테마 모두에서 어두워야 한다 — 라이트에서 밝은 막을 씌우면 뒤가 안 가려진다.
-    // design-system 에 그런 토큰(`--color-overlay`)이 아직 없어 중립 검정으로 근사한다.
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        "fixed inset-0 z-50 bg-overlay data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
         className
       )}
       {...props}

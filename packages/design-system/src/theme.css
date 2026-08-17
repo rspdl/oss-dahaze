@@ -52,7 +52,11 @@
    */
   --color-diagnostic-error: oklch(55% 0.19 27);
   --color-diagnostic-error-subtle: oklch(95% 0.03 27);
-  --color-diagnostic-warning: oklch(66% 0.15 75);
+  /*
+   * 명도 66% 는 warning-subtle 위에서 2.83:1 이라 AA(4.5:1) 에 못 미쳤다. 54% 로 내리면
+   * subtle 위 4.55:1, surface 위 5.16:1 이 된다. 진단 심각도는 읽히지 않으면 없는 것과 같다.
+   */
+  --color-diagnostic-warning: oklch(54% 0.15 75);
   --color-diagnostic-warning-subtle: oklch(96% 0.04 75);
   --color-diagnostic-info: oklch(58% 0.11 235);
   --color-diagnostic-info-subtle: oklch(95% 0.025 235);
@@ -62,8 +66,34 @@
   /* RSPDL 소스는 한글과 라틴 문자가 섞인다. 한글 글리프가 있는 등폭 글꼴을 앞에 둔다. */
   --font-mono: "D2Coding", "Sarasa Mono K", ui-monospace, "SFMono-Regular", monospace;
 
+  /*
+   * 단색 배경 위에 얹는 글자색. 라이트 테마 solid 위에서는 흰 글자가 4.77~5.19:1,
+   * 다크 테마 solid 위에서는 어두운 글자가 6.64~9.37:1 이라 서로 뒤집힌다.
+   * `--color-accent-fg` 와 값이 같지만 이름이 쓰임을 드러내야 해서 따로 둔다 —
+   * diagnostic-error 배경 위 글자에 `accent-fg` 를 쓰면 읽는 사람이 멈칫한다.
+   */
+  --color-on-solid: oklch(99% 0 0);
+
+  /*
+   * 모달 뒤에 까는 막. **이 토큰은 테마를 따라 뒤집지 않는다.** 다크 테마에서 밝은 막을
+   * 깔면 뒤 내용이 가려지는 게 아니라 오히려 눈에 띈다. 막의 역할은 항상 어둡게 덮는 것이다.
+   */
+  --color-overlay: oklch(17% 0.012 250 / 55%);
+
   --radius-control: 0.5rem;
   --radius-panel: 0.75rem;
+  /* 메뉴 항목·인디케이터처럼 작은 요소. control 반경은 이 크기에 과하다. */
+  --radius-indicator: 0.25rem;
+
+  /*
+   * --- 구문 강조 ---
+   * RSPDL 은 한국어 산문에 가까운 문법이라 강조를 절제한다. 기계가 읽는 부분(메타데이터,
+   * 라틴 식별자, 수치)만 구분하고 한글 산문은 칠하지 않는다 — 산문을 칠하면 읽기 어려워진다.
+   */
+  --color-syntax-meta: oklch(52% 0.14 300);
+  --color-syntax-identifier: oklch(48% 0.12 255);
+  --color-syntax-number: oklch(50% 0.13 150);
+  --color-syntax-comment: oklch(58% 0.02 250);
 }
 
 /*
@@ -90,9 +120,20 @@
     --color-diagnostic-error: oklch(70% 0.17 27);
     --color-diagnostic-error-subtle: oklch(28% 0.06 27);
     --color-diagnostic-warning: oklch(78% 0.14 75);
+
     --color-diagnostic-warning-subtle: oklch(29% 0.05 75);
     --color-diagnostic-info: oklch(72% 0.11 235);
     --color-diagnostic-info-subtle: oklch(27% 0.05 235);
+
+    /* solid 위 글자는 다크 테마에서 어두워진다. 위 계산 근거는 @theme 주석 참고. */
+    --color-on-solid: oklch(17% 0.012 250);
+
+    /* --color-overlay 는 여기서 재정의하지 않는다. 막은 두 테마 모두 어두워야 한다. */
+
+    --color-syntax-meta: oklch(76% 0.13 300);
+    --color-syntax-identifier: oklch(74% 0.11 255);
+    --color-syntax-number: oklch(76% 0.12 150);
+    --color-syntax-comment: oklch(58% 0.02 250);
   }
 
   * {

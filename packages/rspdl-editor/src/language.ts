@@ -146,13 +146,13 @@ export const rspdlLanguage = StreamLanguage.define(rspdlStreamParser)
  * 대신 굵기·기울임으로 구분한 것도 같은 이유다.
  */
 export const rspdlHighlightStyle = HighlightStyle.define([
-  { tag: tags.meta, color: 'var(--color-accent)', fontWeight: '600' },
-  { tag: tags.labelName, color: 'var(--color-accent)' },
+  { tag: tags.meta, color: 'var(--color-syntax-meta)', fontWeight: '600' },
+  { tag: tags.labelName, color: 'var(--color-syntax-identifier)' },
   { tag: tags.punctuation, color: 'var(--color-text-subtle)' },
-  { tag: tags.number, color: 'var(--color-accent-hover)' },
+  { tag: tags.number, color: 'var(--color-syntax-number)' },
   {
     tag: tags.lineComment,
-    color: 'var(--color-text-subtle)',
+    color: 'var(--color-syntax-comment)',
     fontStyle: 'italic',
   },
 ])

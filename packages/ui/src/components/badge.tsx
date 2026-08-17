@@ -9,11 +9,11 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-accent text-accent-fg [a&]:hover:bg-accent/90",
+        default: "bg-accent text-on-solid [a&]:hover:bg-accent/90",
         secondary:
           "bg-surface-raised text-text [a&]:hover:bg-surface-raised/90",
         destructive:
-          "bg-diagnostic-error text-accent-fg focus-visible:ring-diagnostic-error/20 [a&]:hover:bg-diagnostic-error/90",
+          "bg-diagnostic-error text-on-solid focus-visible:ring-diagnostic-error/20 [a&]:hover:bg-diagnostic-error/90",
         outline:
           "border-border text-text [a&]:hover:bg-surface-raised [a&]:hover:text-text",
         ghost: "[a&]:hover:bg-surface-raised [a&]:hover:text-text",
