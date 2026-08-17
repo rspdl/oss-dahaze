@@ -1,0 +1,150 @@
+name: deploy
+
+# `main` 에 들어온 것만 배포한다. 개발은 `develop` 에서 하고, 릴리스는 develop → main PR 이다
+# (CONTRIBUTING.md). 프론트는 Vercel 이 자기 연동으로 배포하므로 여기서 다루지 않는다.
+#
+# SSH 를 쓰지 않는다. 인스턴스는 SSM 관리형으로 등록돼 있고 (ADR-0004) 배포는
+# `ssm send-command` 로 한다. 그래서 이 워크플로우는 **시크릿을 인스턴스로 보내지 않는다** —
+# 인스턴스가 자기 IAM 역할로 Parameter Store 에서 직접 읽는다.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/**"
+      - "deploy/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  # 배포가 겹치면 마이그레이션이 두 번 돈다. 진행 중인 것을 끊지 않고 줄을 세운다.
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: 이미지 빌드
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 플랫폼 확인
+        # 러너가 x86_64 인지부터 본다. arm64 러너로 바뀌면 RSPDL wheel 이 없어서 이미지
+        # 빌드가 실패하는데, 그 실패는 의존성 설치 한참 뒤에야 나온다.
+        run: ./scripts/check_platform.sh
+
+      - name: 이미지 태그 결정
+        id: meta
+        run: |
+          REPO="${GITHUB_REPOSITORY,,}"
+          echo "image=${REGISTRY}/${REPO}/api:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 빌드와 푸시
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          # RSPDL 은 x86_64 glibc wheel 만 배포한다. 다른 플랫폼을 추가하면 빌드가
+          # 실패한다 (ADR-0002). 러너가 x86_64 라 QEMU 에뮬레이션도 필요 없다.
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: 롤아웃
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AWS 자격증명 (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: 인스턴스가 SSM 에 붙어 있는지 확인
+        # 여기서 걸러내면 명령을 보내고 타임아웃까지 기다리는 대신 즉시 실패한다.
+        run: |
+          set -euo pipefail
+          STATUS=$(aws ssm describe-instance-information \
+            --filters "Key=InstanceIds,Values=${{ vars.SSM_INSTANCE_ID }}" \
+            --query 'InstanceInformationList[0].PingStatus' --output text)
+          echo "PingStatus: $STATUS"
+          [ "$STATUS" = "Online" ] || {
+            echo "인스턴스가 SSM 에 붙어 있지 않다. SSH 우회로가 없으므로 (ADR-0004)" >&2
+            echo "Lightsail 콘솔의 브라우저 SSH 로 ssm-agent 상태를 확인해야 한다." >&2
+            exit 1
+          }
+
+      - name: 롤아웃 명령 전송
+        id: send
+        # 시크릿을 넘기지 않는다. 인스턴스가 자기 역할로 Parameter Store 에서 읽는다.
+        # 마이그레이션 → api 교체 → 헬스체크 → 실패 시 복귀 순서는 rollout.sh 안에 있다.
+        run: |
+          set -euo pipefail
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ vars.SSM_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "dahaze deploy ${GITHUB_SHA::12}" \
+            --timeout-seconds 900 \
+            --parameters commands="[\"sudo /opt/dahaze/rollout.sh '${{ needs.build.outputs.image }}'\"]" \
+            --query 'Command.CommandId' --output text)
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "CommandId: $COMMAND_ID"
+
+      - name: 결과 기다리기
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 90); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "${{ steps.send.outputs.command_id }}" \
+              --instance-id "${{ vars.SSM_INSTANCE_ID }}" \
+              --query 'Status' --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in
+              Success) break ;;
+              Failed|Cancelled|TimedOut) break ;;
+            esac
+            sleep 10
+          done
+
+          # 성공이든 실패든 인스턴스가 뭘 했는지 로그를 남긴다. 실패했을 때 SSH 로
+          # 들어가 볼 수 없으므로 이 출력이 유일한 단서다.
+          aws ssm get-command-invocation \
+            --command-id "${{ steps.send.outputs.command_id }}" \
+            --instance-id "${{ vars.SSM_INSTANCE_ID }}" \
+            --query 'StandardOutputContent' --output text
+          aws ssm get-command-invocation \
+            --command-id "${{ steps.send.outputs.command_id }}" \
+            --instance-id "${{ vars.SSM_INSTANCE_ID }}" \
+            --query 'StandardErrorContent' --output text >&2
+
+          [ "$STATUS" = "Success" ] || { echo "롤아웃 실패: $STATUS" >&2; exit 1; }
+
+      - name: 외부에서 확인
+        # 컨테이너 안이 아니라 실제 도메인으로 확인한다. nginx·TLS·DNS 까지 지나야
+        # 배포가 끝난 것이다.
+        run: |
+          curl -sf --max-time 10 "https://${{ vars.API_HOST }}/health" \
+            | tee /dev/stderr | grep -q '"status":"ok"'
