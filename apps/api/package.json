@@ -1,0 +1,13 @@
+{
+  "name": "api",
+  "version": "0.1.0",
+  "private": true,
+  "//": "turbo 태스크 그래프 참여용 얇은 매니페스트. 실제 의존성은 pyproject.toml + uv.lock 이 소유한다.",
+  "scripts": {
+    "dev": "uv run uvicorn dahaze_api.main:app --reload --port 8400",
+    "openapi": "uv run python scripts/export_openapi.py",
+    "test": "uv run pytest",
+    "lint": "uv run ruff check .",
+    "typecheck": "uv run mypy"
+  }
+}

@@ -1,0 +1,51 @@
+name: RSPDL 버전 승격
+description: rspdl 핀을 새 버전으로 올립니다
+labels: ["rspdl-version"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        RSPDL 버전을 올리는 것은 의존성 갱신이 아니라 **제품 변경**입니다.
+        문법이 바뀌면 이미 저장된 사용자 문서가 컴파일되지 않을 수 있습니다.
+
+        절차: `.agents/skills/upgrade-rspdl/SKILL.md`
+
+  - type: input
+    id: from
+    attributes:
+      label: 현재 버전
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: to
+    attributes:
+      label: 올리려는 버전
+      placeholder: "0.2.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: changelog
+    attributes:
+      label: 무엇이 바뀌었나요
+      description: rspdl-core의 CHANGELOG에서 문법·IR·진단에 영향 있는 항목을 추려 주세요.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: 확인 항목
+      options:
+        - label: wire_schema_version이 그대로인가? 바뀌었다면 어댑터 수정이 필요하다
+        - label: 지원 플랫폼이 그대로인가? (여전히 x86_64 glibc wheel을 제공하는가)
+        - label: 기존 문서를 새 버전으로 재컴파일했고, 새로 생기거나 사라진 진단을 리포트했다
+        - label: 회귀가 있다면 마이그레이션 경로 또는 멀티버전 지원 계획이 있다
+
+  - type: textarea
+    id: recompile-report
+    attributes:
+      label: 재컴파일 리포트
+      description: 영향받은 문서 수와 새로 발생한 진단. 회귀가 없으면 "회귀 없음".

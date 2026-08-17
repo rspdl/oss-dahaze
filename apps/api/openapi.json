@@ -1,0 +1,419 @@
+{
+  "components": {
+    "schemas": {
+      "AnalysisResponse": {
+        "description": "컴파일러 응답 하나.\n\n`result` 는 RSPDL SDK 가 준 그대로다. 모양은 컴파일러가 소유하고\n`wire_schema_version` 으로 버전이 매겨진다 — dahaze 가 재작성하지 않는다 (ADR-0003).\n진단은 예외가 아니라 이 안에 담겨 온다.",
+        "properties": {
+          "kind": {
+            "description": "compile | check | find_model",
+            "title": "Kind",
+            "type": "string"
+          },
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "result": {
+            "additionalProperties": true,
+            "description": "RSPDL SDK 결과 원본",
+            "title": "Result",
+            "type": "object"
+          },
+          "rspdl_version": {
+            "description": "결과를 만든 컴파일러 버전",
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "wire_schema_version": {
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "result"
+        ],
+        "title": "AnalysisResponse",
+        "type": "object"
+      },
+      "CheckRequest": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "description": "제약·정책을 검사할 runtime record",
+            "title": "Data",
+            "type": "object"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceIn"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources",
+          "data"
+        ],
+        "title": "CheckRequest",
+        "type": "object"
+      },
+      "CompileRequest": {
+        "properties": {
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceIn"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources"
+        ],
+        "title": "CompileRequest",
+        "type": "object"
+      },
+      "FindModelRequest": {
+        "properties": {
+          "scope_per_model": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "모델별 가상 개체 수 상한. 작은 scope 의 UNSAT 은 전역 모순을 뜻하지 않는다.",
+            "title": "Scope Per Model"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceIn"
+          },
+          "timeout_ms": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout Ms"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "FindModelRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "rspdl_version": {
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "rspdl_version"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "RspdlRuntimeResponse": {
+        "description": "이 서버가 어떤 RSPDL 로 컴파일하는지.\n\n프론트가 문서에 기록된 target 버전과 비교해 불일치를 사용자에게 알릴 수 있게 한다.",
+        "properties": {
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "rspdl_version": {
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "wire_schema_version": {
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rspdl_version",
+          "wire_schema_version",
+          "locale"
+        ],
+        "title": "RspdlRuntimeResponse",
+        "type": "object"
+      },
+      "SourceIn": {
+        "description": "식별된 RSPDL 소스 하나.",
+        "properties": {
+          "path": {
+            "description": "워크스페이스 안에서 소스를 식별하는 경로",
+            "examples": [
+              "inventory.rspdl"
+            ],
+            "title": "Path",
+            "type": "string"
+          },
+          "text": {
+            "description": "RSPDL 소스 전문",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "text"
+        ],
+        "title": "SourceIn",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "RSPDL 저작·검증 워크스페이스",
+    "title": "dahaze API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/analysis/check": {
+      "post": {
+        "description": "runtime record 에 대해 제약과 정책을 검사한다.",
+        "operationId": "check_workspace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check Workspace",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/compile": {
+      "post": {
+        "description": "소스를 Canonical IR 과 진단으로 컴파일한다.\n\n문법·의미 오류는 HTTP 오류가 아니라 200 응답의 `result` 안 진단으로 돌아온다.\n에디터가 오류 위치를 표시할 수 있어야 하기 때문이다.",
+        "operationId": "compile_workspace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compile Workspace",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/model": {
+      "post": {
+        "description": "선언을 만족하는 가상 모델을 유한 scope 안에서 찾는다.\n\n실제 데이터를 받지 않는다. scope 안에 witness 가 없으면 `unsat_within_bound` 이며,\n이는 전역 모순이 아니라 \"이 범위에서는 못 찾았다\"는 뜻이다.",
+        "operationId": "find_model",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Find Model",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/runtime": {
+      "get": {
+        "description": "이 서버가 사용하는 RSPDL 컴파일러의 정체.\n\n프론트가 문서의 target 버전과 비교해 불일치를 사용자에게 알리는 데 쓴다.",
+        "operationId": "get_rspdl_runtime",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RspdlRuntimeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Rspdl Runtime",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "배포 헬스체크. 컴파일러가 실제로 로드되는지까지 확인한다.\n\n네이티브 확장이 플랫폼 불일치로 로드에 실패하는 경우를 여기서 잡는다 —\nRSPDL 은 linux/arm64 와 musl 을 지원하지 않는다 (ADR-0002).",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

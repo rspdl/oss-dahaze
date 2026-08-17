@@ -1,0 +1,16 @@
+node_modules
+.turbo
+.next
+dist
+__pycache__
+*.pyc
+.venv
+.env
+.env.local
+.pytest_cache
+.mypy_cache
+.ruff_cache
+**/src/generated/
+*.tfstate
+*.tfstate.*
+.terraform

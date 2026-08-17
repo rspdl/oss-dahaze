@@ -1,0 +1,21 @@
+{
+  "name": "dahaze",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.1.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "codegen": "turbo codegen",
+    "check": "./scripts/check.sh"
+  },
+  "devDependencies": {
+    "turbo": "^2.9.16"
+  }
+}

@@ -1,0 +1,45 @@
+name: 기능 제안
+description: 새 기능이나 개선을 제안합니다
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 문제를 해결하나요
+      description: |
+        기능이 아니라 **원인**부터 적어 주세요. 지금 누가, 어떤 상황에서, 무엇 때문에
+        막히는지가 드러나야 합니다. 해결책이 하나로 좁혀지지 않아도 괜찮습니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안하는 방식
+      description: 떠오르는 해결 방향이 있다면. 없으면 비워 두셔도 됩니다.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 영향 범위
+      multiple: true
+      options:
+        - 프론트 (apps/web)
+        - API (apps/api)
+        - MCP 서버 · LLM 저작
+        - 저장 모델 · DB
+        - 배포 · 인프라
+        - 개발자 경험 · 워크플로우
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: 계약에 영향이 있나요
+      description: 하나라도 해당하면 구현 전에 논의가 필요합니다.
+      options:
+        - label: API 계약(openapi)이 바뀔 수 있다
+        - label: DB 스키마가 바뀔 수 있다
+        - label: RSPDL 버전 요구사항이 바뀔 수 있다
+        - label: 아키텍처 경계(ADR-0001)를 건드린다

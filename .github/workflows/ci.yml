@@ -1,0 +1,100 @@
+name: ci
+
+# 로컬의 ./scripts/check.sh 와 같은 게이트를 돈다. 둘이 어긋나면 "로컬에서는 됐는데" 가
+# 생기므로, 게이트를 추가할 때는 반드시 양쪽에 함께 추가한다.
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # 의존성 설치 없이 도는 빠른 게이트. 구조가 깨졌으면 30초 안에 알려준다.
+  boundaries:
+    name: 아키텍처 경계
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 플랫폼 확인
+        run: ./scripts/check_platform.sh
+      - name: 계층·import 경계 (ADR-0001)
+        run: python3 scripts/check_boundaries.py
+
+  api:
+    name: API
+    # ubuntu-latest 는 x86_64 다. RSPDL 은 linux aarch64 wheel 을 배포하지 않으므로
+    # arm64 러너로 바꾸면 의존성 설치 단계에서 실패한다 (ADR-0002).
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: 의존성 동기화
+        run: uv sync --extra dev --locked
+
+      - name: 컴파일러 로드 확인
+        # 네이티브 확장이 실제로 열리는지 본다. 플랫폼 불일치는 여기서 드러난다.
+        run: uv run python -c "import rspdl; print(rspdl.__version__, rspdl.WIRE_SCHEMA_VERSION)"
+
+      - name: 린트
+        run: uv run ruff check .
+
+      - name: 타입
+        run: uv run mypy
+
+      - name: 테스트
+        run: uv run pytest -q
+
+      - name: OpenAPI 계약 드리프트
+        working-directory: .
+        run: ./scripts/check_openapi_drift.sh
+
+  web:
+    name: 프론트
+    runs-on: ubuntu-latest
+    # 커밋된 openapi.json 을 입력으로 쓴다. 그 파일이 라우터와 일치하는지는 api 잡이
+    # 이미 검사했으므로, 여기서는 Python 을 설치할 필요가 없다.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      - name: API 클라이언트 생성
+        run: pnpm --filter @dahaze/api-client codegen
+
+      - name: 생성물이 커밋을 요구하지 않는지 확인
+        # src/generated 는 .gitignore 대상이다. 누가 실수로 커밋했다면 여기서 드러난다.
+        run: git diff --exit-code
+
+      - name: 타입
+        run: pnpm --filter @dahaze/api-client typecheck
+
+      - name: 린트
+        run: pnpm lint
+
+      - name: 빌드
+        run: pnpm build

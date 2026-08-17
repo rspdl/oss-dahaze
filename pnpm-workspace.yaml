@@ -1,0 +1,11 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+allowBuilds:
+  # esbuild 는 플랫폼 바이너리를 받아야 동작한다. orval 이 TS 설정을 읽는 데 쓴다.
+  esbuild: true
+  # scarf 는 설치 텔레메트리다. 빌드 스크립트를 돌릴 이유가 없다.
+  '@scarf/scarf': false
+
+# apps/api 는 Python(uv) 프로젝트다. turbo 태스크 그래프에 들어가도록 얇은 package.json 만
+# 두고, 실제 의존성은 apps/api/pyproject.toml + uv.lock 이 소유한다.
