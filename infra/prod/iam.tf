@@ -76,9 +76,10 @@ resource "aws_iam_role_policy" "instance_read_params" {
   })
 }
 
-# 등록 코드는 Terraform 출력에도 DEPLOY.md 에도 남기지 않는다. user_data 로만 흘러가고,
-# user_data 는 activation_code 가 sensitive 로 표시되어 있어 plan 로그에 "(sensitive value)"
-# 로만 찍힌다.
+# 등록 코드는 Terraform 출력에 넣지 않는다. user_data 로만 흘러가고, 거기서
+# sensitive() 로 감싸 plan 로그에 찍히지 않게 한다 (lightsail.tf 참고).
+# state 에는 남는다 — CreateActivation 이 코드를 한 번만 돌려주므로 이건 피할 수 없다.
+# 그래서 state 버킷 암호화와 아래 두 장치(1회 등록 제한, 짧은 만료)가 실제 방어선이다.
 #
 # registration_limit 이 1 인 이유: 이 활성화로 등록할 박스는 하나뿐이다. 코드가 어딘가로
 # 새더라도 이미 소진된 뒤라면 남의 서버가 우리 역할을 맡을 수 없다.

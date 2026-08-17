@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
 # 인스턴스 위에서 도는 롤아웃 스크립트. GitHub Actions 가 `ssm send-command` 로 실행한다.
+# user_data 가 /opt/dahaze 에 배치한다.
 #
 #   rollout.sh <이미지 태그>
 #
@@ -10,7 +11,7 @@
 #
 # 순서가 중요하다.
 #   1. 아키텍처 확인 — 여기서 틀리면 뒤가 전부 무의미하다
-#   2. Parameter Store → .env
+#   2. dahaze-env-sync 로 Parameter Store → .env
 #   3. 새 이미지 pull
 #   4. 마이그레이션 (트래픽 받기 전)
 #   5. api 교체
@@ -43,34 +44,11 @@ echo "✓ $ARCH"
 PREVIOUS_IMAGE=$(grep -E '^API_IMAGE=' .env 2>/dev/null | cut -d= -f2- || true)
 
 if [ "${DAHAZE_SKIP_SSM:-0}" != "1" ]; then
-  log "Parameter Store 에서 설정 읽기"
-  # 임시 파일에 먼저 쓰고 원자적으로 교체한다. 중간에 실패했을 때 반쪽짜리 .env 를
-  # 남기면 다음 배포가 이유를 알 수 없게 깨진다.
-  TMP_ENV=$(mktemp "${APP_DIR}/.env.XXXXXX")
-  chmod 600 "$TMP_ENV"
-  trap 'rm -f "$TMP_ENV"' EXIT
-
-  aws ssm get-parameters-by-path \
-    --path "$SSM_PREFIX" --with-decryption --recursive \
-    --query 'Parameters[].{Name:Name,Value:Value}' --output json \
-  | python3 -c '
-import json, sys, os
-prefix = os.environ["SSM_PREFIX"].rstrip("/")
-for p in json.load(sys.stdin):
-    key = p["Name"][len(prefix):].lstrip("/")
-    # 개행이 든 값은 .env 형식을 깨뜨린다. 그런 값은 여기 있으면 안 된다.
-    if "\n" in p["Value"]:
-        sys.exit(f"{key} 에 개행이 들어 있다. .env 로 옮길 수 없다.")
-    print(f"{key}={p[\"Value\"]}")
-' > "$TMP_ENV"
-
-  # 읽어 온 키만 로그에 남긴다. 값은 절대 찍지 않는다.
-  echo "주입된 키:"
-  cut -d= -f1 "$TMP_ENV" | sed 's/^/  /'
-
-  mv "$TMP_ENV" .env
-  chmod 600 .env
-  trap - EXIT
+  log "Parameter Store 에서 설정 동기화"
+  # 동기화는 `dahaze-env-sync` 가 소유한다 (user_data 가 설치한다). 여기서 같은 일을
+  # 다시 구현하면 두 곳이 갈라지고, 갈라진 쪽은 배포가 깨질 때까지 아무도 모른다.
+  # 그 스크립트는 API_IMAGE 를 보존하고, placeholder 가 남아 있으면 여기서 멈춘다.
+  /usr/local/bin/dahaze-env-sync
 fi
 
 # API_IMAGE 는 Parameter Store 가 아니라 배포가 정한다.

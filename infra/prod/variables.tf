@@ -184,9 +184,12 @@ variable "create_github_oidc_provider" {
     GitHub OIDC 프로바이더를 이 스택이 만들지 여부.
     한 AWS 계정에 token.actions.githubusercontent.com 프로바이더는 하나만 존재할 수 있다.
     같은 계정의 다른 프로젝트가 이미 만들어 두었다면 false 로 두고 기존 것을 참조한다.
+
+    이 계정(874632206448)에는 2026-08-18 확인 시점에 이미 존재한다. 그래서 기본값이
+    false 다 — true 로 두고 apply 하면 EntityAlreadyExists 로 실패한다.
   EOT
   type        = bool
-  default     = true
+  default     = false
 }
 
 # --- SSM 하이브리드 활성화 ---
@@ -195,10 +198,41 @@ variable "ssm_activation_expiration_date" {
   description = <<-EOT
     활성화 코드의 만료 시각 (RFC3339, 최대 30일 뒤). null 이면 AWS 기본값인 24시간이다.
 
-    짧게 두는 편이 낫다. 등록 코드는 인스턴스의 user_data 에 실려 들어가고,
-    user_data 는 lightsail:GetInstance 권한이 있으면 읽을 수 있기 때문이다.
-    등록은 부팅 때 한 번 일어나고, 그 뒤 코드는 쓸모가 없다.
+    짧게 두는 편이 낫다. 등록 코드는 Terraform state 와 인스턴스의 user_data(부팅 후에도
+    /var/lib/cloud 아래에 남는다) 두 곳에 실린다. 등록은 부팅 때 한 번 일어나고
+    registration_limit 도 1이므로, 만료가 짧으면 그 사본들이 빠르게 무의미해진다.
   EOT
   type        = string
   default     = null
+}
+
+# --- DNS ------------------------------------------------------------------
+#
+# 도메인 등록기관은 가비아다. Terraform 은 네임서버를 위임받은 뒤의 레코드만 소유한다.
+
+variable "manage_dns" {
+  description = <<-EOT
+    Route53 호스팅 영역과 레코드를 이 스택이 소유할지. 도메인 위임을 아직 안 옮겼다면
+    false 로 두고 등록기관에서 직접 레코드를 관리한다. true 로 바꾼 뒤에는 반드시
+    호스팅 영역이 만들어진 것을 확인하고 나서 가비아의 네임서버를 바꾼다 — 순서를
+    뒤집으면 비어 있는 영역으로 위임되어 도메인 전체가 잠시 죽는다.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "domain_name" {
+  description = "루트 도메인. 호스팅 영역의 이름이 된다."
+  type        = string
+  default     = "dahaze.xyz"
+}
+
+variable "vercel_cname" {
+  description = <<-EOT
+    app 서브도메인이 가리킬 Vercel 값. Vercel 프로젝트의 도메인 설정이 알려준다.
+    이전 시점에 가비아에 이미 있던 레코드이므로, 위임 전에 여기 옮겨 두지 않으면
+    전파되는 순간 프론트엔드가 끊긴다. 비워 두면 레코드를 만들지 않는다.
+  EOT
+  type        = string
+  default     = ""
 }
