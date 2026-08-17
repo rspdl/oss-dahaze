@@ -56,17 +56,52 @@ class Violation:
         return f"{rel}:{self.line}: {self.message}"
 
 
-def _imported_roots(tree: ast.AST) -> Iterator[tuple[str, int]]:
-    """이 파일이 import 하는 최상위 모듈 이름들."""
+def _package_of(path: Path) -> list[str]:
+    """이 파일이 속한 패키지의 점 표기 조각들.
+
+    `dahaze_api/application/authoring.py` → `['dahaze_api', 'application']`
+    `dahaze_api/application/__init__.py`  → `['dahaze_api', 'application']`
+    """
+    parts = list(path.relative_to(API_SRC.parent).parts)
+    return parts[:-1] if path.name == "__init__.py" else parts[:-1]
+
+
+def _resolve_relative(module: str | None, level: int, package: list[str]) -> str | None:
+    """상대 import 를 절대 모듈 경로로 바꾼다.
+
+    `from ..infrastructure import x` 를 그냥 건너뛰면 계층 규칙을 우회하는 통로가 된다.
+    같은 패키지 안이라는 보장이 전혀 없다.
+    """
+    if level < 1:
+        return module
+    # level 1 은 현재 패키지, level 2 는 그 부모… 이런 식으로 거슬러 올라간다.
+    base = package[: len(package) - (level - 1)] if level > 1 else package
+    if not base:
+        return module
+    return ".".join([*base, module]) if module else ".".join(base)
+
+
+def _imported_modules(tree: ast.AST, package: list[str]) -> Iterator[tuple[str, int]]:
+    """이 파일이 import 하는 모듈 이름들.
+
+    최상위 이름과 점 표기 전체를 **둘 다** 낸다. 최상위만 내면
+    `import dahaze_api.infrastructure.db.models` 가 `dahaze_api` 로만 보여서
+    계층 규칙을 통과해 버린다.
+    """
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 yield alias.name.split(".")[0], node.lineno
+                yield alias.name, node.lineno
         elif isinstance(node, ast.ImportFrom):
-            # 상대 import 는 같은 패키지 안이므로 계층 규칙의 대상이 아니다.
-            if node.level == 0 and node.module:
-                yield node.module.split(".")[0], node.lineno
-                yield node.module, node.lineno
+            resolved = _resolve_relative(node.module, node.level, package)
+            if not resolved:
+                continue
+            yield resolved.split(".")[0], node.lineno
+            yield resolved, node.lineno
+            # `from x.y import z` 에서 z 가 모듈일 수 있다. 계층 판단에 필요하다.
+            for alias in node.names:
+                yield f"{resolved}.{alias.name}", node.lineno
 
 
 def _layer_of(path: Path) -> str:
@@ -78,7 +113,13 @@ def _check_file(path: Path) -> Iterator[Violation]:
     relative = path.relative_to(API_SRC).as_posix()
     layer = _layer_of(path)
 
-    for name, lineno in _imported_roots(tree):
+    seen: set[tuple[str, int]] = set()
+    for name, lineno in _imported_modules(tree, _package_of(path)):
+        # 같은 import 문에서 여러 이름을 내므로 중복 보고를 막는다.
+        if (name, lineno) in seen:
+            continue
+        seen.add((name, lineno))
+
         # 규칙 1·2 — 서드파티 격리
         if name in CONFINED_PACKAGES:
             allowed = CONFINED_PACKAGES[name]
@@ -116,11 +157,15 @@ def main() -> int:
         print(f"경로를 찾을 수 없다: {API_SRC}", file=sys.stderr)
         return 1
 
-    violations = [
-        v
-        for path in sorted(API_SRC.rglob("*.py"))
-        for v in _check_file(path)
-    ]
+    seen: set[tuple[Path, int, str]] = set()
+    violations: list[Violation] = []
+    for path in sorted(API_SRC.rglob("*.py")):
+        for violation in _check_file(path):
+            key = (violation.path, violation.line, violation.message)
+            if key in seen:
+                continue
+            seen.add(key)
+            violations.append(violation)
 
     if violations:
         print(f"경계 위반 {len(violations)}건:\n", file=sys.stderr)

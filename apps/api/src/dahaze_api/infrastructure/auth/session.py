@@ -14,10 +14,16 @@ import jwt
 ALGORITHM = "HS256"
 SESSION_AUDIENCE = "dahaze:session"
 STATE_AUDIENCE = "dahaze:oauth-state"
+# MCP 토큰은 세션과 다른 audience 로 서명한다. 하나가 새어도 다른 쪽에 쓸 수 없다 (ADR-0005).
+MCP_AUDIENCE = "dahaze:mcp"
 
 SESSION_TTL = timedelta(days=14)
 # state 는 로그인 왕복에만 쓰인다. 짧게 잡아 재사용 창을 줄인다.
 STATE_TTL = timedelta(minutes=10)
+# MCP 클라이언트는 브라우저처럼 조용히 재로그인할 수 없다. 사람이 설정 파일에 붙여 넣는
+# 자격증명이므로 세션보다 길게 잡는다. 다만 폐기 수단이 없어 TTL 이 유일한 제한이므로
+# (ADR-0005) 무기한으로 두지는 않는다.
+MCP_TTL = timedelta(days=90)
 
 
 class InvalidToken(Exception):
@@ -47,6 +53,35 @@ class SessionTokens:
         try:
             payload = jwt.decode(
                 token, self._secret, algorithms=[ALGORITHM], audience=SESSION_AUDIENCE
+            )
+            return UUID(payload["sub"])
+        except (jwt.PyJWTError, KeyError, ValueError) as exc:
+            raise InvalidToken(str(exc)) from exc
+
+    # --- MCP ---
+
+    def issue_mcp(self, user_id: UUID) -> str:
+        """MCP 클라이언트가 `Authorization: Bearer` 로 제시할 토큰.
+
+        세션 토큰과 같은 비밀로 서명하되 audience 가 다르다. 검증할 때 audience 를
+        지정하므로, 세션 쿠키를 MCP 에 들이밀거나 그 반대로 하는 것이 둘 다 실패한다.
+        """
+        now = datetime.now(UTC)
+        return jwt.encode(
+            {
+                "sub": str(user_id),
+                "aud": MCP_AUDIENCE,
+                "iat": now,
+                "exp": now + MCP_TTL,
+            },
+            self._secret,
+            algorithm=ALGORITHM,
+        )
+
+    def verify_mcp(self, token: str) -> UUID:
+        try:
+            payload = jwt.decode(
+                token, self._secret, algorithms=[ALGORITHM], audience=MCP_AUDIENCE
             )
             return UUID(payload["sub"])
         except (jwt.PyJWTError, KeyError, ValueError) as exc:

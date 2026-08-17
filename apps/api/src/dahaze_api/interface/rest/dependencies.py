@@ -14,10 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dahaze_api.application.analysis import AnalyzeWorkspace
 from dahaze_api.application.auth import SignInWithProvider
+from dahaze_api.application.authoring import DraftRspdlDocument
 from dahaze_api.application.workspace import WorkspaceService
 from dahaze_api.config import Settings, get_settings
 from dahaze_api.domain.entities import User
-from dahaze_api.domain.ports import OAuthProviderPort, RspdlCompilerPort
+from dahaze_api.domain.ports import LlmPort, OAuthProviderPort, RspdlCompilerPort
 from dahaze_api.infrastructure.auth.registry import build_providers
 from dahaze_api.infrastructure.auth.session import InvalidToken, SessionTokens
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
@@ -27,6 +28,7 @@ from dahaze_api.infrastructure.db.repositories import (
     SqlUserRepository,
 )
 from dahaze_api.infrastructure.db.session import get_session
+from dahaze_api.infrastructure.llm import LlmNotConfigured, OpenAiLlm
 from dahaze_api.infrastructure.rspdl import LocalRspdlCompiler
 
 SESSION_COOKIE = "dahaze_session"
@@ -95,3 +97,36 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 Analyzer = Annotated[AnalyzeWorkspace, Depends(get_analyzer)]
 Workspace = Annotated[WorkspaceService, Depends(get_workspace)]
 SignIn = Annotated[SignInWithProvider, Depends(get_sign_in)]
+
+
+@lru_cache
+def get_llm() -> LlmPort:
+    """OpenAI 어댑터. 자격증명이 없으면 여기서 503 으로 끝난다.
+
+    import 나 startup 이 아니라 **요청 시점**에 확인하는 이유: LLM 을 쓰지 않는 배포에서도
+    나머지 API 는 정상 동작해야 한다. 키가 없다고 서버가 뜨지 못하면 저작과 무관한
+    기능까지 함께 죽는다 (ADR-0005).
+    """
+    settings = get_settings()
+    try:
+        return OpenAiLlm(
+            api_key=settings.openai_api_key, model=settings.openai_model
+        )
+    except LlmNotConfigured as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "이 서버에는 LLM 저작이 설정되어 있지 않다"
+        ) from exc
+
+
+Llm = Annotated[LlmPort, Depends(get_llm)]
+
+
+def get_drafter(llm: Llm, analyzer: Analyzer) -> DraftRspdlDocument:
+    """저작 루프는 분석 유스케이스를 그대로 재사용한다.
+
+    컴파일 게이트가 REST 분석 경로와 같아야 LLM 출력이 사람 출력과 같은 검사를 받는다.
+    """
+    return DraftRspdlDocument(llm=llm, analyzer=analyzer)
+
+
+Drafter = Annotated[DraftRspdlDocument, Depends(get_drafter)]

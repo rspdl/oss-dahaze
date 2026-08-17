@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
 from dahaze_api.config import get_settings
-from dahaze_api.interface.rest import analysis, auth, workspace
+from dahaze_api.interface.mcp import mount_mcp
+from dahaze_api.interface.rest import analysis, auth, authoring, workspace
 from dahaze_api.interface.rest.dependencies import get_compiler
 from dahaze_api.interface.rest.schemas import HealthResponse
 
@@ -28,6 +29,8 @@ def _operation_id(route: APIRoute) -> str:
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    # development 가 아니면 약한 시크릿·꺼진 secure 쿠키로는 뜨지 않는다.
+    settings.assert_production_ready()
 
     app = FastAPI(
         title="dahaze API",
@@ -47,6 +50,12 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(workspace.router)
     app.include_router(analysis.router)
+    app.include_router(authoring.router)
+
+    # `app.mount()` 을 쓰지 않는다. MCP 의 StreamableHTTPSessionManager 는 자기 lifespan 이
+    # 시작한 task group 없이는 모든 요청을 거부하는데, Starlette 은 mount 된 앱에 lifespan 을
+    # 전달하지 않는다. `mount_mcp` 가 lifespan 을 연결하고 `/mcp` 를 리다이렉트 없이 붙인다.
+    mount_mcp(app)
 
     @app.get("/health", tags=["health"], name="health")
     async def health() -> HealthResponse:

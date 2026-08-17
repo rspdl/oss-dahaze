@@ -89,6 +89,15 @@ class LlmPort(Protocol):
     dahaze 가 직접 호출한다. 구현체는 `infrastructure/llm/` 에만 둔다.
     """
 
+    @property
+    def model(self) -> str:
+        """이 초안을 만든 모델의 이름.
+
+        `RspdlCompilerPort.runtime` 과 같은 이유로 둔다. 초안은 지시만으로 재현되지
+        않으며, 어느 모델이 만들었는지는 텍스트만 보고 복원할 수 없다.
+        """
+        ...
+
     async def draft_document(
         self,
         *,
@@ -100,6 +109,10 @@ class LlmPort(Protocol):
 
         결과는 항상 컴파일러를 다시 통과시킨다. LLM 출력도 사람 출력과 같은 게이트를
         지나야 한다 — RSPDL AGENTS.md 의 원칙과 같다.
+
+        `diagnostics` 는 컴파일러가 준 진단 그대로다. 구현체가 이를 요약하거나 걸러내면
+        `rule_id` 와 `span` 이 사라져 무엇을 고쳐야 할지 알 수 없게 된다.
+        부분 수정본이 아니라 **전문**을 돌려준다 — 병합은 또 하나의 해석이다.
         """
         ...
 

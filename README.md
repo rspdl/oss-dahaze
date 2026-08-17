@@ -17,6 +17,7 @@ RSPDL은 제품 기획의 데이터와 정책을 사람이 읽고 기계가 검�
 | `apps/api` | FastAPI 백엔드 + MCP 서버 — AWS Lightsail |
 | `packages/api-client` | **생성물.** openapi.json → TanStack Query 훅 + zod |
 | `packages/ui` · `design-system` | 공용 컴포넌트와 디자인 토큰 |
+| `packages/config` | 공유 tsconfig. eslint·tailwind 설정은 `apps/web` 과 함께 들어온다 |
 | `packages/rspdl-editor` | CodeMirror 6 RSPDL 언어 모드 |
 | `infra/` | Terraform (AWS Lightsail) |
 
@@ -74,6 +75,8 @@ CI와 같은 게이트입니다.
 - [ADR-0002 RSPDL 컴파일러 통합과 버전 관리](docs/adr/0002-rspdl-compiler-integration.md)
 - [ADR-0003 문서 저장 모델](docs/adr/0003-document-storage-model.md)
 - [ADR-0004 배포 인프라](docs/adr/0004-deployment-infrastructure.md)
+- [ADR-0005 MCP 서버와 LLM 저작 루프](docs/adr/0005-mcp-and-llm-authoring.md)
+- [설계 컨텍스트](docs/design-context.md) — 현재 상태·제약·미완 목록. 이어받을 때 먼저 읽는다
 - [기여 가이드](CONTRIBUTING.md)
 - [에이전트 컨텍스트](AGENTS.md)
 

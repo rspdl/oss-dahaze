@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "codegen": "orval --config orval.config.ts",
+    "codegen": "orval --config orval.config.ts && node scripts/write-barrel.mjs",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {

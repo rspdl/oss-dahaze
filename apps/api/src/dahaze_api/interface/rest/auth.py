@@ -6,11 +6,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
 
 from dahaze_api.infrastructure.auth.github import OAuthError
-from dahaze_api.infrastructure.auth.session import InvalidToken
+from dahaze_api.infrastructure.auth.session import MCP_TTL, InvalidToken
 from dahaze_api.interface.rest.dependencies import (
     SESSION_COOKIE,
     CurrentUser,
@@ -22,6 +24,7 @@ from dahaze_api.interface.rest.dependencies import (
 from dahaze_api.interface.rest.schemas import (
     AuthProvidersResponse,
     CurrentUserResponse,
+    McpTokenResponse,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -112,6 +115,25 @@ async def get_me(user: CurrentUser) -> CurrentUserResponse:
         display_name=user.display_name,
         email=user.email,
         avatar_url=user.avatar_url,
+    )
+
+
+@router.post(
+    "/mcp-token", name="issue_mcp_token", status_code=status.HTTP_201_CREATED
+)
+async def issue_mcp_token(user: CurrentUser, tokens: Tokens) -> McpTokenResponse:
+    """MCP 클라이언트용 Bearer 토큰을 발급한다.
+
+    MCP 클라이언트는 브라우저가 아니어서 세션 쿠키를 쓸 수 없다. 그래서 쿠키로 로그인한
+    사람이 여기서 자기 몫의 토큰을 하나 꺼내 간다 (ADR-0005).
+
+    같은 사용자가 여러 번 호출하면 유효한 토큰이 여러 개 생긴다. 발급 이력을 남기지
+    않으므로 **이전 토큰을 무효화하지 못한다** — 폐기가 필요해지면 토큰 id 테이블과
+    blocklist 가 먼저 있어야 한다.
+    """
+    return McpTokenResponse(
+        token=tokens.issue_mcp(user.id),
+        expires_at=datetime.now(UTC) + MCP_TTL,
     )
 
 

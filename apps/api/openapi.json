@@ -76,6 +76,67 @@
         "title": "AuthProvidersResponse",
         "type": "object"
       },
+      "AuthoringAttemptResponse": {
+        "description": "시도 한 번의 결과.\n\n왜 이 초안이 최종인지 설명하는 재료다 (ADR-0005). 진단 수가 줄다 멈췄는지,\n처음부터 0이었는지가 여기서 드러난다.",
+        "properties": {
+          "attempt": {
+            "description": "1 이 첫 초안, 그 뒤는 진단을 되먹인 수리",
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "diagnostic_count": {
+            "description": "그 시도의 컴파일 진단 수",
+            "title": "Diagnostic Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "attempt",
+          "diagnostic_count"
+        ],
+        "title": "AuthoringAttemptResponse",
+        "type": "object"
+      },
+      "AuthoringDraftResponse": {
+        "description": "LLM 초안과 그 컴파일 결과.\n\n**저장되지 않았다.** 사용자가 받아들이면 `PUT /api/documents/{id}` 로 직접 저장한다 —\nLLM 이 문서를 조용히 덮어쓰면 이력을 추적할 수 없게 되기 때문이다 (ADR-0005).\n\n`analysis.result` 안에 진단이 그대로 들어 있다. 진단이 남은 초안도 실패가 아니라\n200 으로 돌아온다. 반쯤 맞는 초안과 그 진단은 사람이 판단할 재료다.",
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/AnalysisResponse",
+            "description": "최종 초안의 컴파일 결과와 진단"
+          },
+          "attempts": {
+            "description": "시도 이력. 마지막 항목이 이 응답의 초안에 대응한다",
+            "items": {
+              "$ref": "#/components/schemas/AuthoringAttemptResponse"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "model": {
+            "description": "이 초안을 만든 LLM 모델",
+            "title": "Model",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "text": {
+            "description": "RSPDL 소스 전문. 부분 수정본이 아니다",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "text",
+          "model",
+          "attempts",
+          "analysis"
+        ],
+        "title": "AuthoringDraftResponse",
+        "type": "object"
+      },
       "CheckRequest": {
         "properties": {
           "data": {
@@ -396,6 +457,34 @@
         "title": "DocumentSummaryResponse",
         "type": "object"
       },
+      "DraftDocumentRequest": {
+        "properties": {
+          "instruction": {
+            "description": "무엇을 선언하고 싶은지 자연어로. 이 문장이 초안의 유일한 입력이다",
+            "examples": [
+              "재고 항목을 이름과 수량으로 관리한다. 수량은 음수가 될 수 없다."
+            ],
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "path": {
+            "default": "draft.rspdl",
+            "description": "초안에 붙일 경로. 저장하지 않으므로 기존 문서와 겹쳐도 된다",
+            "examples": [
+              "inventory.rspdl"
+            ],
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instruction"
+        ],
+        "title": "DraftDocumentRequest",
+        "type": "object"
+      },
       "FindModelRequest": {
         "properties": {
           "scope_per_model": {
@@ -462,6 +551,34 @@
           "rspdl_version"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "McpTokenResponse": {
+        "description": "MCP 클라이언트가 쓸 Bearer 토큰.\n\n발급된 뒤에는 **폐기할 수 없다.** 토큰 저장소가 없으므로 `expires_at` 까지는 유효하다\n(ADR-0005). 화면이 이 사실과 만료 시각을 사용자에게 보여줄 수 있도록 함께 돌려준다.",
+        "properties": {
+          "expires_at": {
+            "description": "이 시각 이후로는 거부된다. 폐기 수단은 없다",
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "token": {
+            "description": "`Authorization: Bearer <token>` 으로 보낸다",
+            "title": "Token",
+            "type": "string"
+          },
+          "token_type": {
+            "default": "Bearer",
+            "description": "HTTP 인증 스킴",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at"
+        ],
+        "title": "McpTokenResponse",
         "type": "object"
       },
       "ProjectMemberResponse": {
@@ -554,6 +671,25 @@
           "archived_at"
         ],
         "title": "ProjectResponse",
+        "type": "object"
+      },
+      "ReviseDocumentRequest": {
+        "properties": {
+          "instruction": {
+            "description": "이 문서를 어떻게 바꿀지 자연어로",
+            "examples": [
+              "수량 상한을 1000으로 제한하는 제약을 추가한다."
+            ],
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Instruction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instruction"
+        ],
+        "title": "ReviseDocumentRequest",
         "type": "object"
       },
       "RspdlRuntimeResponse": {
@@ -841,6 +977,56 @@
         ]
       }
     },
+    "/api/auth/mcp-token": {
+      "post": {
+        "description": "MCP 클라이언트용 Bearer 토큰을 발급한다.\n\nMCP 클라이언트는 브라우저가 아니어서 세션 쿠키를 쓸 수 없다. 그래서 쿠키로 로그인한\n사람이 여기서 자기 몫의 토큰을 하나 꺼내 간다 (ADR-0005).\n\n같은 사용자가 여러 번 호출하면 유효한 토큰이 여러 개 생긴다. 발급 이력을 남기지\n않으므로 **이전 토큰을 무효화하지 못한다** — 폐기가 필요해지면 토큰 id 테이블과\nblocklist 가 먼저 있어야 한다.",
+        "operationId": "issue_mcp_token",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Issue Mcp Token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/me": {
       "get": {
         "operationId": "get_current_user",
@@ -1025,6 +1211,146 @@
         "summary": "Begin Oauth Login",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/authoring/documents/{document_id}/revise": {
+      "post": {
+        "description": "기존 문서 본문을 지시대로 고친 초안을 만든다. 문서는 그대로 남는다.\n\n응답의 `text` 는 부분 수정본이 아니라 전문이다. 에디터가 현재 본문과 나란히 놓고\n사람이 받아들일지 정한 뒤에야 저장으로 이어진다.",
+        "operationId": "revise_rspdl_document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviseDocumentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthoringDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revise Rspdl Document",
+        "tags": [
+          "authoring"
+        ]
+      }
+    },
+    "/api/authoring/projects/{project_id}/draft": {
+      "post": {
+        "description": "지시로 새 RSPDL 초안을 만든다. 문서는 만들어지지 않는다.\n\n쓰기 권한이 아니라 멤버십만 요구한다. 저장하지 않으므로 프로젝트 상태가 바뀌지 않고,\n읽기 전용 멤버도 초안을 받아 본 뒤 쓸 수 있는 사람에게 넘길 수 있어야 한다.\n\n진단이 남은 초안도 200 이다. 재시도 뒤에도 컴파일되지 않는 초안을 오류로 바꾸면\n사람이 판단할 재료를 뺏는 것이다 (ADR-0005).",
+        "operationId": "draft_rspdl_document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftDocumentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthoringDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Draft Rspdl Document",
+        "tags": [
+          "authoring"
         ]
       }
     },

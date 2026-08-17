@@ -51,7 +51,7 @@ Apple Silicon 맥에서 로컬 개발은 됩니다. 그러나 **Linux arm64(AWS 
 | `packages/ui` | shadcn 기반 공용 컴포넌트 |
 | `packages/design-system` | 토큰과 테마 |
 | `packages/rspdl-editor` | CodeMirror 6 RSPDL 언어 모드 |
-| `packages/config` | eslint · tsconfig · tailwind 공유 설정 |
+| `packages/config` | 공유 tsconfig. eslint·tailwind 설정은 `apps/web` 과 함께 들어옵니다 |
 | `infra/` | Terraform (AWS Lightsail) |
 | `docs/adr` | 이미 내려진 기술 결정과 그 근거 |
 | `scripts/` | 검사 하네스 |
@@ -93,13 +93,14 @@ apps/api/.../interface/rest/**  →  apps/api/openapi.json  →  packages/api-cl
 
 ## 테스트 위치
 
-변경을 소유하는 가장 가까운 계층에 테스트를 추가합니다.
+API 테스트는 `apps/api/tests/` 에 평평하게 둡니다. 파일 이름이 대상을 가리킵니다.
 
-- 도메인 규칙: `apps/api/tests/domain/`
-- 유스케이스: `apps/api/tests/application/`
-- 어댑터 계약(RSPDL·DB·OAuth): `apps/api/tests/infrastructure/`
-- HTTP 계약과 상태 코드: `apps/api/tests/` 의 `test_*_api.py`
-- 프론트 컴포넌트: 해당 패키지의 테스트
+- HTTP 계약과 상태 코드: `test_<영역>_api.py` (예: `test_workspace_api.py`)
+- 어댑터 계약: `test_<어댑터>_adapter.py` (예: `test_rspdl_adapter.py`)
+- 공용 픽스처(실제 Postgres 세션, 로그인한 클라이언트): `conftest.py`
+
+계층별 하위 디렉터리는 지금 규모에서 얻는 것이 없어 두지 않았습니다. 파일이 늘어 찾기
+어려워지면 그때 나눕니다.
 
 RSPDL 의미에 의존하는 변경에는 가능하면 네 가지를 함께 넣어 주세요.
 

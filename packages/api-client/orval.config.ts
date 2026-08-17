@@ -18,6 +18,7 @@ export default defineConfig({
       client: 'react-query',
       httpClient: 'fetch',
       clean: true,
+      indexFiles: true,
       prettier: false,
       override: {
         // 세션 쿠키를 상위 도메인으로 공유하므로 (ADR-0004) 모든 요청이

@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 #
-# 제출 전 하네스. CI 가 도는 것과 같은 게이트를 로컬에서 먼저 돌린다.
+# 제출 전 하네스. CI 가 도는 게이트를 로컬에서 먼저 돌린다.
 #
 #   ./scripts/check.sh
 #
-# CI 와 이 스크립트가 어긋나면 "로컬에서는 됐는데" 가 생기므로, 게이트를 추가할 때는
-# 반드시 양쪽에 함께 추가한다.
+# 게이트를 추가할 때는 여기와 .github/workflows/ci.yml 양쪽에 함께 추가한다. 어긋나면
+# "로컬에서는 됐는데" 가 생긴다.
+#
+# CI 에만 있는 것 (로컬에서 재현할 이유가 없는 것):
+#   - `uv sync --locked` — 락파일이 실제로 고정된 상태로 설치되는지
+#   - `import rspdl` 스모크 — 러너 플랫폼에서 네이티브 확장이 열리는지
+#   - `git diff --exit-code` — 생성물이 실수로 커밋됐는지
 
 set -euo pipefail
 
@@ -37,5 +42,10 @@ step "OpenAPI 계약 드리프트"
 step "프론트 codegen + 타입"
 pnpm codegen
 pnpm typecheck
+
+# api 는 위에서 이미 검사했다. turbo 가 apps/api 의 lint(uv 필요)를 다시 끌고 오지 않도록
+# 걸러낸다 — CI 의 web 잡도 같은 필터를 쓴다.
+step "프론트 린트 + 빌드"
+pnpm exec turbo lint build --filter='!api'
 
 printf '\n\033[32m모든 게이트 통과\033[0m\n'

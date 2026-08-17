@@ -61,13 +61,25 @@ mkdir -p /tmp/dahaze-corpus
 python3 scripts/rspdl_recompile_report.py --to 0.2.0 --corpus /tmp/dahaze-corpus
 ```
 
-### 4. wire schema가 바뀌었다면
+### 4. LLM 프롬프트를 점검한다
+
+`infrastructure/llm/prompts/` 의 문법 요약과 예제는 **컴파일러 버전과 함께 늙는다.**
+문법이 바뀌었는데 프롬프트를 그대로 두면 LLM이 옛 문법을 계속 만들어내고, 사용자는
+"AI가 만든 초안이 항상 컴파일 오류를 낸다" 는 형태로 겪는다.
+
+**재컴파일 리포트로는 이 회귀가 드러나지 않는다.** 코퍼스는 이미 존재하는 문서를 검사할 뿐,
+앞으로 생성될 텍스트를 검사하지 않는다. 그러니 별도로 확인한다.
+
+- 프롬프트의 예제를 새 버전으로 컴파일해 진단이 없는지 본다
+- CHANGELOG 에 문법 추가·변경이 있으면 프롬프트에 반영한다
+
+### 5. wire schema가 바뀌었다면
 
 `infrastructure/rspdl/local_adapter.py` 의 `_wrap` 이 스키마 버전을 검증한다. 새 버전을 받도록
 고치고, **응답 모양이 달라진 곳을 프론트까지 따라가며** 확인한다. `result` 는 그대로 통과하므로
 타입 시스템이 잡아주지 않는다.
 
-### 5. 핀을 올린다
+### 6. 핀을 올린다
 
 ```toml
 # apps/api/pyproject.toml
@@ -78,13 +90,13 @@ python3 scripts/rspdl_recompile_report.py --to 0.2.0 --corpus /tmp/dahaze-corpus
 cd apps/api && uv lock --upgrade-package rspdl && uv sync --extra dev
 ```
 
-### 6. 하네스를 돌린다
+### 7. 하네스를 돌린다
 
 ```console
 ./scripts/check.sh
 ```
 
-### 7. PR을 연다
+### 8. PR을 연다
 
 `.github/ISSUE_TEMPLATE/rspdl-version.yml` 로 이슈를 먼저 만들고, PR 본문에 **재컴파일 리포트
 전문**을 붙인다. 리뷰어가 회귀 여부를 직접 확인할 수 있어야 한다.

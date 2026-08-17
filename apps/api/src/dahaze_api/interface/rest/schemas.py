@@ -180,3 +180,74 @@ class DocumentRevisionResponse(BaseModel):
     author_id: UUID | None
     summary: str | None
     created_at: datetime
+
+
+# ----------------------------------------------------------------------- MCP
+
+
+class McpTokenResponse(BaseModel):
+    """MCP 클라이언트가 쓸 Bearer 토큰.
+
+    발급된 뒤에는 **폐기할 수 없다.** 토큰 저장소가 없으므로 `expires_at` 까지는 유효하다
+    (ADR-0005). 화면이 이 사실과 만료 시각을 사용자에게 보여줄 수 있도록 함께 돌려준다.
+    """
+
+    token: str = Field(description="`Authorization: Bearer <token>` 으로 보낸다")
+    token_type: str = Field(default="Bearer", description="HTTP 인증 스킴")
+    expires_at: datetime = Field(description="이 시각 이후로는 거부된다. 폐기 수단은 없다")
+
+
+# ------------------------------------------------------------------ LLM 저작
+
+
+class DraftDocumentRequest(BaseModel):
+    instruction: str = Field(
+        min_length=1,
+        max_length=8000,
+        description="무엇을 선언하고 싶은지 자연어로. 이 문장이 초안의 유일한 입력이다",
+        examples=["재고 항목을 이름과 수량으로 관리한다. 수량은 음수가 될 수 없다."],
+    )
+    path: str = Field(
+        default="draft.rspdl",
+        description="초안에 붙일 경로. 저장하지 않으므로 기존 문서와 겹쳐도 된다",
+        examples=["inventory.rspdl"],
+    )
+
+
+class ReviseDocumentRequest(BaseModel):
+    instruction: str = Field(
+        min_length=1,
+        max_length=8000,
+        description="이 문서를 어떻게 바꿀지 자연어로",
+        examples=["수량 상한을 1000으로 제한하는 제약을 추가한다."],
+    )
+
+
+class AuthoringAttemptResponse(BaseModel):
+    """시도 한 번의 결과.
+
+    왜 이 초안이 최종인지 설명하는 재료다 (ADR-0005). 진단 수가 줄다 멈췄는지,
+    처음부터 0이었는지가 여기서 드러난다.
+    """
+
+    attempt: int = Field(description="1 이 첫 초안, 그 뒤는 진단을 되먹인 수리")
+    diagnostic_count: int = Field(description="그 시도의 컴파일 진단 수")
+
+
+class AuthoringDraftResponse(BaseModel):
+    """LLM 초안과 그 컴파일 결과.
+
+    **저장되지 않았다.** 사용자가 받아들이면 `PUT /api/documents/{id}` 로 직접 저장한다 —
+    LLM 이 문서를 조용히 덮어쓰면 이력을 추적할 수 없게 되기 때문이다 (ADR-0005).
+
+    `analysis.result` 안에 진단이 그대로 들어 있다. 진단이 남은 초안도 실패가 아니라
+    200 으로 돌아온다. 반쯤 맞는 초안과 그 진단은 사람이 판단할 재료다.
+    """
+
+    path: str
+    text: str = Field(description="RSPDL 소스 전문. 부분 수정본이 아니다")
+    model: str = Field(description="이 초안을 만든 LLM 모델")
+    attempts: list[AuthoringAttemptResponse] = Field(
+        description="시도 이력. 마지막 항목이 이 응답의 초안에 대응한다"
+    )
+    analysis: AnalysisResponse = Field(description="최종 초안의 컴파일 결과와 진단")

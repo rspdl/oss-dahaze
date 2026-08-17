@@ -119,8 +119,10 @@ jobs:
       - name: 타입
         run: pnpm --filter @dahaze/api-client typecheck
 
+      # 이 잡에는 Python·uv 가 없다. `pnpm lint` 를 그대로 돌리면 turbo 가 apps/api 의
+      # lint(`uv run ruff check .`)까지 끌고 와서 실패한다. api 는 위 잡이 이미 검사한다.
       - name: 린트
-        run: pnpm lint
+        run: pnpm exec turbo lint --filter='!api'
 
       - name: 빌드
-        run: pnpm build
+        run: pnpm exec turbo build --filter='!api'
