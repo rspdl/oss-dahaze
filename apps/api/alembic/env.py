@@ -1,0 +1,72 @@
+"""Alembic 환경.
+
+연결 문자열은 alembic.ini 가 아니라 애플리케이션 설정에서 가져온다. 운영 환경이
+`DATABASE_URL` 하나만 주므로, 마이그레이션과 앱이 같은 값을 보게 하기 위해서다.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from logging.config import fileConfig
+
+from sqlalchemy import pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config
+
+from alembic import context
+from dahaze_api.config import get_settings
+from dahaze_api.infrastructure.db.models import Base
+from dahaze_api.infrastructure.db.session import to_asyncpg_url
+
+config = context.config
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+config.set_main_option("sqlalchemy.url", to_asyncpg_url(get_settings().database_url))
+
+target_metadata = Base.metadata
+
+
+def run_migrations_offline() -> None:
+    context.configure(
+        url=config.get_main_option("sqlalchemy.url"),
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        # 타입 변경도 자동 감지 대상에 넣는다. 놓치면 스키마가 조용히 어긋난다.
+        compare_type=True,
+        compare_server_default=True,
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations() -> None:
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
+
+
+def run_migrations_online() -> None:
+    asyncio.run(run_async_migrations())
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()

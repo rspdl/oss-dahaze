@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-
 import httpx
-import pytest
-
-from dahaze_api.main import create_app
 
 VALID_TEXT = (
     "@모듈 재고(inventory)\n"
@@ -16,14 +11,6 @@ VALID_TEXT = (
     "    이름(name): 필수 문자열\n"
     "    수량(quantity): 필수 정수\n"
 )
-
-
-@pytest.fixture
-async def client() -> AsyncIterator[httpx.AsyncClient]:
-    app = create_app()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
 
 
 async def test_health_reports_loaded_compiler(client: httpx.AsyncClient) -> None:

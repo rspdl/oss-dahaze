@@ -25,6 +25,9 @@ step "API 린트"
 step "API 타입"
 (cd apps/api && uv run mypy)
 
+step "마이그레이션 ↔ 모델 일치"
+./scripts/check_migrations.sh
+
 step "API 테스트"
 (cd apps/api && uv run pytest -q)
 

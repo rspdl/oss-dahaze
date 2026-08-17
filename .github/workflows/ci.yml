@@ -36,6 +36,28 @@ jobs:
     defaults:
       run:
         working-directory: apps/api
+    services:
+      # 테스트는 실제 Postgres 에 붙는다. JSONB, 부분 유니크 인덱스,
+      # ON CONFLICT DO NOTHING 이 전부 방언에 의존하므로 SQLite 로 대체하면
+      # 테스트가 통과해도 프로덕션 동작을 보장하지 못한다.
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: dahaze
+          POSTGRES_USER: dahaze
+          POSTGRES_PASSWORD: dahaze
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dahaze -d dahaze"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # CI 러너에서는 5432 가 그대로 열린다. 로컬 기본값이 55432 인 이유는
+      # deploy/docker-compose.dev.yml 주석 참고.
+      DATABASE_URL: postgresql://dahaze:dahaze@localhost:5432/dahaze
+      TEST_DATABASE_URL: postgresql://dahaze:dahaze@localhost:5432/dahaze_test
     steps:
       - uses: actions/checkout@v4
 
@@ -57,6 +79,10 @@ jobs:
 
       - name: 타입
         run: uv run mypy
+
+      - name: 마이그레이션 ↔ 모델 일치
+        working-directory: .
+        run: ./scripts/check_migrations.sh
 
       - name: 테스트
         run: uv run pytest -q

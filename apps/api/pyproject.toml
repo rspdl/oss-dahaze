@@ -41,11 +41,17 @@ packages = ["src/dahaze_api"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# DB 픽스처가 session 스코프라 이벤트 루프도 같은 스코프여야 한다. 기본값(function)이면
+# session 스코프 async 픽스처가 루프 불일치로 실패한다.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# 마이그레이션은 alembic 이 생성한다. 사람이 스타일을 맞출 대상이 아니다.
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

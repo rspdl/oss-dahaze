@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
 from dahaze_api.config import get_settings
-from dahaze_api.interface.rest import analysis
+from dahaze_api.interface.rest import analysis, auth, workspace
 from dahaze_api.interface.rest.dependencies import get_compiler
 from dahaze_api.interface.rest.schemas import HealthResponse
 
@@ -44,6 +44,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.include_router(auth.router)
+    app.include_router(workspace.router)
     app.include_router(analysis.router)
 
     @app.get("/health", tags=["health"], name="health")

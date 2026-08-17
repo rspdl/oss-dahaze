@@ -18,7 +18,8 @@ class Settings(BaseSettings):
 
     # --- DB ---
     # 앱은 postgresql:// 를 postgresql+asyncpg:// 로 치환한다 (infrastructure/db/session.py).
-    database_url: str = "postgresql://dahaze:dahaze@localhost:5432/dahaze"
+    # 로컬 기본 포트가 5432 가 아닌 이유는 deploy/docker-compose.dev.yml 주석 참고.
+    database_url: str = "postgresql://dahaze:dahaze@localhost:55432/dahaze"
 
     # --- 세션 쿠키 ---
     # app.dahaze.xyz 와 api.dahaze.xyz 가 상위 도메인 쿠키를 공유한다 (ADR-0004).

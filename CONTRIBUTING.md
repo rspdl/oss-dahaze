@@ -15,8 +15,14 @@ dahaze는 RSPDL 문법 파일을 저작하고 검증하는 웹 서비스입니�
 
 ```console
 pnpm install
-cd apps/api && uv sync --extra dev
+cd apps/api && uv sync --extra dev && cp .env.example .env && cd -
+docker compose -f deploy/docker-compose.dev.yml up -d
+cd apps/api && uv run alembic upgrade head && cd -
 ```
+
+테스트는 **실제 Postgres 에 붙습니다.** SQLite 로 대체하지 않는 이유는 JSONB, 부분 유니크
+인덱스, `ON CONFLICT DO NOTHING` 이 전부 방언에 의존하기 때문입니다 — 그것들이 프로덕션에서만
+다르게 동작하면 테스트가 통과해도 아무것도 보장하지 못합니다.
 
 ### 플랫폼 요구사항
 

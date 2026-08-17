@@ -1,0 +1,32 @@
+# 로컬 개발용 Postgres.
+#
+# 프로덕션 compose 와 분리한다. 여기는 포트를 열고 비밀번호가 고정이며 하드닝이 없다 —
+# 로컬 전용이라는 뜻이다.
+#
+#   docker compose -f deploy/docker-compose.dev.yml up -d
+#
+# 이미지는 pgvector 포함본을 쓴다. 지금은 벡터 검색을 쓰지 않지만, 나중에 LLM 임베딩이
+# 필요해질 때 이미지를 바꾸면 로컬과 프로덕션이 갈라지므로 처음부터 맞춰 둔다.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dahaze
+      POSTGRES_USER: dahaze
+      POSTGRES_PASSWORD: dahaze
+    ports:
+      # 호스트 포트는 5432 가 아니다. Windows/WSL 은 5432 를 예약 범위에 넣어 두는 경우가
+      # 있어 바인딩이 거부된다. DAHAZE_DB_PORT 로 바꿀 수 있다.
+      - "127.0.0.1:${DAHAZE_DB_PORT:-55432}:5432"
+    volumes:
+      - dahaze_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dahaze -d dahaze"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  dahaze_pgdata:

@@ -47,11 +47,17 @@ Apple Silicon 맥에서 로컬 개발은 됩니다. 그러나 AWS Graviton(t4g) 
 
 ```console
 pnpm install
-cd apps/api && uv sync --extra dev && cd -
+cd apps/api && uv sync --extra dev && cp .env.example .env && cd -
+
+docker compose -f deploy/docker-compose.dev.yml up -d   # Postgres
+cd apps/api && uv run alembic upgrade head && cd -
 
 pnpm codegen     # openapi.json 생성 → API 클라이언트 생성
 pnpm dev
 ```
+
+로그인을 쓰려면 GitHub OAuth App 을 만들어 `apps/api/.env` 에 자격증명을 넣습니다.
+없으면 `github` 제공자가 등록되지 않고 `/api/auth/providers` 가 빈 목록을 돌려줍니다.
 
 ## 검사
 

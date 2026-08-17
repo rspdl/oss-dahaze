@@ -8,7 +8,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
+from uuid import UUID
 
+from dahaze_api.domain.entities import (
+    Document,
+    DocumentRevision,
+    ExternalIdentity,
+    Project,
+    ProjectMembership,
+    ProjectRole,
+    User,
+)
 from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlRuntime, RspdlSource
 
 
@@ -94,16 +104,104 @@ class LlmPort(Protocol):
         ...
 
 
-class ExternalIdentity(Protocol):
-    """OAuth 제공자가 확인해 준 신원."""
 
-    @property
-    def provider(self) -> str: ...
-    @property
-    def provider_user_id(self) -> str: ...
-    @property
-    def login(self) -> str: ...
-    @property
-    def email(self) -> str | None: ...
-    @property
-    def avatar_url(self) -> str | None: ...
+class UserRepositoryPort(Protocol):
+    """사용자와 외부 신원."""
+
+    async def get(self, user_id: UUID) -> User | None:
+        ...
+
+    async def find_by_identity(self, *, provider: str, provider_user_id: str) -> User | None:
+        ...
+
+    async def create_from_identity(self, identity: ExternalIdentity) -> User:
+        """신원으로 사용자를 새로 만든다. 같은 사람이 다른 벤더로 로그인하면
+        별도 사용자가 된다 — 계정 병합은 아직 지원하지 않는다."""
+        ...
+
+
+class ProjectRepositoryPort(Protocol):
+    """프로젝트와 멤버십.
+
+    한 사용자가 여러 프로젝트를 갖는다. 모든 조회는 멤버십을 통해서만 이뤄지며,
+    소유자를 위한 별도 경로를 두지 않는다.
+    """
+
+    async def create(
+        self,
+        *,
+        owner_id: UUID,
+        slug: str,
+        name: str,
+        description: str | None,
+        default_rspdl_version: str,
+    ) -> Project:
+        ...
+
+    async def get(self, project_id: UUID) -> Project | None:
+        ...
+
+    async def get_by_slug(self, slug: str) -> Project | None:
+        ...
+
+    async def list_for_user(
+        self, user_id: UUID, *, include_archived: bool = False
+    ) -> list[Project]:
+        ...
+
+    async def membership_of(self, *, project_id: UUID, user_id: UUID) -> ProjectMembership | None:
+        """접근 검사의 유일한 진입점. 없으면 그 사용자는 프로젝트를 볼 수 없다."""
+        ...
+
+    async def add_member(
+        self, *, project_id: UUID, user_id: UUID, role: ProjectRole
+    ) -> ProjectMembership:
+        ...
+
+    async def list_members(self, project_id: UUID) -> list[ProjectMembership]:
+        ...
+
+    async def archive(self, project_id: UUID) -> Project | None:
+        ...
+
+
+class DocumentRepositoryPort(Protocol):
+    """RSPDL 문서와 편집 이력.
+
+    텍스트가 진실이다 (ADR-0003). 컴파일 결과는 여기 저장하지 않는다.
+    """
+
+    async def create(
+        self,
+        *,
+        project_id: UUID,
+        path: str,
+        title: str,
+        text: str,
+        target_rspdl_version: str,
+        author_id: UUID | None,
+    ) -> Document:
+        ...
+
+    async def get(self, document_id: UUID) -> Document | None:
+        ...
+
+    async def list_for_project(self, project_id: UUID) -> list[Document]:
+        ...
+
+    async def update_text(
+        self,
+        *,
+        document_id: UUID,
+        text: str,
+        author_id: UUID | None,
+        summary: str | None,
+    ) -> Document | None:
+        """본문을 바꾸고 리비전을 남긴다. 텍스트가 그대로면 리비전을 만들지 않는다."""
+        ...
+
+    async def soft_delete(self, document_id: UUID) -> bool:
+        ...
+
+    async def list_revisions(self, document_id: UUID) -> list[DocumentRevision]:
+        ...
