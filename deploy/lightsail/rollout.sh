@@ -67,7 +67,17 @@ if [ -n "$GHCR_TOKEN" ] && [ -n "$GHCR_USER" ]; then
 fi
 
 log "새 이미지 받기: $IMAGE_TAG"
-docker pull "$IMAGE_TAG"
+# 레지스트리에서 받지 못해도, 그 이미지가 이미 로컬에 있으면 계속한다.
+# (수동 배포에서 `docker save | docker load` 로 넣어 둔 경우가 그렇다.)
+# 둘 다 아니면 여기서 멈춘다 — 없는 이미지로 compose 를 올리면 원인이 더 흐려진다.
+if ! docker pull "$IMAGE_TAG" 2>&1; then
+  if docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+    echo "레지스트리에서 받지 못했다. 로컬에 있는 같은 태그를 쓴다."
+  else
+    echo "✗ 이미지를 받을 수 없고 로컬에도 없다: $IMAGE_TAG" >&2
+    exit 1
+  fi
+fi
 
 log "DB 기동 확인"
 compose up -d db

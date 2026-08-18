@@ -164,7 +164,7 @@ variable "github_org" {
 variable "github_repo" {
   description = "배포 워크플로가 사는 저장소. OIDC 신뢰 조건이 이 저장소로 한정된다."
   type        = string
-  default     = "dahaze"
+  default     = "oss-dahaze"
 }
 
 variable "github_deploy_branch" {
