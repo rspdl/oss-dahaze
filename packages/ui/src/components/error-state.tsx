@@ -1,7 +1,7 @@
 import * as React from "react"
 import { OctagonXIcon } from "lucide-react"
 
-import { cn } from "@/lib/cn"
+import { cn } from "../lib/cn"
 
 export interface ErrorStateProps
   extends Omit<React.ComponentProps<"div">, "title"> {

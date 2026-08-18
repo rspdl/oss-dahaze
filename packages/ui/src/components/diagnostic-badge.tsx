@@ -1,7 +1,7 @@
 import * as React from "react"
 import { InfoIcon, OctagonXIcon, TriangleAlertIcon } from "lucide-react"
 
-import { cn } from "@/lib/cn"
+import { cn } from "../lib/cn"
 
 /**
  * 심각도 표시.

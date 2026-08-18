@@ -8,7 +8,6 @@ import {
 import { Button, Skeleton } from '@dahaze/ui'
 
 import { absoluteApiUrl } from '@/shared/api/base-url'
-import { payload } from '@/shared/api/payload'
 import { errorMessage } from '@/shared/api/errors'
 
 /**
@@ -26,8 +25,7 @@ const PROVIDER_LABEL: Record<string, string> = {
 
 export function SignInButtons({ redirectTo }: { redirectTo: string }) {
   const query = useListAuthProviders<AuthProvidersResponse>({
-    query: { select: payload },
-  })
+      })
 
   if (query.isPending) {
     return <Skeleton className="h-9 w-40" />

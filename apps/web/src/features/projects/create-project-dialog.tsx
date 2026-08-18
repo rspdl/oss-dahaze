@@ -24,7 +24,6 @@ import {
 } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
-import { payload } from '@/shared/api/payload'
 
 /**
  * slug 는 서버가 소문자·숫자·하이픈만 받는다. 규칙을 두 곳에서 다르게 쓰지 않으려고
@@ -64,7 +63,7 @@ export function CreateProjectDialog({ trigger }: { trigger: ReactNode }) {
       },
       {
         onSuccess: async (response) => {
-          const project: ProjectResponse = payload(response)
+          const project: ProjectResponse = response
           // 목록은 서버 상태다. 새 항목을 손으로 끼워 넣지 않고 다시 물어본다.
           await queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() })
           toast.success(`프로젝트 "${project.name}" 을(를) 만들었습니다`)

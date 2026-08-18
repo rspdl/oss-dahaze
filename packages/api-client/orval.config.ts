@@ -27,6 +27,12 @@ export default defineConfig({
           path: './src/fetcher.ts',
           name: 'customFetch',
         },
+        fetch: {
+          // 응답을 { data, status, headers } 로 감싸지 않는다. customFetch 가 non-2xx 를
+          // ApiError 로 던지므로 status·headers 를 쓸 곳이 없는데, 켜 두면 모든 화면이
+          // `.data` 를 한 겹 벗겨야 하고 mutator 반환값과도 어긋난다.
+          includeHttpResponseReturnType: false,
+        },
         query: {
           useQuery: true,
           useMutation: true,

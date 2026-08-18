@@ -28,13 +28,13 @@ import {
 } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
-import { payload } from '@/shared/api/payload'
 import { formatDateTime } from '@/shared/format'
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
 import { RequireSession } from '@/features/auth/require-session'
 import { useCompile } from '@/features/analysis/use-compile'
 import { RevisePanel } from '@/features/authoring/revise-panel'
 import { DiagnosticsPanel } from './diagnostics-panel'
+import { RevisionHistory } from './revision-history'
 import { VersionMismatchNotice } from './version-mismatch-notice'
 import { useDraft, useDraftStore } from './draft-store'
 import { useWorkbenchStore } from './workbench-store'
@@ -57,7 +57,7 @@ export function DocumentWorkbenchScreen({
       breadcrumb={
         <>
           <Crumb href="/projects">프로젝트</Crumb>
-          <Crumb href={`/projects/${projectId}`}>문서</Crumb>
+          <Crumb href={`/projects/${projectId}`}>문서 목록</Crumb>
         </>
       }
     >
@@ -76,8 +76,7 @@ function DocumentLoader({
   documentId: string
 }) {
   const query = useGetDocument<DocumentResponse>(documentId, {
-    query: { select: payload },
-  })
+      })
 
   if (query.isPending) {
     return (
@@ -275,6 +274,7 @@ function Workbench({
             <TabsList variant="line" className="mx-3 mt-2">
               <TabsTrigger value="diagnostics">진단</TabsTrigger>
               <TabsTrigger value="authoring">LLM 저작</TabsTrigger>
+              <TabsTrigger value="history">이력</TabsTrigger>
             </TabsList>
             <TabsContent value="diagnostics" className="min-h-0 flex-1">
               <DiagnosticsPanel compile={compile} />
@@ -284,6 +284,9 @@ function Workbench({
                 documentId={documentId}
                 onApplyDraft={(next) => setDraft(documentId, next)}
               />
+            </TabsContent>
+            <TabsContent value="history" className="min-h-0 flex-1">
+              <RevisionHistory documentId={documentId} />
             </TabsContent>
           </Tabs>
         </ResizablePanel>
