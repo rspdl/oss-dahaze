@@ -28,7 +28,6 @@ import {
 } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
-import { payload } from '@/shared/api/payload'
 import { formatDateTime } from '@/shared/format'
 import { FileIcon } from '@/shared/ui/icons'
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
@@ -48,8 +47,7 @@ export function ProjectScreen({ projectId }: { projectId: string }) {
 
 function ProjectDetail({ projectId }: { projectId: string }) {
   const project = useGetProject<ProjectResponse>(projectId, {
-    query: { select: payload },
-  })
+      })
 
   if (project.isPending) return <Skeleton className="h-40 w-full" />
 
@@ -153,8 +151,7 @@ function ArchiveProjectButton({ project }: { project: ProjectResponse }) {
 
 function DocumentList({ projectId }: { projectId: string }) {
   const documents = useListDocuments<DocumentSummaryResponse[]>(projectId, {
-    query: { select: payload },
-  })
+      })
   const runtime = useRspdlRuntime()
 
   if (documents.isPending) {

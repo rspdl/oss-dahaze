@@ -7,9 +7,8 @@ import {
 } from '@dahaze/api-client'
 import type { RspdlDiagnostic } from '@dahaze/rspdl-editor'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect } from 'react'
 
-import { payload } from '@/shared/api/payload'
 import { useDebouncedValue } from '@/shared/use-debounced-value'
 import { collectDiagnostics } from '@/shared/rspdl/analysis'
 
@@ -22,8 +21,9 @@ import { collectDiagnostics } from '@/shared/rspdl/analysis'
  * 2. **취소.** 디바운스가 다시 걸리면 이전 요청은 이미 쓸모없다. 조회를 취소해 `AbortSignal`
  *    로 끊는다 — 화면을 떠날 때도 마찬가지다.
  * 3. **진단과 그 진단이 가리키는 텍스트를 함께 준다.** 진단의 `span` 은 특정 텍스트에 대한
- *    바이트 오프셋이라, 다른 텍스트에 얹으면 행·열이 조용히 어긋난다 (ADR-0006). 그래서
- *    결과를 텍스트와 한 쌍으로 들고 다니고, 편집 중이라 짝이 맞지 않으면 화면이 그렇게 말한다.
+ *    UTF-8 바이트 오프셋이라, 다른 텍스트에 얹으면 행·열이 조용히 어긋난다 (ADR-0006).
+ *    그래서 컴파일에 넣은 텍스트를 **캐시 값 안에** 함께 담는다. 두 값이 절대 갈라지지 않고,
+ *    재컴파일 중에 이전 결과를 계속 보여줘도 그것이 어느 텍스트의 진단인지 늘 알 수 있다.
  *
  * 컴파일은 `POST` 라 생성된 훅은 mutation 이지만 여기서는 **조회로 쓴다.** 같은 소스의 컴파일
  * 결과는 결정적이고 (ADR-0003) 서버도 캐시한다 — `deterministicAnalysisOptions` 가 그 전제로
@@ -42,13 +42,25 @@ export function compileQueryKey(path: string, text: string) {
   return ['analysis', 'compile', path, text] as const
 }
 
-export interface CompileSnapshot {
-  /** 이 진단들을 만든 텍스트. 행·열 계산은 반드시 이것으로 한다. */
+/** 캐시에 담기는 값. 텍스트와 결과가 한 몸이다. */
+interface CompiledPair {
   text: string
   analysis: AnalysisResponse
+}
+
+export interface CompileSnapshot extends CompiledPair {
   diagnostics: RspdlDiagnostic[]
   /** 컴파일 결과 모양을 알아봤는지. `false` 면 "진단 없음" 이 아니라 "모른다". */
   recognized: boolean
+}
+
+/*
+ * `select` 를 모듈 바깥에 둔다. 렌더마다 새 함수를 넘기면 TanStack Query 가 결과를 재사용하지
+ * 못하고 진단 배열이 매번 새로 만들어져, 편집기가 불필요하게 진단을 다시 그린다.
+ */
+function toSnapshot(pair: CompiledPair): CompileSnapshot {
+  const { diagnostics, recognized } = collectDiagnostics(pair.analysis)
+  return { ...pair, diagnostics, recognized }
 }
 
 export interface CompileState {
@@ -76,9 +88,19 @@ export function useCompile({
 
   const query = useQuery({
     queryKey: compileQueryKey(path, debounced),
-    queryFn: ({ signal }) =>
-      compileWorkspace({ sources: [{ path, text: debounced }] }, { signal }),
-    select: (response) => payload(response),
+    queryFn: async ({ signal }): Promise<CompiledPair> => {
+      const response = await compileWorkspace(
+        { sources: [{ path, text: debounced }] },
+        { signal },
+      )
+      return { text: debounced, analysis: response }
+    },
+    select: toSnapshot,
+    /*
+     * 키가 바뀌는 순간 패널이 비어 깜빡이는 것을 막는다. 이전 결과를 그대로 보여주되,
+     * 그 값이 자기 텍스트를 들고 있으므로 행·열은 여전히 정확하다.
+     */
+    placeholderData: (previous) => previous,
     enabled: shouldCompile,
     ...deterministicAnalysisOptions,
   })
@@ -97,27 +119,12 @@ export function useCompile({
     }
   }, [queryClient, path, debounced])
 
-  /*
-   * 진단과 그 진단이 가리키는 텍스트를 한 쌍으로 붙잡아 둔다.
-   *
-   * TanStack Query 는 키가 바뀌는 순간 이전 데이터를 내려놓으므로, 재컴파일 중에는 패널이
-   * 통째로 비어 깜빡인다. 그렇다고 이전 진단을 그냥 남기면 **어느 텍스트 기준의 행·열인지**
-   * 알 수 없게 된다. 그래서 남기되 텍스트를 함께 남긴다. 서버 상태를 복제하는 것이 아니라,
-   * 같이 보여야만 의미가 있는 두 값을 한 번에 붙잡는 것이다 (그래서 zustand 가 아니다).
-   */
-  const [snapshot, setSnapshot] = useState<CompileSnapshot | null>(null)
-
-  useEffect(() => {
-    const analysis = query.data
-    if (analysis === undefined) return
-    const { diagnostics, recognized } = collectDiagnostics(analysis)
-    setSnapshot({ text: debounced, analysis, diagnostics, recognized })
-  }, [query.data, debounced])
-
   const { refetch } = query
   const recompile = useCallback(() => {
     void refetch()
   }, [refetch])
+
+  const snapshot = query.data ?? null
 
   return {
     snapshot,

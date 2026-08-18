@@ -5,7 +5,6 @@ import {
   type RspdlRuntimeResponse,
 } from '@dahaze/api-client'
 
-import { payload } from '@/shared/api/payload'
 
 /**
  * 이 서버가 어떤 rspdl 로 컴파일하는지.
@@ -17,7 +16,7 @@ const RUNTIME_STALE_TIME_MS = 60 * 60 * 1000
 
 export function useRspdlRuntime() {
   return useGetRspdlRuntime<RspdlRuntimeResponse>({
-    query: { select: payload, staleTime: RUNTIME_STALE_TIME_MS },
+    query: { staleTime: RUNTIME_STALE_TIME_MS },
   })
 }
 

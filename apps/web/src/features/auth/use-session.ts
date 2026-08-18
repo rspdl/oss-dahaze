@@ -8,7 +8,6 @@ import {
 } from '@dahaze/api-client'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { payload } from '@/shared/api/payload'
 import { isUnauthorized } from '@/shared/api/errors'
 
 /**
@@ -32,8 +31,7 @@ export interface Session {
 
 export function useSession(): Session {
   const query = useGetCurrentUser<CurrentUserResponse>({
-    query: { select: payload },
-  })
+      })
 
   const signedOut = isUnauthorized(query.error)
 

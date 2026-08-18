@@ -9,11 +9,12 @@
  * 받아올 수 있다. 그래서 여기서는 요청을 보내는 것이 아니라 `window.location` 에 넣을 절대
  * 주소를 만든다.
  *
- * 이 상수가 fetcher 의 것과 갈라지면 로그인만 조용히 다른 서버로 간다. `api-client` 가 자기
- * base URL 을 내보내 주는 것이 옳고, 그 전까지는 같은 환경변수·같은 기본값을 쓴다.
+ * base URL 은 `@dahaze/api-client` 가 내보내는 값을 그대로 쓴다. 여기서 환경변수를 다시
+ * 읽으면 값이 갈라졌을 때 로그인만 조용히 다른 서버로 간다.
  */
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8400'
+import { apiBaseUrl } from '@dahaze/api-client'
+
+export const API_BASE_URL = apiBaseUrl
 
 /** 생성된 URL 빌더가 준 경로(`/api/...`)를 브라우저가 이동할 절대 주소로 만든다. */
 export function absoluteApiUrl(path: string): string {

@@ -5,7 +5,6 @@ import { useListProjects, type ProjectResponse } from '@dahaze/api-client'
 import { Badge, Button, EmptyState, ErrorState, Skeleton } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
-import { payload } from '@/shared/api/payload'
 import { formatDateTime } from '@/shared/format'
 import { FolderIcon } from '@/shared/ui/icons'
 import { AppShell } from '@/shared/ui/app-shell'
@@ -24,8 +23,7 @@ export function ProjectListScreen() {
 
 function ProjectList() {
   const query = useListProjects<ProjectResponse[]>(undefined, {
-    query: { select: payload },
-  })
+      })
 
   return (
     <>

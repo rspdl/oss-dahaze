@@ -30,7 +30,6 @@ import {
 } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
-import { payload } from '@/shared/api/payload'
 import { SpinnerIcon } from '@/shared/ui/icons'
 import { DraftResult } from '@/features/authoring/draft-result'
 
@@ -100,7 +99,7 @@ function useCreateAndOpen(projectId: string, onDone: () => void) {
       { projectId, data: input },
       {
         onSuccess: async (response) => {
-          const document: DocumentResponse = payload(response)
+          const document: DocumentResponse = response
           await queryClient.invalidateQueries({
             queryKey: getListDocumentsQueryKey(projectId),
           })
@@ -216,7 +215,7 @@ function DraftDocumentForm({
       },
       {
         onSuccess: (response) => {
-          const result: AuthoringDraftResponse = payload(response)
+          const result: AuthoringDraftResponse = response
           setDraft(result)
           if (path === '') setPath(result.path)
         },

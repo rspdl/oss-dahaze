@@ -8,7 +8,6 @@ import {
 import { Button, ScrollArea, Textarea, toast } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
-import { payload } from '@/shared/api/payload'
 import { SpinnerIcon } from '@/shared/ui/icons'
 import { DraftResult } from './draft-result'
 
@@ -43,7 +42,7 @@ export function RevisePanel({
       { documentId, data: { instruction: instruction.trim() } },
       {
         onSuccess: (response) => {
-          setDraft(payload(response))
+          setDraft(response)
         },
         onError: (error) => {
           toast.error('초안을 만들지 못했습니다', { description: errorMessage(error) })
