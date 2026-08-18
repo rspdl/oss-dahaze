@@ -1,0 +1,24 @@
+# 이 파일을 terraform.tfvars 로 복사해 값을 채운다.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# 시크릿은 여기 두지 않는다 — Parameter Store 가 소유한다 (ADR-0004).
+# 실제 tfvars 는 .gitignore 대상이다.
+
+# 인증서 만료 알림을 받을 주소.
+acme_email = "you@example.com"
+
+# break-glass SSH 공개키. 22 번 포트는 기본으로 닫혀 있고, SSM 등록이 깨졌을 때만
+# enable_break_glass_ssh=true 와 함께 연다.
+#
+#   ssh-keygen -t ed25519 -f ~/.ssh/dahaze_break_glass -C "dahaze break-glass"
+ssh_public_key = "ssh-ed25519 AAAA... comment"
+
+# Route53 호스팅 영역과 레코드를 이 스택이 소유할지.
+# 영역과 레코드를 먼저 만든 뒤 등록기관에서 네임서버를 바꾼다. 순서를 뒤집으면
+# 비어 있는 영역으로 위임되어 도메인 전체가 잠시 죽는다.
+manage_dns = true
+
+# app 서브도메인이 가리킬 Vercel 값. Vercel 프로젝트의 도메인 설정이 알려준다.
+# 위임 전에 이미 있던 레코드이므로, 옮기지 않으면 전파 시점에 프론트엔드가 끊긴다.
+vercel_cname = "xxxxxxxx.vercel-dns-000.com"
