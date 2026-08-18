@@ -148,13 +148,18 @@ fi
 # SSM 하이브리드 등록으로 역할을 갖게 되므로 가능하다. 배포 파이프라인은 값을 한 번도
 # 만지지 않는다 — CI 로그는 지우기 어렵고, 지나간 로그는 되돌릴 수 없다.
 log "dahaze-env-sync"
-cat >/usr/local/bin/dahaze-env-sync <<'SH'
+# tls-bootstrap 과 같은 이유로 값을 여기서 박아 넣는다. 따옴표 heredoc 안은 확장되지
+# 않으므로, 생성된 스크립트가 환경변수를 기대하게 두면 단독 실행에서 unbound variable
+# 로 죽는다 — 배포와 시크릿 반영이 둘 다 이 스크립트를 부른다.
+cat >/usr/local/bin/dahaze-env-sync <<SH
 #!/usr/bin/env bash
 set -euo pipefail
 
 PREFIX="${PREFIX_IN}"
 REGION="${REGION_IN}"
 APP_DIR="${APP_DIR}"
+SH
+cat >>/usr/local/bin/dahaze-env-sync <<'SH'
 ENV_FILE="$APP_DIR/.env"
 
 TMP=$(mktemp)

@@ -6,7 +6,15 @@ locals {
   # SSM 파라미터 경로의 접두사. 배포 워크플로와 인스턴스의 dahaze-env-sync 가 같은 값을 본다.
   ssm_prefix = "/${var.project}/${var.environment}"
 
-  ssm_parameter_arn_pattern = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}/*"
+  ssm_parameter_arn_prefix = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter"
+
+  # 파라미터 하나하나를 가리키는 ARN.
+  ssm_parameter_arn_pattern = "${local.ssm_parameter_arn_prefix}${local.ssm_prefix}/*"
+
+  # `GetParametersByPath` 는 자식이 아니라 **경로 노드 자체**를 리소스로 평가한다.
+  # `/*` 만 허용하면 AccessDenied 가 나는데, 메시지가 자식 ARN 을 가리켜서 왜 막혔는지
+  # 알아채기 어렵다. 실제로 그렇게 한 번 막혔다.
+  ssm_parameter_path_arn = "${local.ssm_parameter_arn_prefix}${local.ssm_prefix}"
 }
 
 # --- 인스턴스가 맡는 역할 (SSM 하이브리드 활성화) ---
@@ -57,7 +65,10 @@ resource "aws_iam_role_policy" "instance_read_params" {
           "ssm:GetParameters",
           "ssm:GetParametersByPath",
         ]
-        Resource = local.ssm_parameter_arn_pattern
+        Resource = [
+          local.ssm_parameter_arn_pattern,
+          local.ssm_parameter_path_arn,
+        ]
       },
       {
         # SecureString 은 aws/ssm 기본 키로 암호화된다. 그 키는 계정 공용이라 ARN 으로

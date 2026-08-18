@@ -13,9 +13,11 @@
 # 아직 값이 없는 파라미터가 있으면, 그 값을 어디서 얻는지 마지막에 안내한다.
 #
 # 옵션:
-#   --file <경로>   기본값 deploy/lightsail/secrets.env
-#   --dry-run       무엇을 올릴지만 보여주고 실제로 올리지 않는다
-#   --no-sync       업로드 후 인스턴스 동기화를 건너뛴다
+#   --file <경로>     기본값 deploy/lightsail/secrets.env
+#   --profile <이름>  AWS 프로필. 생략하면 AWS_PROFILE 환경변수, 그것도 없고
+#                     프로필이 딱 하나면 그것을 쓴다
+#   --dry-run         무엇을 올릴지만 보여주고 실제로 올리지 않는다
+#   --no-sync         업로드 후 인스턴스 동기화를 건너뛴다
 
 set -euo pipefail
 
@@ -29,6 +31,7 @@ SYNC=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --file) SECRETS_FILE="$2"; shift 2 ;;
+    --profile) AWS_PROFILE="$2"; export AWS_PROFILE; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     --no-sync) SYNC=0; shift ;;
     -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -37,6 +40,28 @@ while [ $# -gt 0 ]; do
 done
 
 log() { printf '\n\033[1m▸ %s\033[0m\n' "$1"; }
+
+# 프로필을 정한다. 명시하지 않았는데 프로필이 딱 하나면 그것을 쓴다 — 매번 AWS_PROFILE 을
+# 앞에 붙이게 하면 언젠가 빠뜨리고, 그러면 엉뚱한 계정에 올라간다.
+if [ -z "${AWS_PROFILE:-}" ]; then
+  PROFILES=$(aws configure list-profiles 2>/dev/null || true)
+  COUNT=$(printf '%s\n' "$PROFILES" | grep -c . || true)
+  if [ "$COUNT" = "1" ]; then
+    AWS_PROFILE="$PROFILES"; export AWS_PROFILE
+  elif [ "$COUNT" -gt 1 ] 2>/dev/null; then
+    echo "✗ AWS 프로필이 여러 개다. --profile 로 하나를 고를 것:" >&2
+    printf '%s\n' "$PROFILES" | sed 's/^/    /' >&2
+    exit 2
+  fi
+fi
+
+# 어느 계정에 올리는지 먼저 보여준다. 잘못된 계정에 시크릿을 올리는 것은 되돌릴 수 없다.
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || true)
+if [ -z "$ACCOUNT" ]; then
+  echo "✗ AWS 자격증명을 확인할 수 없다 (프로필: ${AWS_PROFILE:-기본})." >&2
+  exit 1
+fi
+echo "AWS 계정 $ACCOUNT / 프로필 ${AWS_PROFILE:-기본} / 리전 $REGION / 경로 $SSM_PREFIX"
 
 # 어느 파라미터가 SecureString 인지는 Terraform 이 이미 정했다. 여기서 다시 정하면
 # 두 곳이 갈라지므로, 실제 타입을 SSM 에 물어본다.
@@ -69,6 +94,14 @@ echo "  $SSM_PREFIX 아래 ${#EXISTING_TYPE[@]} 개"
 # 올리기 전에 전부 검사한다. 절반만 올라간 상태가 가장 나쁘다 — 배포는 통과하는데
 # 일부 값만 옛것이라 원인을 찾기 어렵다.
 
+# 사람이 자연스럽게 쓰는 다른 이름을 표준 이름으로 옮긴다. 조용히 추측하지 않고
+# 옮겼다는 사실을 화면에 남긴다.
+declare -A ALIAS=(
+  [GITHUB_OAUTH_CLIENT_ID]=GITHUB_CLIENT_ID
+  [GITHUB_OAUTH_CLIENT_SECRET]=GITHUB_CLIENT_SECRET
+  [OPENAI_KEY]=OPENAI_API_KEY
+)
+
 declare -a KEYS=() VALUES=()
 PROBLEMS=0
 LINE_NO=0
@@ -86,12 +119,21 @@ while IFS= read -r line || [ -n "$line" ]; do
   key="${line%%=*}"
   value="${line#*=}"
 
+  if [ -n "${ALIAS[$key]:=}" ] && [ -z "${EXISTING_TYPE[$key]:-}" ]; then
+    echo "· $key → ${ALIAS[$key]} 로 옮긴다"
+    key="${ALIAS[$key]}"
+  fi
+
   if [ -z "$value" ]; then
     echo "· $key — 비어 있어 건너뛴다"
     continue
   fi
   if [ -z "${EXISTING_TYPE[$key]:-}" ]; then
-    echo "✗ $key — $SSM_PREFIX 아래에 없는 파라미터다. Terraform 에 먼저 추가할 것" >&2
+    echo "✗ $key — $SSM_PREFIX 아래에 없는 파라미터다" >&2
+    # 오타일 가능성이 높으므로 비슷한 이름을 보여준다. 그냥 "없다"만 하면
+    # Terraform 을 열어 이름을 대조해야 한다.
+    NEAR=$(printf '%s\n' "${!EXISTING_TYPE[@]}" | grep -iF "$(echo "$key" | cut -d_ -f1)" || true)
+    [ -n "$NEAR" ] && printf '  비슷한 이름: %s\n' "$(echo "$NEAR" | tr '\n' ' ')" >&2
     PROBLEMS=$((PROBLEMS + 1)); continue
   fi
   # 따옴표를 두른 채 붙여 넣는 실수가 잦다. 값에 따옴표가 그대로 저장되면
