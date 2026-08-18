@@ -12,7 +12,7 @@
     "test": "turbo test",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "codegen": "turbo codegen",
+    "codegen": "turbo openapi --filter=api && turbo codegen",
     "check": "./scripts/check.sh"
   },
   "devDependencies": {
