@@ -23,15 +23,13 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
   id-token: write
 
-env:
-  REGISTRY: ghcr.io
-
-# 인스턴스가 이미지를 받으려면 GHCR 패키지가 공개이거나, rollout.sh 가 쓰는
-# GHCR_USER·GHCR_TOKEN 이 Parameter Store 에 있어야 한다. 패키지 공개 여부는 저장소
-# 공개 여부와 별개로 관리되므로, 첫 배포 후 한 번 확인할 것.
+# 이미지는 ECR 에 올린다. 인스턴스가 SSM 하이브리드 활성화로 이미 IAM 역할을 갖고 있어
+# `aws ecr get-login-password` 만으로 pull 할 수 있고, 레지스트리 자격증명을 어디에도
+# 저장하지 않는다. GHCR 은 비공개 이미지를 받으려면 PAT 를 인스턴스에 두거나 패키지를
+# 공개해야 하는데, 둘 다 "시크릿을 인스턴스에 밀어 넣지 않는다"는 설계(ADR-0004)와
+# 부딪힌다.
 
 jobs:
   build:
@@ -42,6 +40,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: AWS 자격증명 (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: ECR 로그인
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
       - name: 플랫폼 확인
         # 러너가 x86_64 인지부터 본다. arm64 러너로 바뀌면 RSPDL wheel 이 없어서 이미지
         # 빌드가 실패하는데, 그 실패는 의존성 설치 한참 뒤에야 나온다.
@@ -49,17 +57,11 @@ jobs:
 
       - name: 이미지 태그 결정
         id: meta
-        run: |
-          REPO="${GITHUB_REPOSITORY,,}"
-          echo "image=${REGISTRY}/${REPO}/api:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+        # 태그는 커밋 SHA 다. 저장소가 IMMUTABLE 이라 같은 태그를 덮어쓸 수 없고,
+        # 그래서 "배포된 이미지"가 어느 커밋인지 나중에도 확정할 수 있다.
+        run: echo "image=${{ vars.ECR_REPOSITORY }}:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 빌드와 푸시
         uses: docker/build-push-action@v6
