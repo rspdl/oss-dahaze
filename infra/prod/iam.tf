@@ -15,6 +15,7 @@ locals {
   # `/*` 만 허용하면 AccessDenied 가 나는데, 메시지가 자식 ARN 을 가리켜서 왜 막혔는지
   # 알아채기 어렵다. 실제로 그렇게 한 번 막혔다.
   ssm_parameter_path_arn = "${local.ssm_parameter_arn_prefix}${local.ssm_prefix}"
+
 }
 
 # --- 인스턴스가 맡는 역할 (SSM 하이브리드 활성화) ---
@@ -140,12 +141,29 @@ locals {
     data.aws_iam_openid_connect_provider.github[*].arn,
   ))
 
+  # 저장소를 가리키는 이름. 조직이 "Include the organization and repository IDs in the
+  # subject claim" 을 켜면 GitHub 이 이름 뒤에 불변 숫자 ID 를 붙여 보낸다.
+  #
+  #   꺼짐: repo:rspdl/oss-dahaze:...
+  #   켜짐: repo:rspdl@309025423/oss-dahaze@1338601244:...
+  #
+  # 이 설정은 조직 관리자가 언제든 바꿀 수 있고, 바뀌면 신뢰 조건이 조용히 어긋난다.
+  # AssumeRoleWithWebIdentity 는 "Not authorized" 로만 거절하고 무엇이 다른지 알려주지
+  # 않는다 — 실제로 이것 때문에 배포가 막혔다. 그래서 두 형태를 모두 허용한다.
+  github_repo_names = compact([
+    "${var.github_org}/${var.github_repo}",
+    var.github_org_id != "" && var.github_repo_id != "" ?
+    "${var.github_org}@${var.github_org_id}/${var.github_repo}@${var.github_repo_id}" : "",
+  ])
+
   # sub 를 두 형태로 받는다. 브랜치 조건만 두면 Environment 승인 게이트를 거친 잡이
   # 거절되고, Environment 조건만 두면 브랜치 보호가 의미를 잃는다.
-  github_subjects = [
-    "repo:${var.github_org}/${var.github_repo}:ref:refs/heads/${var.github_deploy_branch}",
-    "repo:${var.github_org}/${var.github_repo}:environment:${var.github_deploy_environment}",
-  ]
+  github_subjects = flatten([
+    for name in local.github_repo_names : [
+      "repo:${name}:ref:refs/heads/${var.github_deploy_branch}",
+      "repo:${name}:environment:${var.github_deploy_environment}",
+    ]
+  ])
 }
 
 # aud 조건이 빠지면 다른 GitHub 저장소의 토큰도 이 역할을 맡을 수 있다.

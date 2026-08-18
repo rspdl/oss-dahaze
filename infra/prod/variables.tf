@@ -236,3 +236,31 @@ variable "vercel_cname" {
   type        = string
   default     = ""
 }
+
+# --- OIDC subject claim 의 불변 ID ---
+#
+# 조직이 "Include the organization and repository IDs in the subject claim" 을 켜면
+# GitHub 이 보내는 sub 가 이름 뒤에 숫자 ID 를 붙인 형태가 된다.
+#
+#   켜기 전: repo:rspdl/oss-dahaze:environment:production
+#   켠 뒤:   repo:rspdl@309025423/oss-dahaze@1338601244:environment:production
+#
+# 이 설정은 조직 관리자가 언제든 바꿀 수 있고, 바뀌면 신뢰 조건이 조용히 어긋나
+# AssumeRoleWithWebIdentity 가 "Not authorized" 로만 거절한다 — 무엇이 다른지는
+# 알려주지 않는다. 그래서 **두 형태를 모두 허용한다.**
+#
+# ID 는 다음으로 확인한다:
+#   gh api orgs/<org> --jq .id
+#   gh api repos/<org>/<repo> --jq .id
+
+variable "github_org_id" {
+  description = "조직의 숫자 ID. 비우면 ID 포함 형태를 허용하지 않는다."
+  type        = string
+  default     = ""
+}
+
+variable "github_repo_id" {
+  description = "저장소의 숫자 ID. 비우면 ID 포함 형태를 허용하지 않는다."
+  type        = string
+  default     = ""
+}
