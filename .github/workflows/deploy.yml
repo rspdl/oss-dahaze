@@ -29,6 +29,10 @@ permissions:
 env:
   REGISTRY: ghcr.io
 
+# 인스턴스가 이미지를 받으려면 GHCR 패키지가 공개이거나, rollout.sh 가 쓰는
+# GHCR_USER·GHCR_TOKEN 이 Parameter Store 에 있어야 한다. 패키지 공개 여부는 저장소
+# 공개 여부와 별개로 관리되므로, 첫 배포 후 한 번 확인할 것.
+
 jobs:
   build:
     name: 이미지 빌드
