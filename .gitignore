@@ -14,3 +14,4 @@ __pycache__
 *.tfstate
 *.tfstate.*
 .terraform
+deploy/lightsail/secrets.env
