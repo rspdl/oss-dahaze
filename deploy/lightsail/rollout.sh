@@ -58,13 +58,17 @@ else
   echo "API_IMAGE=${IMAGE_TAG}" >> .env
 fi
 
-# 이미지가 비공개면 레지스트리 로그인이 필요하다. 토큰이 Parameter Store 에 있을 때만 한다.
-GHCR_TOKEN=$(grep -E '^GHCR_TOKEN=' .env | cut -d= -f2- || true)
-GHCR_USER=$(grep -E '^GHCR_USER=' .env | cut -d= -f2- || true)
-if [ -n "$GHCR_TOKEN" ] && [ -n "$GHCR_USER" ]; then
-  log "레지스트리 로그인"
-  echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-fi
+# ECR 로그인. 자격증명을 저장하지 않는다 — 이 인스턴스의 IAM 역할로 임시 토큰을 받는다
+# (ADR-0004). 태그에서 레지스트리 호스트를 뽑아 쓰므로 계정·리전이 바뀌어도 그대로 돈다.
+REGISTRY_HOST="${IMAGE_TAG%%/*}"
+case "$REGISTRY_HOST" in
+  *.dkr.ecr.*.amazonaws.com)
+    log "ECR 로그인"
+    ECR_REGION=$(echo "$REGISTRY_HOST" | cut -d. -f4)
+    aws ecr get-login-password --region "$ECR_REGION" \
+      | docker login --username AWS --password-stdin "$REGISTRY_HOST"
+    ;;
+esac
 
 log "새 이미지 받기: $IMAGE_TAG"
 # 레지스트리에서 받지 못해도, 그 이미지가 이미 로컬에 있으면 계속한다.

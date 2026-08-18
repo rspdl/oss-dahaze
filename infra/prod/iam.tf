@@ -72,6 +72,25 @@ resource "aws_iam_role_policy" "instance_read_params" {
         ]
       },
       {
+        # ECR 에서 이미지를 받는다. 레지스트리 자격증명을 인스턴스에 저장하지 않기 위한
+        # 전부다 — rollout.sh 가 `aws ecr get-login-password` 로 임시 토큰을 받아 쓴다.
+        Sid    = "PullApiImage"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchCheckLayerAvailability",
+        ]
+        Resource = aws_ecr_repository.api.arn
+      },
+      {
+        # 토큰 발급은 리소스를 지정할 수 없다 (계정 단위 API).
+        Sid      = "EcrAuthToken"
+        Effect   = "Allow"
+        Action   = "ecr:GetAuthorizationToken"
+        Resource = "*"
+      },
+      {
         # SecureString 은 aws/ssm 기본 키로 암호화된다. 그 키는 계정 공용이라 ARN 으로
         # 좁힐 수 없어서, "SSM 을 거친 복호화만" 이라는 조건으로 대신 묶는다.
         Sid      = "DecryptSecureStringViaSSM"
@@ -201,6 +220,28 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      {
+        # 이미지를 ECR 에 올린다. 이 역할은 배포만 하므로 삭제 권한은 주지 않는다 —
+        # 오래된 이미지 정리는 lifecycle policy 가 한다.
+        Sid    = "PushApiImage"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:PutImage",
+        ]
+        Resource = aws_ecr_repository.api.arn
+      },
+      {
+        Sid      = "EcrAuthToken"
+        Effect   = "Allow"
+        Action   = "ecr:GetAuthorizationToken"
+        Resource = "*"
+      },
       {
         # 대상 노드를 태그로 묶는다. 같은 계정에 다른 관리형 노드가 생겨도 이 역할은
         # 거기에 명령을 보낼 수 없다.

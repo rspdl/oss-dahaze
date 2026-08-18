@@ -40,3 +40,8 @@ output "api_url" {
   description = "DNS 와 인증서 설정이 끝난 뒤의 백엔드 주소."
   value       = "https://${var.api_domain}"
 }
+
+output "ecr_repository_url" {
+  description = "배포 워크플로가 이미지를 올릴 주소. GitHub 저장소 변수 ECR_REPOSITORY 에 넣는다."
+  value       = aws_ecr_repository.api.repository_url
+}
