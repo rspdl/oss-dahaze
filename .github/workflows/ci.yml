@@ -122,8 +122,15 @@ jobs:
       - name: 타입
         run: pnpm --filter @dahaze/api-client typecheck
 
-      # 이 잡에는 Python·uv 가 없다. `pnpm lint` 를 그대로 돌리면 turbo 가 apps/api 의
-      # lint(`uv run ruff check .`)까지 끌고 와서 실패한다. api 는 위 잡이 이미 검사한다.
+      # 이 잡에는 Python·uv 가 없다. api 의 태스크가 끌려오면 전부 실패한다.
+      #
+      # 그래서 두 가지를 함께 해야 한다.
+      #   1) `--filter='!api'` 로 api 자신의 태스크를 선택에서 뺀다
+      #   2) turbo.json 의 `codegen` 이 `api#openapi` 에 **의존하지 않게** 한다
+      #
+      # 2 번이 없으면 필터로 빼도 의존성 그래프를 타고 `api#openapi` 가 다시 들어와
+      # `uv: not found` 로 죽는다. codegen 은 커밋된 openapi.json 파일만 있으면 되고,
+      # 그 파일이 라우터와 일치하는지는 위 api 잡의 드리프트 게이트가 검사한다.
       - name: 테스트
         run: pnpm exec turbo test --filter='!api'
 

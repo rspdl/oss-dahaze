@@ -2,28 +2,51 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "openapi": {
-      "inputs": ["src/**/*.py", "pyproject.toml"],
-      "outputs": ["openapi.json"],
+      "inputs": [
+        "src/**/*.py",
+        "pyproject.toml"
+      ],
+      "outputs": [
+        "openapi.json"
+      ],
       "cache": false
     },
     "codegen": {
-      "dependsOn": ["api#openapi"],
-      "inputs": ["orval.config.ts", "../../apps/api/openapi.json"],
-      "outputs": ["src/generated/**"]
+      "inputs": [
+        "orval.config.ts",
+        "../../apps/api/openapi.json"
+      ],
+      "outputs": [
+        "src/generated/**"
+      ]
     },
     "build": {
-      "dependsOn": ["^build", "codegen"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "dependsOn": [
+        "^build",
+        "codegen"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**"
+      ]
     },
     "test": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "cache": false
     },
     "typecheck": {
-      "dependsOn": ["^build", "codegen"]
+      "dependsOn": [
+        "^build",
+        "codegen"
+      ]
     },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": [
+        "^lint"
+      ]
     },
     "dev": {
       "cache": false,
