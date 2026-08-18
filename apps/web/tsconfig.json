@@ -4,7 +4,15 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      // 내부 패키지는 빌드 산출물 없이 소스를 그대로 내보낸다 (ADR-0006). 그래서
+      // `packages/ui` 의 파일들이 이 앱의 타입 프로그램 안으로 들어오는데, 그 안의
+      // `@/lib/cn` 같은 self-alias 는 **이 tsconfig 의 paths 로 풀린다** — 경로 별칭은
+      // 파일이 아니라 프로그램 단위이기 때문이다. 매핑이 없으면 `@dahaze/ui` 를 쓰는 순간
+      // 앱 typecheck 가 통째로 깨진다.
+      //
+      // 후보를 순서대로 시도하므로 앱의 `src` 가 먼저 이기고, 앱에 없는 것만 패키지에서
+      // 찾는다. 제대로 된 해결은 `packages/ui` 가 자기 안에서 상대경로를 쓰는 것이다.
+      "@/*": ["./src/*", "../../packages/ui/src/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
