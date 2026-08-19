@@ -25,7 +25,7 @@ import jwt
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dahaze_api.application.errors import AccessDenied, NotFound
+from dahaze_api.application.errors import AccessDenied, Conflict, NotFound
 from dahaze_api.application.workspace import WorkspaceService
 from dahaze_api.domain.entities import Project, ProjectRole, User
 from dahaze_api.infrastructure.auth.session import (
@@ -76,7 +76,11 @@ def tools(session: AsyncSession, tokens: SessionTokens) -> McpTools:
 
 @pytest.fixture
 def workspace(session: AsyncSession) -> WorkspaceService:
-    """준비 데이터를 만드는 통로. MCP 에는 프로젝트 생성 도구가 없다."""
+    """준비 데이터를 만드는 통로.
+
+    MCP 에도 `create_project` 가 있지만 픽스처는 유스케이스를 직접 부른다. 준비 단계가
+    검사 대상 도구를 거치면, 그 도구가 깨졌을 때 관계없는 테스트까지 한꺼번에 빨개진다.
+    """
     return WorkspaceService(
         projects=SqlProjectRepository(session),
         documents=SqlDocumentRepository(session),
@@ -325,6 +329,248 @@ async def test_malformed_id_is_a_clear_error(
         await tools.read_document(auth(tokens.issue_mcp(user.id)), document_id=bad_id)
 
 
+# ----------------------------------------------------------------- 프로젝트
+
+
+async def test_create_project_makes_the_caller_the_owner(
+    tools: McpTools, tokens: SessionTokens, user: User
+) -> None:
+    """만든 사람이 소유자다. 행위자는 토큰에서만 온다."""
+    headers = auth(tokens.issue_mcp(user.id))
+
+    created = await tools.create_project(headers, slug="mcp-made", name="MCP 가 만든 것")
+
+    assert created["slug"] == "mcp-made"
+    assert created["is_archived"] is False
+    members = await tools.list_project_members(headers, project_id=created["id"])
+    assert members == [
+        {"project_id": created["id"], "user_id": str(user.id), "role": "owner"}
+    ]
+
+
+async def test_created_project_defaults_to_the_server_rspdl_version(
+    tools: McpTools, tokens: SessionTokens, user: User
+) -> None:
+    """버전을 지정하지 않으면 이 서버가 돌리는 컴파일러 버전이 기본이 된다."""
+    headers = auth(tokens.issue_mcp(user.id))
+
+    created = await tools.create_project(headers, slug="mcp-default", name="기본값")
+    runtime = await tools.rspdl_runtime(headers)
+
+    assert created["default_rspdl_version"] == runtime["rspdl_version"]
+
+
+async def test_duplicate_slug_is_refused(
+    tools: McpTools, tokens: SessionTokens, user: User, project: Project
+) -> None:
+    """LLM 은 같은 이름을 다시 시도한다. 조용히 두 번째를 만들면 안 된다."""
+    with pytest.raises(Conflict):
+        await tools.create_project(
+            auth(tokens.issue_mcp(user.id)), slug=project.slug, name="같은 slug"
+        )
+
+
+@pytest.mark.parametrize("bad_slug", ["대문자", "has space", "UPPER", "슬래시/포함"])
+async def test_malformed_slug_is_refused(
+    tools: McpTools, tokens: SessionTokens, user: User, bad_slug: str
+) -> None:
+    with pytest.raises(Conflict, match="slug"):
+        await tools.create_project(
+            auth(tokens.issue_mcp(user.id)), slug=bad_slug, name="형식 오류"
+        )
+
+
+async def test_get_project_hides_a_foreign_project(
+    tools: McpTools, tokens: SessionTokens, other_user: User, project: Project
+) -> None:
+    """남의 프로젝트는 '권한 없음' 이 아니라 '없음' 이다."""
+    with pytest.raises(NotFound):
+        await tools.get_project(
+            auth(tokens.issue_mcp(other_user.id)), project_id=str(project.id)
+        )
+
+
+async def test_archive_project_marks_it_archived(
+    tools: McpTools, tokens: SessionTokens, user: User, project: Project
+) -> None:
+    headers = auth(tokens.issue_mcp(user.id))
+
+    archived = await tools.archive_project(headers, project_id=str(project.id))
+
+    assert archived["is_archived"] is True
+    # 보관은 삭제가 아니다. 단건 조회로는 여전히 닿는다.
+    assert (await tools.get_project(headers, project_id=str(project.id)))["is_archived"]
+
+
+async def test_only_the_owner_can_add_a_member(
+    tools: McpTools,
+    tokens: SessionTokens,
+    workspace: WorkspaceService,
+    user: User,
+    other_user: User,
+    project: Project,
+) -> None:
+    await workspace.add_member(
+        actor_id=user.id,
+        project_id=project.id,
+        user_id=other_user.id,
+        role=ProjectRole.EDITOR,
+    )
+
+    # editor 는 문서는 쓰지만 멤버는 못 늘린다.
+    with pytest.raises(AccessDenied):
+        await tools.add_project_member(
+            auth(tokens.issue_mcp(other_user.id)),
+            project_id=str(project.id),
+            user_id=str(uuid4()),
+            role="viewer",
+        )
+
+
+async def test_added_member_can_reach_the_project(
+    tools: McpTools,
+    tokens: SessionTokens,
+    user: User,
+    other_user: User,
+    project: Project,
+) -> None:
+    """멤버 추가가 실제로 접근을 여는지까지 본다."""
+    with pytest.raises(NotFound):
+        await tools.get_project(
+            auth(tokens.issue_mcp(other_user.id)), project_id=str(project.id)
+        )
+
+    await tools.add_project_member(
+        auth(tokens.issue_mcp(user.id)),
+        project_id=str(project.id),
+        user_id=str(other_user.id),
+        role="viewer",
+    )
+
+    reached = await tools.get_project(
+        auth(tokens.issue_mcp(other_user.id)), project_id=str(project.id)
+    )
+    assert reached["id"] == str(project.id)
+
+
+@pytest.mark.parametrize("bad_role", ["admin", "OWNER", "", "관리자"])
+async def test_unknown_role_says_what_is_allowed(
+    tools: McpTools,
+    tokens: SessionTokens,
+    user: User,
+    other_user: User,
+    project: Project,
+    bad_role: str,
+) -> None:
+    """LLM 이 역할 이름을 지어냈을 때 고칠 단서를 준다."""
+    with pytest.raises(ValueError, match="owner"):
+        await tools.add_project_member(
+            auth(tokens.issue_mcp(user.id)),
+            project_id=str(project.id),
+            user_id=str(other_user.id),
+            role=bad_role,
+        )
+
+
+# ------------------------------------------------------------- 삭제와 이력
+
+
+async def test_deleted_document_becomes_unreachable(
+    tools: McpTools, tokens: SessionTokens, user: User, project: Project
+) -> None:
+    headers = auth(tokens.issue_mcp(user.id))
+    created = await tools.create_document(
+        headers,
+        project_id=str(project.id),
+        path="throwaway.rspdl",
+        title="지울 것",
+        text=VALID_TEXT,
+    )
+
+    result = await tools.delete_document(headers, document_id=created["id"])
+
+    # `None` 을 돌려주면 호출자가 성공과 무동작을 구분하지 못한다.
+    assert result == {"deleted": True, "document_id": created["id"]}
+    with pytest.raises(NotFound):
+        await tools.read_document(headers, document_id=created["id"])
+    assert await tools.list_documents(headers, project_id=str(project.id)) == []
+
+
+async def test_viewer_cannot_delete_a_document(
+    tools: McpTools,
+    tokens: SessionTokens,
+    workspace: WorkspaceService,
+    user: User,
+    other_user: User,
+    project: Project,
+) -> None:
+    created = await tools.create_document(
+        auth(tokens.issue_mcp(user.id)),
+        project_id=str(project.id),
+        path="protected.rspdl",
+        title="지켜야 할 것",
+        text=VALID_TEXT,
+    )
+    await workspace.add_member(
+        actor_id=user.id,
+        project_id=project.id,
+        user_id=other_user.id,
+        role=ProjectRole.VIEWER,
+    )
+
+    with pytest.raises(AccessDenied):
+        await tools.delete_document(
+            auth(tokens.issue_mcp(other_user.id)), document_id=created["id"]
+        )
+
+
+async def test_revisions_are_listed_without_their_text(
+    tools: McpTools, tokens: SessionTokens, user: User, project: Project
+) -> None:
+    """리비전은 전문을 보관한다. 목록에 본문까지 실으면 맥락이 같은 텍스트로 가득 찬다."""
+    headers = auth(tokens.issue_mcp(user.id))
+    created = await tools.create_document(
+        headers,
+        project_id=str(project.id),
+        path="history.rspdl",
+        title="이력",
+        text=VALID_TEXT,
+    )
+    await tools.update_document(
+        headers,
+        document_id=created["id"],
+        text=VALID_TEXT + "\n재고 항목의 수량은 0 이상이어야 한다.\n",
+        summary="제약 추가",
+    )
+
+    revisions = await tools.list_document_revisions(headers, document_id=created["id"])
+
+    assert [r["revision_no"] for r in revisions] == [2, 1]
+    assert revisions[0]["summary"] == "제약 추가"
+    assert all("text" not in r for r in revisions)
+
+
+async def test_revisions_of_a_foreign_document_are_unreachable(
+    tools: McpTools,
+    tokens: SessionTokens,
+    user: User,
+    other_user: User,
+    project: Project,
+) -> None:
+    created = await tools.create_document(
+        auth(tokens.issue_mcp(user.id)),
+        project_id=str(project.id),
+        path="private.rspdl",
+        title="남의 것",
+        text=VALID_TEXT,
+    )
+
+    with pytest.raises(NotFound):
+        await tools.list_document_revisions(
+            auth(tokens.issue_mcp(other_user.id)), document_id=created["id"]
+        )
+
+
 # --------------------------------------------------------------------- 분석
 
 
@@ -458,12 +704,21 @@ async def test_tools_are_advertised_over_http(
     assert response.status_code == 200
     advertised = response.json()["result"]["tools"]
     assert {tool["name"] for tool in advertised} == {
+        "create_project",
+        "get_project",
+        "archive_project",
+        "list_project_members",
+        "add_project_member",
         "list_projects",
         "list_documents",
         "read_document",
         "create_document",
         "update_document",
+        "list_document_revisions",
+        "delete_document",
+        "rspdl_runtime",
         "compile_rspdl",
+        "check_rspdl",
         "find_bounded_model",
     }
     # 설명이 LLM 에게는 유일한 인터페이스다. 비어 있으면 도구가 없는 것과 같다.

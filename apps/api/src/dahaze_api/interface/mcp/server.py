@@ -25,7 +25,14 @@ from starlette.routing import Route
 
 from dahaze_api.application.analysis import AnalyzeWorkspace
 from dahaze_api.application.workspace import WorkspaceService
-from dahaze_api.domain.entities import Document, Project, User
+from dahaze_api.domain.entities import (
+    Document,
+    DocumentRevision,
+    Project,
+    ProjectMembership,
+    ProjectRole,
+    User,
+)
 from dahaze_api.domain.ports import RspdlCompilerPort
 from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlSource
 from dahaze_api.infrastructure.auth.session import SessionTokens
@@ -55,6 +62,10 @@ dahaze 는 RSPDL 로 쓴 제품 기획을 저장하고, 컴파일러로 검증�
   텍스트도 저장할 수는 있지만, 그건 검증되지 않은 기획이다.
 - 모든 도구는 토큰이 지목한 사용자 권한으로 동작한다. 그 사용자가 멤버가 아닌 프로젝트는
   존재하지 않는 것처럼 보인다.
+- 문서는 프로젝트 안에 산다. 담을 프로젝트가 없으면 `create_project` 로 먼저 만들고, 있으면
+  `list_projects` 로 골라라 — 프로젝트를 새로 만들지, 기존 것에 넣을지는 사람에게 물어라.
+- 지우는 도구(`delete_document`, `archive_project`)는 사람이 명시적으로 요청했을 때만 쓴다.
+  이 도구들로는 되돌릴 수 없다.
 """
 
 # 도구 호출 하나가 쓸 DB 세션의 수명을 여는 함수. 테스트가 자기 세션을 밀어 넣는 지점이다.
@@ -108,6 +119,31 @@ def _document_payload(document: Document, *, include_text: bool) -> dict[str, An
     return payload
 
 
+def _membership_payload(membership: ProjectMembership) -> dict[str, Any]:
+    return {
+        "project_id": str(membership.project_id),
+        "user_id": str(membership.user_id),
+        "role": str(membership.role),
+    }
+
+
+def _revision_payload(revision: DocumentRevision) -> dict[str, Any]:
+    """이력 한 점. **본문은 싣지 않는다.**
+
+    리비전은 전문을 보관하므로, 목록에 본문을 함께 실으면 문서 하나의 이력을 부르는 것만으로
+    같은 텍스트가 수십 벌 딸려 온다. LLM 의 맥락에서 그 비용은 곧 다른 정보가 밀려나는 것이다.
+    """
+    return {
+        "id": str(revision.id),
+        "document_id": str(revision.document_id),
+        "revision_no": revision.revision_no,
+        "target_rspdl_version": revision.target_rspdl_version,
+        "author_id": None if revision.author_id is None else str(revision.author_id),
+        "summary": revision.summary,
+        "created_at": revision.created_at.isoformat(),
+    }
+
+
 def _analysis_payload(outcome: AnalysisOutcome) -> dict[str, Any]:
     """컴파일러 응답을 도구 결과로 옮긴다.
 
@@ -121,6 +157,15 @@ def _analysis_payload(outcome: AnalysisOutcome) -> dict[str, Any]:
         "locale": outcome.runtime.locale,
         "result": dict(outcome.result),
     }
+
+
+def _role(value: str) -> ProjectRole:
+    """역할 문자열을 도메인 값으로. 틀리면 무엇을 쓸 수 있는지 함께 말한다."""
+    try:
+        return ProjectRole(value)
+    except ValueError as exc:
+        allowed = ", ".join(role.value for role in ProjectRole)
+        raise ValueError(f"role 은 {allowed} 중 하나여야 한다: {value!r}") from exc
 
 
 def _uuid(value: str, *, field: str) -> UUID:
@@ -155,6 +200,72 @@ class McpTools:
         return self._tokens
 
     # ------------------------------------------------------------------- 도구
+
+    async def create_project(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        slug: str,
+        name: str,
+        description: str | None = None,
+        default_rspdl_version: str | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            project = await actor.workspace.create_project(
+                actor_id=actor.user.id,
+                slug=slug,
+                name=name,
+                description=description,
+                default_rspdl_version=default_rspdl_version,
+            )
+            return _project_payload(project)
+
+    async def get_project(
+        self, headers: Mapping[str, str] | None, *, project_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            project = await actor.workspace.get_project(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+            )
+            return _project_payload(project)
+
+    async def archive_project(
+        self, headers: Mapping[str, str] | None, *, project_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            project = await actor.workspace.archive_project(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+            )
+            return _project_payload(project)
+
+    async def list_project_members(
+        self, headers: Mapping[str, str] | None, *, project_id: str
+    ) -> list[dict[str, Any]]:
+        async with self._acting(headers) as actor:
+            members = await actor.workspace.list_members(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+            )
+            return [_membership_payload(m) for m in members]
+
+    async def add_project_member(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        user_id: str,
+        role: str = "editor",
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            membership = await actor.workspace.add_member(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                user_id=_uuid(user_id, field="user_id"),
+                role=_role(role),
+            )
+            return _membership_payload(membership)
 
     async def list_projects(self, headers: Mapping[str, str] | None) -> list[dict[str, Any]]:
         async with self._acting(headers) as actor:
@@ -216,11 +327,57 @@ class McpTools:
             )
             return _document_payload(document, include_text=True)
 
+    async def delete_document(
+        self, headers: Mapping[str, str] | None, *, document_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            await actor.workspace.delete_document(
+                actor_id=actor.user.id,
+                document_id=_uuid(document_id, field="document_id"),
+            )
+            # `None` 을 돌려주면 호출자는 성공과 "도구가 아무 일도 안 함" 을 구분하지 못한다.
+            return {"deleted": True, "document_id": document_id}
+
+    async def list_document_revisions(
+        self, headers: Mapping[str, str] | None, *, document_id: str
+    ) -> list[dict[str, Any]]:
+        async with self._acting(headers) as actor:
+            revisions = await actor.workspace.list_revisions(
+                actor_id=actor.user.id,
+                document_id=_uuid(document_id, field="document_id"),
+            )
+            return [_revision_payload(r) for r in revisions]
+
+    async def rspdl_runtime(self, headers: Mapping[str, str] | None) -> dict[str, Any]:
+        """이 서버가 돌리는 컴파일러의 정체.
+
+        DB 를 열지 않으므로 `_acting` 을 쓰지 않는다. 대신 인증만 다른 도구와 똑같이 한다 —
+        전송 앞단이 이미 막지만, 도구가 스스로도 확인하는 규칙을 여기서만 깨지 않는다.
+        """
+        authenticated_user_id(headers, tokens=self._tokens)
+        runtime = self._compiler.runtime
+        return {
+            "rspdl_version": runtime.rspdl_version,
+            "wire_schema_version": runtime.wire_schema_version,
+            "locale": runtime.locale,
+        }
+
     async def compile_rspdl(
         self, headers: Mapping[str, str] | None, *, sources: list[dict[str, str]]
     ) -> dict[str, Any]:
         async with self._acting(headers) as actor:
             outcome = await actor.analyzer.compile(_to_sources(sources))
+            return _analysis_payload(outcome)
+
+    async def check_rspdl(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        sources: list[dict[str, str]],
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            outcome = await actor.analyzer.check(_to_sources(sources), data)
             return _analysis_payload(outcome)
 
     async def find_bounded_model(
@@ -300,6 +457,77 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
     )
 
     @mcp.tool(
+        name="create_project",
+        description=(
+            "RSPDL 문서를 담을 프로젝트를 새로 만든다. 만든 사람이 소유자가 된다. "
+            "`slug` 는 소문자·숫자·하이픈만 쓰며 서버 전체에서 유일해야 한다 — 이미 쓰이는 "
+            "값이면 실패하므로 다른 값으로 다시 부른다. `default_rspdl_version` 을 비우면 "
+            "이 서버의 컴파일러 버전이 기본이 되며, 특별한 이유가 없으면 비워 둔다."
+        ),
+    )
+    async def create_project(
+        slug: str,
+        name: str,
+        ctx: Context,
+        description: str | None = None,
+        default_rspdl_version: str | None = None,
+    ) -> dict[str, Any]:
+        return await tools.create_project(
+            ctx.headers,
+            slug=slug,
+            name=name,
+            description=description,
+            default_rspdl_version=default_rspdl_version,
+        )
+
+    @mcp.tool(
+        name="get_project",
+        description=(
+            "프로젝트 하나의 정보를 읽는다. 새 문서가 어느 RSPDL 버전을 기본으로 삼는지"
+            "(`default_rspdl_version`)와 보관 여부를 여기서 확인한다. 멤버가 아닌 "
+            "프로젝트를 물으면 없는 것으로 응답한다."
+        ),
+    )
+    async def get_project(project_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.get_project(ctx.headers, project_id=project_id)
+
+    @mcp.tool(
+        name="archive_project",
+        description=(
+            "프로젝트를 보관 처리한다. 기본 목록에서 빠질 뿐 문서와 이력은 지워지지 않는다. "
+            "되돌리는 도구는 아직 없으므로, 사람이 명시적으로 요청했을 때만 부른다."
+        ),
+    )
+    async def archive_project(project_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.archive_project(ctx.headers, project_id=project_id)
+
+    @mcp.tool(
+        name="list_project_members",
+        description=(
+            "프로젝트 멤버와 각자의 역할(owner·editor·viewer)을 돌려준다. 문서를 고치기 "
+            "전에 내가 쓰기 권한이 있는지 확인할 때 쓴다 — viewer 는 읽기만 된다."
+        ),
+    )
+    async def list_project_members(project_id: str, ctx: Context) -> list[dict[str, Any]]:
+        return await tools.list_project_members(ctx.headers, project_id=project_id)
+
+    @mcp.tool(
+        name="add_project_member",
+        description=(
+            "다른 사용자를 프로젝트 멤버로 추가한다. 소유자만 할 수 있다. `user_id` 는 "
+            "dahaze 사용자 UUID 이며, **이 서버에는 사용자를 이름으로 찾는 도구가 없다** — "
+            "사람이 직접 알려준 UUID 로만 부른다. 짐작해서 넣지 마라. "
+            "`role` 은 owner·editor·viewer 중 하나이고 기본값은 editor 다."
+        ),
+    )
+    async def add_project_member(
+        project_id: str, user_id: str, ctx: Context, role: str = "editor"
+    ) -> dict[str, Any]:
+        return await tools.add_project_member(
+            ctx.headers, project_id=project_id, user_id=user_id, role=role
+        )
+
+    @mcp.tool(
         name="list_projects",
         description=(
             "내가 멤버인 RSPDL 프로젝트 목록을 돌려준다. 다른 도구에 넘길 `project_id` 를 "
@@ -362,6 +590,40 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         )
 
     @mcp.tool(
+        name="list_document_revisions",
+        description=(
+            "문서의 저장 이력을 최신 순으로 돌려준다. 사람이 저장을 누를 때마다 리비전이 "
+            "하나 남으므로, 이 문서가 어떻게 변해 왔는지를 여기서 읽는다. 본문은 싣지 "
+            "않는다 — 같은 텍스트가 여러 벌 딸려 오면 정작 필요한 내용이 밀려난다."
+        ),
+    )
+    async def list_document_revisions(document_id: str, ctx: Context) -> list[dict[str, Any]]:
+        return await tools.list_document_revisions(ctx.headers, document_id=document_id)
+
+    @mcp.tool(
+        name="delete_document",
+        description=(
+            "문서를 삭제한다. **사람이 명시적으로 삭제를 요청했을 때만 부른다.** 정리나 "
+            "재작성을 위해 스스로 판단해 지우지 마라 — 지운 문서는 이 도구들로 되살릴 수 "
+            "없고, 그 문서의 저장 이력도 함께 닿을 수 없게 된다. 내용을 바꾸려는 것이라면 "
+            "`update_document` 를 쓴다."
+        ),
+    )
+    async def delete_document(document_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.delete_document(ctx.headers, document_id=document_id)
+
+    @mcp.tool(
+        name="rspdl_runtime",
+        description=(
+            "이 서버가 컴파일에 쓰는 RSPDL 버전과 결과 스키마 버전. 문서의 "
+            "`target_rspdl_version` 과 다르면, 지금 보는 진단은 그 문서를 쓸 때 보던 "
+            "진단과 다를 수 있다. 진단이 달라진 이유를 사람에게 설명해야 할 때 먼저 확인한다."
+        ),
+    )
+    async def rspdl_runtime(ctx: Context) -> dict[str, Any]:
+        return await tools.rspdl_runtime(ctx.headers)
+
+    @mcp.tool(
         name="compile_rspdl",
         description=(
             "RSPDL 소스를 컴파일해 Canonical IR 과 진단을 얻는다. `sources` 는 "
@@ -374,6 +636,20 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         sources: list[dict[str, str]], ctx: Context
     ) -> dict[str, Any]:
         return await tools.compile_rspdl(ctx.headers, sources=sources)
+
+    @mcp.tool(
+        name="check_rspdl",
+        description=(
+            "선언에 더해 **실제 데이터 한 벌**을 함께 넣어 제약과 정책이 그 데이터에서 "
+            "지켜지는지 본다. `compile_rspdl` 이 '선언이 말이 되는가' 라면 이 도구는 "
+            "'이 데이터가 선언을 지키는가' 다. `data` 는 컴파일러가 정한 runtime record "
+            "모양이며, 위반은 실패가 아니라 `result` 안의 진단으로 돌아온다."
+        ),
+    )
+    async def check_rspdl(
+        sources: list[dict[str, str]], data: dict[str, Any], ctx: Context
+    ) -> dict[str, Any]:
+        return await tools.check_rspdl(ctx.headers, sources=sources, data=data)
 
     @mcp.tool(
         name="find_bounded_model",
