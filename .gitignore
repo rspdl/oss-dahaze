@@ -18,3 +18,11 @@ deploy/lightsail/secrets.env
 # 실제 값이 든 tfvars. 예시는 terraform.tfvars.example 로 추적한다.
 *.tfvars
 .vercel
+
+# TypeScript 증분 빌드 캐시. 빌드할 때마다 내용이 바뀌어 커밋마다 노이즈가 된다.
+*.tsbuildinfo
+
+# `next dev` 가 자동 생성한다 (Next 16). 루트의 AGENTS.md 는 손으로 쓴 것이므로
+# 경로를 명시해 그것까지 함께 무시되지 않게 한다.
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
