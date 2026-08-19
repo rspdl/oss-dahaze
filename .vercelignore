@@ -1,0 +1,38 @@
+# Vercel 로 올릴 때 제외할 것.
+#
+# Vercel CLI 는 `.gitignore` 를 보지 않는다. 그래서 여기에 적지 않으면 로컬에만 있는
+# 빌드 캐시와 Terraform provider 바이너리까지 업로드되고, 그중 하나라도 100MB 를 넘으면
+# 배포가 통째로 거부된다 (실제로 그렇게 실패했다).
+#
+# 남기는 기준은 "웹 빌드가 읽는가" 하나다. 빌드는 워크스페이스 루트에서 돌고
+# `pnpm --filter @dahaze/api-client codegen` 이 `apps/api/openapi.json` 을 읽으므로,
+# apps/api 를 통째로 빼면 클라이언트 생성이 깨진다. 무거운 하위 디렉터리만 덜어낸다.
+
+.git
+node_modules
+**/node_modules
+.turbo
+**/.turbo
+**/.next
+**/dist
+
+# --- Python API. 계약 파일(openapi.json)만 남기고 나머지는 웹 빌드와 무관하다. ---
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+apps/api/src
+apps/api/tests
+apps/api/alembic
+
+# --- 인프라. Terraform provider 바이너리가 수백 MB 다. ---
+infra
+deploy
+**/.terraform
+
+# --- 빌드가 읽지 않는 것 ---
+docs
+fixtures
+.github
+.agents
