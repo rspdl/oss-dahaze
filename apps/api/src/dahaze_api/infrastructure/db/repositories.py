@@ -210,6 +210,10 @@ class SqlProjectRepository:
             return None
         row.archived_at = datetime.now(UTC)
         await self._session.flush()
+        # `updated_at` 은 서버가 onupdate 로 계산하므로 flush 직후에는 만료 상태다. refresh
+        # 없이 읽으면 SQLAlchemy 가 동기 lazy 조회를 걸고, async 컨텍스트에서 그것은
+        # MissingGreenlet 으로 터진다 — `update_text` 가 refresh 하는 이유와 같다.
+        await self._session.refresh(row)
         return _to_project(row)
 
 
