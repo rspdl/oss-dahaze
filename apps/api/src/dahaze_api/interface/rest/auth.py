@@ -7,15 +7,18 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
 
+from dahaze_api.config import Settings
 from dahaze_api.infrastructure.auth.github import OAuthError
-from dahaze_api.infrastructure.auth.session import MCP_TTL, InvalidToken
+from dahaze_api.infrastructure.auth.session import MCP_TTL, InvalidToken, SessionTokens
 from dahaze_api.interface.rest.dependencies import (
     SESSION_COOKIE,
     CurrentUser,
+    DevAuth,
     Providers,
     SettingsDep,
     SignIn,
@@ -24,20 +27,97 @@ from dahaze_api.interface.rest.dependencies import (
 from dahaze_api.interface.rest.schemas import (
     AuthProvidersResponse,
     CurrentUserResponse,
+    DevLoginRequest,
     McpTokenResponse,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+# 브라우저 세션의 수명. 발급과 삭제가 같은 값을 봐야 한다.
+SESSION_TTL_SECONDS = 14 * 24 * 3600
+
+
+def _set_session_cookie(
+    response: Response,
+    *,
+    tokens: SessionTokens,
+    settings: Settings,
+    user_id: UUID,
+) -> None:
+    """로그인이 끝난 응답에 세션 쿠키를 붙인다.
+
+    로그인 경로가 둘(OAuth 콜백, 개발용 비밀번호)이 되었으므로 쿠키 속성을 한곳에 모은다.
+    `httponly` 나 `samesite` 가 한쪽에서만 빠지면 그 경로로 들어온 사람만 조용히 약한
+    세션을 갖게 되고, 그건 쳐다보기 전에는 드러나지 않는다.
+    """
+    response.set_cookie(
+        SESSION_COOKIE,
+        tokens.issue(user_id),
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,  # type: ignore[arg-type]
+        domain=settings.cookie_domain,
+        max_age=SESSION_TTL_SECONDS,
+        path="/",
+    )
+
 
 @router.get("/providers", name="list_auth_providers")
-async def list_auth_providers(providers: Providers) -> AuthProvidersResponse:
-    """설정된 로그인 제공자 목록.
+async def list_auth_providers(
+    providers: Providers, dev_auth: DevAuth
+) -> AuthProvidersResponse:
+    """쓸 수 있는 로그인 방법.
 
     프론트가 로그인 버튼을 하드코딩하지 않도록 서버가 알려준다. 자격증명이 없는
-    제공자는 애초에 등록되지 않는다.
+    제공자는 애초에 등록되지 않고, 개발용 비밀번호 로그인은 development 에서만 켜진다.
     """
-    return AuthProvidersResponse(providers=sorted(providers))
+    return AuthProvidersResponse(
+        providers=sorted(providers), dev_login=dev_auth is not None
+    )
+
+
+@router.post("/dev/login", name="dev_login")
+async def dev_login(
+    payload: DevLoginRequest,
+    dev_auth: DevAuth,
+    tokens: Tokens,
+    settings: SettingsDep,
+    sign_in: SignIn,
+    response: Response,
+) -> CurrentUserResponse:
+    """개발 환경 전용 아이디·비밀번호 로그인.
+
+    OAuth 왕복이 없으므로 리다이렉트가 아니라 XHR 로 부르고, 응답에 세션 쿠키가 실린다.
+    로그인 뒤에 하는 일은 OAuth 콜백과 완전히 같다 — 같은 유스케이스로 사용자를 찾거나
+    만들고, 같은 쿠키를 심는다. 개발용이라고 다른 세션 구조를 쓰면 로컬에서만 되는 버그가
+    생긴다.
+
+    닫혀 있으면 404 다. "설정이 없다" 와 "비밀번호가 틀렸다" 를 같은 401 로 묶으면
+    기여자가 무엇을 고쳐야 하는지 알 수 없다.
+    """
+    if dev_auth is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "개발용 로그인이 열려 있지 않다 (development 환경에서만 열린다)",
+        )
+
+    identity = dev_auth.authenticate(
+        username=payload.username, password=payload.password
+    )
+    if identity is None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "아이디 또는 비밀번호가 맞지 않는다"
+        )
+
+    user = await sign_in(identity)
+    _set_session_cookie(response, tokens=tokens, settings=settings, user_id=user.id)
+
+    return CurrentUserResponse(
+        id=user.id,
+        display_name=user.display_name,
+        email=user.email,
+        avatar_url=user.avatar_url,
+    )
 
 
 @router.get("/{provider}/login", name="begin_oauth_login")
@@ -95,16 +175,7 @@ async def complete_oauth_login(
     user = await sign_in(identity)
 
     response = RedirectResponse(redirect_to, status_code=status.HTTP_303_SEE_OTHER)
-    response.set_cookie(
-        SESSION_COOKIE,
-        tokens.issue(user.id),
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite=settings.cookie_samesite,  # type: ignore[arg-type]
-        domain=settings.cookie_domain,
-        max_age=14 * 24 * 3600,
-        path="/",
-    )
+    _set_session_cookie(response, tokens=tokens, settings=settings, user_id=user.id)
     return response
 
 

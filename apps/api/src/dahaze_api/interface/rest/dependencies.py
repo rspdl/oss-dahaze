@@ -19,7 +19,8 @@ from dahaze_api.application.workspace import WorkspaceService
 from dahaze_api.config import Settings, get_settings
 from dahaze_api.domain.entities import User
 from dahaze_api.domain.ports import LlmPort, OAuthProviderPort, RspdlCompilerPort
-from dahaze_api.infrastructure.auth.registry import build_providers
+from dahaze_api.infrastructure.auth.dev import DevPasswordAuthenticator
+from dahaze_api.infrastructure.auth.registry import build_dev_authenticator, build_providers
 from dahaze_api.infrastructure.auth.session import InvalidToken, SessionTokens
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
 from dahaze_api.infrastructure.db.repositories import (
@@ -55,6 +56,19 @@ DbSession = Annotated[AsyncSession, Depends(get_session)]
 Compiler = Annotated[RspdlCompilerPort, Depends(get_compiler)]
 Tokens = Annotated[SessionTokens, Depends(get_session_tokens)]
 Providers = Annotated[dict[str, OAuthProviderPort], Depends(get_oauth_providers)]
+
+
+def get_dev_authenticator(settings: SettingsDep) -> DevPasswordAuthenticator | None:
+    """개발용 비밀번호 로그인. 닫혀 있으면 `None`.
+
+    `lru_cache` 를 붙이지 않는다. 설정을 인자로 받아야 테스트가 `get_settings` 를 갈아끼워
+    "프로덕션에서는 닫혀 있는가" 를 실제로 확인할 수 있다. 만드는 비용은 문자열 하나를
+    들고 있는 객체라 캐시할 것도 없다.
+    """
+    return build_dev_authenticator(settings)
+
+
+DevAuth = Annotated[DevPasswordAuthenticator | None, Depends(get_dev_authenticator)]
 
 
 def get_analyzer(session: DbSession, compiler: Compiler) -> AnalyzeWorkspace:

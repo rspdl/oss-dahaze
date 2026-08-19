@@ -64,3 +64,29 @@ def test_all_problems_are_reported_at_once() -> None:
     assert "기본값" in message
     assert "바이트 미만" in message
     assert "COOKIE_SECURE" in message
+
+
+# ------------------------------------------------------- 개발용 로그인의 문
+
+
+def test_dev_login_cannot_be_opened_outside_development() -> None:
+    """비밀번호가 설정돼 있어도 development 가 아니면 닫혀 있다.
+
+    독립 스위치(`DEV_LOGIN_ENABLED`) 를 두지 않은 이유가 이것이다. 스위치가 있으면
+    언젠가 누군가 프로덕션에서 켜고, 그 순간 비밀번호 하나로 아무 계정이나 만들 수 있게
+    된다.
+    """
+    assert _settings(dev_login_password="dahaze").dev_login_enabled is False
+
+
+def test_dev_login_is_open_by_default_in_development() -> None:
+    """클론한 사람이 설정 없이 바로 로그인할 수 있어야 한다."""
+    assert Settings(environment="development").dev_login_enabled is True
+
+
+def test_blank_dev_password_closes_the_door() -> None:
+    """공유된 개발 서버에서 문을 닫는 유일한 스위치."""
+    assert (
+        Settings(environment="development", dev_login_password="").dev_login_enabled
+        is False
+    )

@@ -57,8 +57,21 @@ pnpm codegen     # openapi.json 생성 → API 클라이언트 생성
 pnpm dev
 ```
 
-로그인을 쓰려면 GitHub OAuth App 을 만들어 `apps/api/.env` 에 자격증명을 넣습니다.
-없으면 `github` 제공자가 등록되지 않고 `/api/auth/providers` 가 빈 목록을 돌려줍니다.
+### 로그인
+
+로컬에서는 **OAuth 설정 없이 바로 로그인합니다.** `ENVIRONMENT=development` 이면 첫 화면에
+아이디·비밀번호 폼이 뜹니다 — 아이디는 아무거나, 비밀번호는 `DEV_LOGIN_PASSWORD`(기본값
+`dahaze`)입니다.
+
+아이디가 곧 계정입니다. 다른 아이디로 들어오면 다른 사용자가 되므로, 프로젝트 공유나 권한
+화면을 확인할 때 아이디를 바꿔 가며 씁니다.
+
+**이 문은 `development` 에서만 열립니다.** 열림 여부가 환경 이름에서 파생되므로 환경변수로
+프로덕션에서 켤 수 없습니다. `DEV_LOGIN_PASSWORD` 를 비우면 로컬에서도 닫힙니다.
+
+실제 GitHub OAuth 를 확인해야 한다면 OAuth App 을 만들어 `apps/api/.env` 에 자격증명을
+넣습니다. 없으면 `github` 제공자가 등록되지 않고 `/api/auth/providers` 의 `providers` 가
+빈 목록으로 옵니다.
 
 ## 검사
 

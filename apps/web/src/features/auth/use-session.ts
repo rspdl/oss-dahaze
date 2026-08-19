@@ -2,6 +2,7 @@
 
 import {
   getGetCurrentUserQueryKey,
+  useDevLogin,
   useGetCurrentUser,
   useLogout,
   type CurrentUserResponse,
@@ -60,6 +61,30 @@ export function useSignOut() {
           queryKey: getGetCurrentUserQueryKey(),
         })
         queryClient.clear()
+      },
+    },
+  })
+}
+
+/**
+ * 개발용 아이디·비밀번호 로그인.
+ *
+ * OAuth 와 달리 페이지를 떠나지 않는다. 응답에 세션 쿠키가 실려 오므로, 성공하면 세션
+ * 질의만 무효화하면 화면이 알아서 로그인 상태로 넘어간다.
+ *
+ * 이 문이 열려 있는지는 **서버가 정한다** (`/api/auth/providers` 의 `dev_login`).
+ * 프론트에서 환경을 추측하지 않는다 — 빌드 환경과 붙어 있는 서버의 환경은 다를 수 있고,
+ * 추측이 틀리면 열리지 않는 문의 폼을 그리게 된다.
+ */
+export function useDevSignIn() {
+  const queryClient = useQueryClient()
+
+  return useDevLogin({
+    mutation: {
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({
+          queryKey: getGetCurrentUserQueryKey(),
+        })
       },
     },
   })

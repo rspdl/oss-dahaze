@@ -20,6 +20,15 @@ docker compose -f deploy/docker-compose.dev.yml up -d
 cd apps/api && uv run alembic upgrade head && cd -
 ```
 
+여기까지 하고 `pnpm dev` 를 띄우면 바로 로그인할 수 있습니다. `.env.example` 이
+`ENVIRONMENT=development` 로 오기 때문에 첫 화면에 아이디·비밀번호 폼이 뜹니다 — 아이디는
+아무거나, 비밀번호는 `DEV_LOGIN_PASSWORD`(기본값 `dahaze`)입니다. **OAuth App 을 만들지
+않아도 됩니다.**
+
+아이디가 곧 계정입니다. 다른 아이디로 들어오면 다른 사용자가 되므로 접근 격리를 손으로
+확인할 때 그렇게 씁니다. 이 문은 `development` 에서만 열리며, 그 근거는
+`Settings.dev_login_enabled` 와 `tests/test_auth_api.py` 에 있습니다.
+
 테스트는 **실제 Postgres 에 붙습니다.** SQLite 로 대체하지 않는 이유는 JSONB, 부분 유니크
 인덱스, `ON CONFLICT DO NOTHING` 이 전부 방언에 의존하기 때문입니다 — 그것들이 프로덕션에서만
 다르게 동작하면 테스트가 통과해도 아무것도 보장하지 못합니다.
