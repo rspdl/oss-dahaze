@@ -73,9 +73,35 @@ class HealthResponse(BaseModel):
 
 
 class AuthProvidersResponse(BaseModel):
-    """설정된 로그인 제공자. 프론트가 버튼을 하드코딩하지 않게 한다."""
+    """설정된 로그인 방법. 프론트가 버튼을 하드코딩하지 않게 한다."""
 
-    providers: list[str]
+    providers: list[str] = Field(
+        description="OAuth 제공자 id 목록. 자격증명이 없는 제공자는 빠진다",
+    )
+    dev_login: bool = Field(
+        description=(
+            "아이디·비밀번호로 바로 들어가는 개발용 로그인이 열려 있는지. "
+            "development 환경에서만 열리며 프로덕션에서는 항상 false"
+        ),
+    )
+
+
+class DevLoginRequest(BaseModel):
+    """개발용 로그인 입력.
+
+    아이디는 아무거나 받고 비밀번호만 확인한다. 같은 아이디로 다시 들어오면 같은 사용자가
+    되므로, 여러 사람이 필요한 화면을 로컬에서 확인할 때 아이디를 바꿔 가며 쓴다.
+    """
+
+    username: str = Field(
+        min_length=1,
+        max_length=64,
+        description="계정을 구분하는 이름. 대소문자와 앞뒤 공백은 무시된다",
+    )
+    password: str = Field(
+        min_length=1,
+        description="DEV_LOGIN_PASSWORD 에 설정된 값 (기본값 dahaze)",
+    )
 
 
 class CurrentUserResponse(BaseModel):
