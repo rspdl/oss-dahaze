@@ -29,7 +29,7 @@ import {
 
 import { errorMessage } from '@/shared/api/errors'
 import { formatDateTime } from '@/shared/format'
-import { FileIcon } from '@/shared/ui/icons'
+import { ChevronRightIcon, FileIcon } from '@/shared/ui/icons'
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
 import { RequireSession } from '@/features/auth/require-session'
 import { useRspdlRuntime } from '@/features/analysis/use-runtime'
@@ -37,7 +37,15 @@ import { CreateDocumentDialog } from '@/features/documents/create-document-dialo
 
 export function ProjectScreen({ projectId }: { projectId: string }) {
   return (
-    <AppShell breadcrumb={<Crumb href="/projects">프로젝트</Crumb>}>
+    <AppShell
+      breadcrumb={<Crumb href="/projects">프로젝트</Crumb>}
+      actions={
+        <CreateDocumentDialog
+          projectId={projectId}
+          trigger={<Button size="sm">새 문서</Button>}
+        />
+      }
+    >
       <RequireSession>
         <ProjectDetail projectId={projectId} />
       </RequireSession>
@@ -46,10 +54,17 @@ export function ProjectScreen({ projectId }: { projectId: string }) {
 }
 
 function ProjectDetail({ projectId }: { projectId: string }) {
-  const project = useGetProject<ProjectResponse>(projectId, {
-      })
+  const project = useGetProject<ProjectResponse>(projectId, {})
 
-  if (project.isPending) return <Skeleton className="h-40 w-full" />
+  if (project.isPending) {
+    return (
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-4 w-96" />
+        <Skeleton className="mt-6 h-40 w-full" />
+      </div>
+    )
+  }
 
   if (project.error !== null || project.data === undefined) {
     return (
@@ -67,34 +82,44 @@ function ProjectDetail({ projectId }: { projectId: string }) {
 
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            {project.data.name}
-            {project.data.archived_at === null ? null : (
-              <Badge variant="secondary">보관됨</Badge>
+      <header className="mb-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+              {project.data.name}
+              {project.data.archived_at === null ? null : (
+                <Badge variant="secondary">보관됨</Badge>
+              )}
+            </h1>
+            {project.data.description === null ? null : (
+              <p className="mt-1.5 max-w-[65ch] text-sm leading-relaxed text-text-muted">
+                {project.data.description}
+              </p>
             )}
-          </h1>
-          {project.data.description === null ? null : (
-            <p className="mt-1 max-w-prose text-sm text-text-muted">
-              {project.data.description}
-            </p>
-          )}
-          <p className="mt-2 text-xs text-text-subtle">
-            <span className="font-mono">{project.data.slug}</span> · 새 문서 기본 rspdl{' '}
-            {project.data.default_rspdl_version}
-          </p>
-        </div>
-        <div className="flex gap-2">
+          </div>
+
           {project.data.archived_at === null ? (
             <ArchiveProjectButton project={project.data} />
           ) : null}
-          <CreateDocumentDialog
-            projectId={projectId}
-            trigger={<Button>새 문서</Button>}
-          />
         </div>
-      </div>
+
+        {/*
+          슬러그와 기본 버전은 자주 보는 값이 아니지만 필요할 때 반드시 있어야 하는 값이다.
+          제목 옆에 붙이면 제목을 읽는 데 방해가 되므로 아래에 얇은 줄로 따로 둔다.
+        */}
+        <dl className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-1 border-t pt-3 text-xs text-text-subtle">
+          <div className="flex items-center gap-1.5">
+            <dt>슬러그</dt>
+            <dd className="font-mono text-text-muted">{project.data.slug}</dd>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <dt>새 문서 기본</dt>
+            <dd className="font-mono text-text-muted">
+              rspdl {project.data.default_rspdl_version}
+            </dd>
+          </div>
+        </dl>
+      </header>
 
       <DocumentList projectId={projectId} />
     </>
@@ -108,7 +133,7 @@ function ArchiveProjectButton({ project }: { project: ProjectResponse }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="outline" disabled={archive.isPending}>
+        <Button variant="outline" size="sm" disabled={archive.isPending}>
           보관
         </Button>
       </AlertDialogTrigger>
@@ -150,16 +175,16 @@ function ArchiveProjectButton({ project }: { project: ProjectResponse }) {
 }
 
 function DocumentList({ projectId }: { projectId: string }) {
-  const documents = useListDocuments<DocumentSummaryResponse[]>(projectId, {
-      })
+  const documents = useListDocuments<DocumentSummaryResponse[]>(projectId, {})
   const runtime = useRspdlRuntime()
 
   if (documents.isPending) {
     return (
-      <ul className="space-y-2">
+      <ul className="divide-y border-y" aria-label="불러오는 중">
         {[0, 1, 2].map((index) => (
-          <li key={index}>
-            <Skeleton className="h-16 w-full" />
+          <li key={index} className="flex flex-col gap-2 py-4">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-3.5 w-64" />
           </li>
         ))}
       </ul>
@@ -197,33 +222,44 @@ function DocumentList({ projectId }: { projectId: string }) {
   }
 
   return (
-    <ul className="space-y-2">
-      {documents.data?.map((document) => (
-        <li key={document.id}>
+    <ul className="divide-y border-y">
+      {documents.data?.map((document, index) => (
+        <li
+          key={document.id}
+          className="animate-rise"
+          style={{ animationDelay: `${Math.min(index, 10) * 35}ms` }}
+        >
           <Link
             href={`/projects/${projectId}/documents/${document.id}`}
-            className="block rounded-panel border bg-surface px-4 py-3 transition-colors hover:bg-surface-raised"
+            className="group flex items-start gap-4 py-4 transition-colors duration-200 ease-out-expo hover:bg-surface-raised"
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium text-text">{document.title}</span>
-              <span className="font-mono text-xs text-text-subtle">
-                {document.path}
-              </span>
-              {/*
-                문서가 기억하는 rspdl 버전이 서버 버전과 다르면 그 사실을 목록에서부터
-                말한다. 열어 보기 전에 알 수 있어야 어떤 문서부터 볼지 정할 수 있다.
-              */}
-              {runtime.data !== undefined &&
-              runtime.data.rspdl_version !== document.target_rspdl_version ? (
-                <Badge variant="outline" className="font-mono text-xs">
-                  rspdl {document.target_rspdl_version} ≠ 서버{' '}
-                  {runtime.data.rspdl_version}
-                </Badge>
-              ) : null}
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium text-text">{document.title}</span>
+                <span className="font-mono text-xs text-text-subtle">
+                  {document.path}
+                </span>
+                {/*
+                  문서가 기억하는 rspdl 버전이 서버 버전과 다르면 그 사실을 목록에서부터
+                  말한다. 열어 보기 전에 알 수 있어야 어떤 문서부터 볼지 정할 수 있다.
+                */}
+                {runtime.data !== undefined &&
+                runtime.data.rspdl_version !== document.target_rspdl_version ? (
+                  <Badge variant="outline" className="font-mono text-xs">
+                    rspdl {document.target_rspdl_version} ≠ 서버{' '}
+                    {runtime.data.rspdl_version}
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-text-subtle">
+                수정 {formatDateTime(document.updated_at)}
+              </p>
             </div>
-            <p className="mt-1 text-xs text-text-subtle">
-              수정 {formatDateTime(document.updated_at)}
-            </p>
+
+            <ChevronRightIcon
+              aria-hidden
+              className="mt-0.5 size-4 shrink-0 text-text-subtle transition-transform duration-200 ease-out-expo group-hover:translate-x-0.5"
+            />
           </Link>
         </li>
       ))}

@@ -13,7 +13,6 @@ import {
 import { RspdlEditor } from '@dahaze/rspdl-editor'
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  Badge,
   Button,
   ErrorState,
   ResizableHandle,
@@ -54,10 +53,11 @@ export function DocumentWorkbenchScreen({
 }) {
   return (
     <AppShell
+      fullBleed
       breadcrumb={
         <>
           <Crumb href="/projects">프로젝트</Crumb>
-          <Crumb href={`/projects/${projectId}`}>문서 목록</Crumb>
+          <Crumb href={`/projects/${projectId}`}>문서</Crumb>
         </>
       }
     >
@@ -80,9 +80,9 @@ function DocumentLoader({
 
   if (query.isPending) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-10 w-72" />
-        <Skeleton className="h-[60vh] w-full" />
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <Skeleton className="h-9 w-72" />
+        <Skeleton className="min-h-64 flex-1" />
       </div>
     )
   }
@@ -198,19 +198,35 @@ function Workbench({
   }, [isDirty])
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {/*
+        제목과 저장 버튼을 한 줄에 둔다. 편집 중에는 이 줄이 화면에서 유일하게 움직이지 않는
+        기준점이라, 여기서 저장 상태를 읽을 수 있어야 손이 편집기를 떠나지 않는다.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold tracking-tight">
+          <h1 className="truncate text-lg font-semibold tracking-tight">
             {document.title}
           </h1>
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-subtle">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-subtle">
             <span className="font-mono">{document.path}</span>
             <span aria-hidden>·</span>
-            <span>rspdl {document.target_rspdl_version} 기준</span>
+            <span className="font-mono">rspdl {document.target_rspdl_version}</span>
             <span aria-hidden>·</span>
             <span>수정 {formatDateTime(document.updated_at)}</span>
-            {isDirty ? <Badge variant="secondary">저장되지 않음</Badge> : null}
+            {isDirty ? (
+              <>
+                {/*
+                  저장되지 않았다는 사실은 색으로만 말하지 않는다. 점은 눈에 먼저 띄고,
+                  글자는 색을 구분하지 못하는 사람에게도 같은 말을 한다.
+                */}
+                <span
+                  aria-hidden
+                  className="ml-1 size-1.5 rounded-full bg-diagnostic-warning"
+                />
+                <span className="text-diagnostic-warning">저장되지 않음</span>
+              </>
+            ) : null}
           </p>
         </div>
 
@@ -220,7 +236,7 @@ function Workbench({
             value={summary}
             onChange={(event) => setSummary(event.target.value)}
             placeholder="변경 요약 (선택)"
-            className="h-9 w-52 rounded-control border bg-surface px-3 text-sm placeholder:text-text-subtle"
+            className="h-9 w-44 rounded-control border bg-surface px-3 text-sm transition-colors duration-200 ease-out-expo placeholder:text-text-subtle focus-visible:border-accent lg:w-56"
           />
           {isDirty ? (
             <Button
@@ -239,9 +255,14 @@ function Workbench({
 
       <VersionMismatchNotice targetVersion={document.target_rspdl_version} />
 
+      {/*
+        높이를 `calc(100dvh - 16rem)` 처럼 계산하지 않는다. 그 16rem 은 위쪽 요소들의 높이를
+        손으로 더한 값이라, 줄 하나만 늘어도 편집기가 화면 밖으로 밀린다. 남은 공간을
+        그대로 차지하게 두면 위가 무엇으로 바뀌든 알아서 맞는다.
+      */}
       <ResizablePanelGroup
         orientation="horizontal"
-        className="h-[calc(100dvh-16rem)] min-h-96 rounded-panel border"
+        className="min-h-96 flex-1 overflow-hidden rounded-panel border bg-surface"
       >
         {/*
           `defaultSize` 는 숫자면 픽셀, 문자열이면 퍼센트다. 우리가 저장하는 값은 비율이므로

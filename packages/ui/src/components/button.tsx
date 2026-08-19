@@ -4,8 +4,14 @@ import { Slot } from "radix-ui"
 
 import { cn } from "../lib/cn"
 
+/*
+ * 눌린 순간 버튼이 1px 내려간다. 화면에는 촉각이 없으므로, 눌렸다는 사실을 눈으로라도
+ * 돌려주지 않으면 사용자는 반응이 올 때까지 같은 버튼을 여러 번 누른다. 움직이는 값은
+ * `transform` 이라 주변 요소를 밀지 않는다. `link` 는 글자라서 예외로 둔다 — 문장 속
+ * 한 단어만 아래로 내려가면 오작동처럼 보인다.
+ */
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-control text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-accent focus-visible:ring-[3px] focus-visible:ring-accent/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-diagnostic-error aria-invalid:ring-diagnostic-error/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-control text-sm font-medium whitespace-nowrap transition-all duration-200 ease-out-expo active:translate-y-px outline-none focus-visible:border-accent focus-visible:ring-[3px] focus-visible:ring-accent/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-diagnostic-error aria-invalid:ring-diagnostic-error/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -18,7 +24,7 @@ const buttonVariants = cva(
           "bg-surface-raised text-text hover:bg-surface-raised/80",
         ghost:
           "hover:bg-surface-raised hover:text-text",
-        link: "text-accent underline-offset-4 hover:underline",
+        link: "text-accent underline-offset-4 hover:underline active:translate-y-0",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",
