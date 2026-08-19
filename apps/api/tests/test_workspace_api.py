@@ -103,6 +103,41 @@ async def test_anonymous_request_is_401(anon_client: httpx.AsyncClient) -> None:
     assert response.status_code == 401
 
 
+async def test_archive_removes_the_project_from_the_default_list(
+    client: httpx.AsyncClient,
+) -> None:
+    """보관 엔드포인트에 테스트가 없어서 500 이 오래 살아 있었다.
+
+    `updated_at` 은 서버가 `onupdate` 로 계산하므로 flush 직후 그 값은 만료 상태다.
+    refresh 없이 읽으면 SQLAlchemy 가 동기 lazy 조회를 걸고, async 컨텍스트에서 그것은
+    `MissingGreenlet` 이 된다 — 즉 화면의 "보관" 버튼이 항상 500 이었다.
+    """
+    project = await _create_project(client, "to-archive")
+
+    archived = await client.post(f"/api/projects/{project['id']}/archive")
+    assert archived.status_code == 200, archived.text
+    assert archived.json()["archived_at"] is not None
+
+    # 기본 목록에서는 빠지고, 단건 조회로는 여전히 닿는다. 보관은 삭제가 아니다.
+    listed = (await client.get("/api/projects")).json()
+    assert [p["id"] for p in listed] == []
+    assert (await client.get(f"/api/projects/{project['id']}")).status_code == 200
+
+
+async def test_non_owner_cannot_archive(
+    client: httpx.AsyncClient, other_client: httpx.AsyncClient, other_user: User
+) -> None:
+    project = await _create_project(client, "owner-only-archive")
+    await client.post(
+        f"/api/projects/{project['id']}/members",
+        json={"user_id": str(other_user.id), "role": "editor"},
+    )
+
+    response = await other_client.post(f"/api/projects/{project['id']}/archive")
+
+    assert response.status_code == 403
+
+
 # ---------------------------------------------------------------------- 멤버
 
 
