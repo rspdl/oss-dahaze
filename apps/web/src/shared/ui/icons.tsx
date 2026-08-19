@@ -65,3 +65,46 @@ export function SpinnerIcon(props: SVGProps<SVGSVGElement>) {
     </Base>
   )
 }
+
+export function PanelLeftIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9.5 4v16" />
+    </Base>
+  )
+}
+
+export function PlusIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </Base>
+  )
+}
+
+export function XIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <path d="m6 6 12 12M18 6 6 18" />
+    </Base>
+  )
+}
+
+export function ChevronRightIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <path d="m9.5 5.5 6.5 6.5-6.5 6.5" />
+    </Base>
+  )
+}
+
+export function ArchiveIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <path d="M3 6.5a1.5 1.5 0 0 1 1.5-1.5h15A1.5 1.5 0 0 1 21 6.5v1A1.5 1.5 0 0 1 19.5 9h-15A1.5 1.5 0 0 1 3 7.5Z" />
+      <path d="M4.75 9v9a1.5 1.5 0 0 0 1.5 1.5h11.5a1.5 1.5 0 0 0 1.5-1.5V9" />
+      <path d="M10 13h4" />
+    </Base>
+  )
+}
