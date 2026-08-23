@@ -67,6 +67,11 @@ RSPDL `AGENTS.md`에도 같은 원칙이 있다.
   일치하는 `custom_tool_call.input`에서만 꺼낸다.
 - self-hosted 어댑터는 같은 EBNF를 xgrammar 등 해당 런타임의 요청 형식으로 바꿀 수 있다.
 
+Lark는 OpenAI에 문법을 전달하는 **직렬화 형식**으로만 쓴다. dahaze가 Python Lark 파서로
+출력을 다시 해석하지 않는다. custom tool input은 순수 RSPDL 전문으로 보고 그대로 컴파일러에
+전달한다. 불완전한 접두사나 구문 오류도 RSPDL 컴파일 진단이 되며 기존 피드백 루프가 고친다.
+이렇게 해야 규범 문법을 소유한 Rust RSPDL 컴파일러가 유일한 판정자로 남는다.
+
 문법 제약은 **구문 정합성**만 보장한다. 참조가 존재하는지, 데이터 lifecycle이 닫히는지,
 정책이 충돌하는지 같은 의미 정합성의 유일한 판정자는 여전히 RSPDL 컴파일러다. 그래서
 constrained decoding을 도입해도 기존 컴파일-진단-유한 재시도 루프를 제거하지 않는다.
@@ -124,6 +129,7 @@ MCP 클라이언트는 브라우저 쿠키를 쓸 수 없다. 완전한 MCP OAut
 - MCP와 REST가 같은 접근 검사와 같은 컴파일 게이트를 지난다.
 - EBNF 원본 하나를 공급자별 constrained decoding 형식으로 변환할 수 있다.
 - OpenAI와 self-hosted LLM 구현이 같은 port를 구현하고 애플리케이션을 바꾸지 않는다.
+- Lark는 OpenAI 전송 경계 밖으로 나오지 않고, 생성 결과는 Rust RSPDL 컴파일러만 해석한다.
 - LLM이 만든 어떤 텍스트도 진단 없이 사용자에게 도달하지 않는다.
 - MCP 토큰은 폐기할 수 없다. TTL 안에서만 유효하며, 폐기가 필요하면 후속 작업이 필요하다.
 - rspdl 버전을 올릴 때 프롬프트 점검이 절차에 포함된다.

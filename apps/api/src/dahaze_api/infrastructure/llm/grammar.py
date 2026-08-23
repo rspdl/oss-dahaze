@@ -8,10 +8,6 @@
 from __future__ import annotations
 
 import re
-from functools import lru_cache
-
-from lark import Lark
-from lark.exceptions import UnexpectedInput
 
 from dahaze_api.domain.llm import EbnfGrammar
 
@@ -49,27 +45,6 @@ def ebnf_to_lark(grammar: EbnfGrammar) -> str:
     lines = [f"start: {grammar.start_rule}"]
     lines.extend(f"{name}: {expression}" for name, expression in productions)
     return "\n".join(lines) + "\n"
-
-
-def is_complete_lark_document(definition: str, text: str) -> bool:
-    """전송된 CFG 전체를 소비하는 문서인지 검사한다.
-
-    constrained decoder가 드물게 유효한 terminal 접두사에서 멈춰도 그것을 완성 문서로
-    신뢰하지 않는다. 공급자에게 보낸 바로 그 문법을 서버에서도 다시 사용한다.
-    """
-
-    try:
-        _lark_parser(definition).parse(text)
-    except UnexpectedInput:
-        return False
-    return True
-
-
-@lru_cache(maxsize=32)
-def _lark_parser(definition: str) -> Lark:
-    """문법은 버전별로 안정적이므로 요청마다 parser table을 다시 만들지 않는다."""
-
-    return Lark(definition, parser="lalr", lexer="contextual")
 
 
 def _split_statements(definition: str) -> list[str]:
