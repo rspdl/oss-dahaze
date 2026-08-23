@@ -73,35 +73,59 @@ class HealthResponse(BaseModel):
 
 
 class AuthProvidersResponse(BaseModel):
-    """설정된 로그인 방법. 프론트가 버튼을 하드코딩하지 않게 한다."""
+    """설정된 OAuth 제공자. 프론트가 버튼을 하드코딩하지 않게 한다.
+
+    아이디·비밀번호 로그인은 여기 없다. 설정과 무관하게 항상 열려 있으므로, 늘 참인 값을
+    실어 보내면 프론트가 "혹시 꺼져 있을 수도 있다" 는 분기를 영원히 들고 있게 된다.
+    """
 
     providers: list[str] = Field(
         description="OAuth 제공자 id 목록. 자격증명이 없는 제공자는 빠진다",
     )
-    dev_login: bool = Field(
-        description=(
-            "아이디·비밀번호로 바로 들어가는 개발용 로그인이 열려 있는지. "
-            "development 환경에서만 열리며 프로덕션에서는 항상 false"
-        ),
-    )
 
 
-class DevLoginRequest(BaseModel):
-    """개발용 로그인 입력.
+# 아이디에 허용하는 글자. 사람이 주소·명령줄·로그에서 옮겨 적을 수 있는 범위로 좁힌다.
+LOGIN_PATTERN = r"^[a-zA-Z0-9._-]+$"
 
-    아이디는 아무거나 받고 비밀번호만 확인한다. 같은 아이디로 다시 들어오면 같은 사용자가
-    되므로, 여러 사람이 필요한 화면을 로컬에서 확인할 때 아이디를 바꿔 가며 쓴다.
-    """
+# 짧은 비밀번호를 막는 것이 여기서 할 수 있는 유일하고 확실한 일이다. 복잡도 규칙(대문자
+# 하나, 특수문자 하나)은 길이만큼 효과가 없으면서 사람들이 `Password1!` 을 쓰게 만든다.
+MIN_PASSWORD_LENGTH = 8
 
-    username: str = Field(
+
+class PasswordLoginRequest(BaseModel):
+    login: str = Field(
         min_length=1,
         max_length=64,
-        description="계정을 구분하는 이름. 대소문자와 앞뒤 공백은 무시된다",
+        description="아이디. 대소문자와 앞뒤 공백은 무시된다",
+    )
+    password: str = Field(min_length=1, max_length=256)
+
+
+class RegisterRequest(BaseModel):
+    """회원가입 입력."""
+
+    login: str = Field(
+        min_length=3,
+        max_length=64,
+        pattern=LOGIN_PATTERN,
+        description="아이디. 영문·숫자와 `.`·`_`·`-`. 대소문자는 구분하지 않는다",
+        examples=["jiwon"],
     )
     password: str = Field(
-        min_length=1,
-        description="DEV_LOGIN_PASSWORD 에 설정된 값 (기본값 dahaze)",
+        min_length=MIN_PASSWORD_LENGTH,
+        max_length=256,
+        description=f"{MIN_PASSWORD_LENGTH}자 이상",
     )
+    display_name: str = Field(
+        min_length=1,
+        max_length=200,
+        description="화면에 보일 이름",
+        examples=["김지원"],
+    )
+
+    # 이메일을 받지 않는다. 확인도 복구도 알림도 하지 않으므로 받아 봐야 쓸 데가 없고,
+    # 쓰지 않을 개인정보를 보관하는 것은 이 제품이 검사하라고 말하는 바로 그 문제다.
+    # 필요해지는 날 — 비밀번호 재설정을 붙이는 날 — 확인 절차와 함께 들어온다.
 
 
 class CurrentUserResponse(BaseModel):

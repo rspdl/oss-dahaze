@@ -1,7 +1,14 @@
 """인증 엔드포인트.
 
-제공자에 무관하다. 경로의 `{provider}` 로 registry 에서 어댑터를 고르므로, 벤더를
-추가해도 이 파일은 바뀌지 않는다.
+문이 둘이다.
+
+- **OAuth** — 리다이렉트 왕복. 경로의 `{provider}` 로 registry 에서 어댑터를 고르므로
+  벤더를 추가해도 이 파일은 바뀌지 않는다.
+- **아이디·비밀번호** — 왕복이 없는 XHR. 설정과 무관하게 항상 열려 있다.
+
+두 문 모두 같은 쿠키를 심고 같은 `users` 로 도착한다. 환경에 따라 열리고 닫히는 문은
+없다 — 개발에서 보는 로그인 화면과 프로덕션에서 보는 화면이 같아야, 화면에서 재현되지
+않는 문제가 로그인 단계에서부터 생기지 않는다.
 """
 
 from __future__ import annotations
@@ -12,14 +19,17 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
 
+from dahaze_api.application.errors import Conflict
 from dahaze_api.config import Settings
+from dahaze_api.domain.entities import User
 from dahaze_api.infrastructure.auth.github import OAuthError
 from dahaze_api.infrastructure.auth.session import MCP_TTL, InvalidToken, SessionTokens
 from dahaze_api.interface.rest.dependencies import (
     SESSION_COOKIE,
     CurrentUser,
-    DevAuth,
+    PasswordSignIn,
     Providers,
+    Register,
     SettingsDep,
     SignIn,
     Tokens,
@@ -27,8 +37,9 @@ from dahaze_api.interface.rest.dependencies import (
 from dahaze_api.interface.rest.schemas import (
     AuthProvidersResponse,
     CurrentUserResponse,
-    DevLoginRequest,
     McpTokenResponse,
+    PasswordLoginRequest,
+    RegisterRequest,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -62,62 +73,80 @@ def _set_session_cookie(
     )
 
 
-@router.get("/providers", name="list_auth_providers")
-async def list_auth_providers(
-    providers: Providers, dev_auth: DevAuth
-) -> AuthProvidersResponse:
-    """쓸 수 있는 로그인 방법.
-
-    프론트가 로그인 버튼을 하드코딩하지 않도록 서버가 알려준다. 자격증명이 없는
-    제공자는 애초에 등록되지 않고, 개발용 비밀번호 로그인은 development 에서만 켜진다.
-    """
-    return AuthProvidersResponse(
-        providers=sorted(providers), dev_login=dev_auth is not None
-    )
-
-
-@router.post("/dev/login", name="dev_login")
-async def dev_login(
-    payload: DevLoginRequest,
-    dev_auth: DevAuth,
-    tokens: Tokens,
-    settings: SettingsDep,
-    sign_in: SignIn,
-    response: Response,
-) -> CurrentUserResponse:
-    """개발 환경 전용 아이디·비밀번호 로그인.
-
-    OAuth 왕복이 없으므로 리다이렉트가 아니라 XHR 로 부르고, 응답에 세션 쿠키가 실린다.
-    로그인 뒤에 하는 일은 OAuth 콜백과 완전히 같다 — 같은 유스케이스로 사용자를 찾거나
-    만들고, 같은 쿠키를 심는다. 개발용이라고 다른 세션 구조를 쓰면 로컬에서만 되는 버그가
-    생긴다.
-
-    닫혀 있으면 404 다. "설정이 없다" 와 "비밀번호가 틀렸다" 를 같은 401 로 묶으면
-    기여자가 무엇을 고쳐야 하는지 알 수 없다.
-    """
-    if dev_auth is None:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND,
-            "개발용 로그인이 열려 있지 않다 (development 환경에서만 열린다)",
-        )
-
-    identity = dev_auth.authenticate(
-        username=payload.username, password=payload.password
-    )
-    if identity is None:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, "아이디 또는 비밀번호가 맞지 않는다"
-        )
-
-    user = await sign_in(identity)
-    _set_session_cookie(response, tokens=tokens, settings=settings, user_id=user.id)
-
+def _user_response(user: User) -> CurrentUserResponse:
     return CurrentUserResponse(
         id=user.id,
         display_name=user.display_name,
         email=user.email,
         avatar_url=user.avatar_url,
     )
+
+
+@router.get("/providers", name="list_auth_providers")
+async def list_auth_providers(providers: Providers) -> AuthProvidersResponse:
+    """쓸 수 있는 OAuth 제공자.
+
+    프론트가 로그인 버튼을 하드코딩하지 않도록 서버가 알려준다. 자격증명이 없는
+    제공자는 애초에 등록되지 않는다. 아이디·비밀번호 로그인은 여기 없다 — 항상 열려
+    있으므로 알려줄 것이 없다.
+    """
+    return AuthProvidersResponse(providers=sorted(providers))
+
+
+@router.post("/register", name="register", status_code=status.HTTP_201_CREATED)
+async def register(
+    payload: RegisterRequest,
+    register_user: Register,
+    tokens: Tokens,
+    settings: SettingsDep,
+    response: Response,
+) -> CurrentUserResponse:
+    """아이디·비밀번호로 계정을 만들고 바로 로그인시킨다.
+
+    가입 직후 로그인 화면으로 돌려보내지 않는다. 방금 정한 비밀번호를 한 번 더 치게 하는
+    것은 확인이 아니라 마찰이다.
+
+    가입해도 보이는 프로젝트는 없다. 프로젝트는 멤버십으로만 열리므로, 계정이 생겼다는
+    사실만으로는 남의 것에 닿지 못한다.
+    """
+    try:
+        user = await register_user(
+            login=payload.login,
+            password=payload.password,
+            display_name=payload.display_name,
+            email=None,
+        )
+    except Conflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+    _set_session_cookie(response, tokens=tokens, settings=settings, user_id=user.id)
+    return _user_response(user)
+
+
+@router.post("/login", name="password_login")
+async def password_login(
+    payload: PasswordLoginRequest,
+    sign_in: PasswordSignIn,
+    tokens: Tokens,
+    settings: SettingsDep,
+    response: Response,
+) -> CurrentUserResponse:
+    """아이디·비밀번호 로그인.
+
+    OAuth 와 달리 페이지를 떠나지 않는다. 응답에 세션 쿠키가 실려 오므로, 성공하면 프론트는
+    세션 질의만 무효화하면 된다.
+
+    실패는 전부 같은 401 이다. "없는 아이디" 와 "틀린 비밀번호" 를 나눠 말하면 로그인 화면이
+    곧 계정 존재 여부를 묻는 창구가 된다.
+    """
+    user = await sign_in(login=payload.login, password=payload.password)
+    if user is None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "아이디 또는 비밀번호가 맞지 않는다"
+        )
+
+    _set_session_cookie(response, tokens=tokens, settings=settings, user_id=user.id)
+    return _user_response(user)
 
 
 @router.get("/{provider}/login", name="begin_oauth_login")
@@ -181,12 +210,7 @@ async def complete_oauth_login(
 
 @router.get("/me", name="get_current_user")
 async def get_me(user: CurrentUser) -> CurrentUserResponse:
-    return CurrentUserResponse(
-        id=user.id,
-        display_name=user.display_name,
-        email=user.email,
-        avatar_url=user.avatar_url,
-    )
+    return _user_response(user)
 
 
 @router.post(
