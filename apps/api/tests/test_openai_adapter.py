@@ -15,7 +15,6 @@ from dahaze_api.domain.rspdl import RspdlSource
 from dahaze_api.infrastructure.llm.grammar import (
     EbnfConversionError,
     ebnf_to_lark,
-    is_complete_lark_document,
 )
 from dahaze_api.infrastructure.llm.grammars import (
     GRAMMAR_RSPDL_VERSION,
@@ -65,9 +64,6 @@ def test_prompt_grammar_and_compiler_versions_move_together() -> None:
     ids=("inventory", "expense-policy", "relations", "screen-calculation"),
 )
 async def test_passing_prompt_examples_match_grammar_and_compiler(source: str) -> None:
-    definition = ebnf_to_lark(load_rspdl_grammar())
-
-    assert is_complete_lark_document(definition, source)
     outcome = await LocalRspdlCompiler().compile(
         [RspdlSource(path="prompt-example.rspdl", text=source)]
     )
@@ -92,14 +88,6 @@ def test_converter_preserves_semicolon_inside_a_regex() -> None:
     )
 
     assert "SEMICOLON: /[;]/" in ebnf_to_lark(grammar)
-
-
-def test_local_lark_validation_rejects_an_incomplete_terminal_prefix() -> None:
-    definition = ebnf_to_lark(load_rspdl_grammar())
-    complete = "@모듈 재고(inventory)\n"
-
-    assert is_complete_lark_document(definition, complete)
-    assert not is_complete_lark_document(definition, complete + "재")
 
 
 @pytest.mark.parametrize(
@@ -162,54 +150,17 @@ async def test_responses_api_receives_lark_custom_tool_and_returns_its_input() -
     assert "temperature" not in request
 
 
-async def test_incomplete_grammar_prefix_is_rejected() -> None:
+async def test_custom_tool_input_is_returned_without_lark_reinterpretation() -> None:
+    expected = "@모듈 재고(inventory)\n\n재"
     incomplete_call = ResponseCustomToolCall(
         call_id="call-incomplete",
-        input="@모듈 재고(inventory)\n\n재",
-        name="emit_rspdl_document",
-        type="custom_tool_call",
-    )
-
-    with patch("dahaze_api.infrastructure.llm.openai_adapter.openai.AsyncOpenAI") as client_type:
-        create = AsyncMock(
-            return_value=SimpleNamespace(output=[incomplete_call])
-        )
-        client_type.return_value.responses.create = create
-        llm = OpenAiLlm(api_key="test-key", model="gpt-5-nano")
-
-        with pytest.raises(LlmUnavailable, match="CFG 전체"):
-            await llm.draft_document(
-                instruction="재고 모듈을 만든다.",
-                current_text=None,
-                diagnostics=(),
-                grammar=load_rspdl_grammar(),
-            )
-
-    assert create.await_count == 2
-
-
-async def test_complete_grammar_retry_is_returned() -> None:
-    expected = "@모듈 재고(inventory)\n"
-    incomplete_call = ResponseCustomToolCall(
-        call_id="call-incomplete",
-        input=expected + "재",
-        name="emit_rspdl_document",
-        type="custom_tool_call",
-    )
-    complete_call = ResponseCustomToolCall(
-        call_id="call-complete",
         input=expected,
         name="emit_rspdl_document",
         type="custom_tool_call",
     )
 
     with patch("dahaze_api.infrastructure.llm.openai_adapter.openai.AsyncOpenAI") as client_type:
-        create = AsyncMock(
-            side_effect=[
-                SimpleNamespace(output=[incomplete_call]),
-                SimpleNamespace(output=[complete_call]),
-            ]
-        )
+        create = AsyncMock(return_value=SimpleNamespace(output=[incomplete_call]))
         client_type.return_value.responses.create = create
         llm = OpenAiLlm(api_key="test-key", model="gpt-5-nano")
 
@@ -221,10 +172,7 @@ async def test_complete_grammar_retry_is_returned() -> None:
         )
 
     assert actual == expected
-    assert create.await_count == 2
-    retry_request = create.await_args_list[1].kwargs
-    assert "전송 문법 검증 오류" in retry_request["input"]
-    assert incomplete_call.input in retry_request["input"]
+    assert create.await_count == 1
 
 
 async def test_missing_target_custom_tool_call_is_not_treated_as_empty_source() -> None:

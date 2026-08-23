@@ -74,7 +74,8 @@ constrained decoding 문법이 그 문형을 허용하지 않으면 모델은 �
 앞으로 생성될 텍스트를 검사하지 않는다. 그러니 별도로 확인한다.
 
 - 프롬프트의 예제를 새 버전으로 컴파일해 진단이 없는지 본다
-- EBNF를 Lark로 변환하고 대표 예제를 그 문법으로 파싱한다
+- EBNF가 OpenAI 전송용 Lark로 변환되는지 단위 테스트를 돌린다
+- 대표 생성 결과는 Python Lark가 아니라 새 버전의 RSPDL 컴파일러로 검증한다
 - CHANGELOG 에 문법 추가·변경이 있으면 프롬프트와 EBNF에 함께 반영한다
 - `PROMPT_RSPDL_VERSION`, `GRAMMAR_RSPDL_VERSION`, 설치된 컴파일러 버전이 같은지 확인한다
 

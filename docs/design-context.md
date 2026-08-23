@@ -124,8 +124,9 @@ Lightsail·Terraform·시크릿 흐름을 정했지만 구현물은 없고, GitH
   [`infrastructure/llm/prompts/`](../apps/api/src/dahaze_api/infrastructure/llm/prompts/), 저작용 EBNF
   스냅샷은 [`infrastructure/llm/grammars/`](../apps/api/src/dahaze_api/infrastructure/llm/grammars/)에
   모아 두었다. OpenAI 어댑터는 호출 직전에 EBNF를 Lark custom tool grammar로 바꾼다.
-  재컴파일 리포트만으로는 앞으로 생성될 텍스트의 회귀가 드러나지 않으므로 승격 절차에서 둘을
-  함께 점검한다.
+  Lark는 OpenAI 전송 형식으로만 쓰고, custom tool input은 다시 파싱하지 않고 Rust RSPDL
+  컴파일러에 넘긴다. 재컴파일 리포트만으로는 앞으로 생성될 텍스트의 회귀가 드러나지 않으므로
+  승격 절차에서 프롬프트와 EBNF를 함께 점검한다.
 
 ---
 

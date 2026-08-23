@@ -30,8 +30,8 @@ VALID_TEXT = (
     "    수량(quantity): 필수 정수\n"
 )
 
-# 마침표가 없어 상위 선언으로 인식되지 않는다. 컴파일러가 진단을 낸다.
-BROKEN_TEXT = "@모듈 깨짐(broken)\n\n재고 항목(item)은 다음 필드들로 구성되어 있다"
+# OpenAI 디코더가 유효한 접두사에서 멈추더라도 Rust 컴파일러가 진단을 낸다.
+BROKEN_TEXT = "@모듈 깨짐(broken)\n\n재"
 
 
 class FakeLlm:
