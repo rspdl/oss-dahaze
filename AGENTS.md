@@ -43,8 +43,9 @@
 - 재시도는 유한하다. 진단이 끝내 남아도 실패로 만들지 않는다 — 사람이 판단할 재료를 뺏지 않는다.
 - **MCP 도구는 `application/` 의 유스케이스만 부른다.** 저장소나 컴파일러를 직접 부르면 REST와
   MCP의 접근 검사가 갈라진다.
-- LLM 프롬프트는 `infrastructure/llm/prompts/` 한곳에 모은다. 프롬프트는 rspdl 버전과 함께
-  늙으므로, 버전을 올릴 때 함께 점검한다.
+- LLM 프롬프트와 출력 EBNF는 각각 `infrastructure/llm/prompts/`,
+  `infrastructure/llm/grammars/`에 모은다. 둘 다 rspdl 버전과 함께 늙으므로, 버전을 올릴 때
+  함께 점검한다.
 
 ## 필수 워크플로우
 
