@@ -18,15 +18,32 @@ from openai.types.responses.response_custom_tool_call import ResponseCustomToolC
 from openai.types.responses.tool_choice_custom_param import ToolChoiceCustomParam
 
 from dahaze_api.domain.llm import EbnfGrammar
-from dahaze_api.infrastructure.llm.grammar import ebnf_to_lark
+from dahaze_api.infrastructure.llm.grammar import ebnf_to_lark, is_complete_lark_document
 from dahaze_api.infrastructure.llm.prompts import SYSTEM_PROMPT, build_user_prompt
 
 # 초안 하나를 기다릴 한도. 저작 루프는 이 호출을 최대 `1 + MAX_REPAIR_ATTEMPTS` 번 하므로,
 # 한 번의 한도가 곧 요청 전체 지연의 배수가 된다.
 DEFAULT_TIMEOUT_S = 60.0
 
+# 문법 디코더가 완성된 terminal 접두사에서 너무 일찍 끝내는 생성 편차만 한 번 더 시도한다.
+# 네트워크/API 오류와 컴파일 진단은 각각 호출자와 저작 유스케이스가 담당한다.
+_MAX_TRANSPORT_ATTEMPTS = 2
+
 _TOOL_NAME = "emit_rspdl_document"
 _TOOL_DESCRIPTION = "Return the complete RSPDL document and no other text."
+
+
+def _build_transport_retry_prompt(base_prompt: str, invalid_text: str) -> str:
+    """CFG 접두사를 그대로 보여 주고 완결된 전문으로 다시 쓰게 한다."""
+
+    return (
+        f"{base_prompt}\n\n"
+        "# 전송 문법 검증 오류\n\n"
+        "직전 custom tool 입력은 전달한 CFG 전체를 만족하지 못한 접두사였다. "
+        "마지막의 미완성 선언을 끝까지 완성하거나 제거하고, 완전한 RSPDL 파일 전문을 "
+        "다시 출력한다.\n\n"
+        f"```text\n{invalid_text}\n```"
+    )
 
 
 class LlmError(Exception):
@@ -72,6 +89,7 @@ class OpenAiLlm:
         diagnostics: Sequence[Mapping[str, Any]],
         grammar: EbnfGrammar,
     ) -> str:
+        lark_definition = ebnf_to_lark(grammar)
         tool: CustomToolParam = {
             "type": "custom",
             "name": _TOOL_NAME,
@@ -79,29 +97,53 @@ class OpenAiLlm:
             "format": {
                 "type": "grammar",
                 "syntax": "lark",
-                "definition": ebnf_to_lark(grammar),
+                "definition": lark_definition,
             },
         }
         tool_choice: ToolChoiceCustomParam = {"type": "custom", "name": _TOOL_NAME}
+        request_input = build_user_prompt(
+            instruction=instruction,
+            current_text=current_text,
+            diagnostics=diagnostics,
+        )
 
-        try:
-            response = await self._client.responses.create(
-                model=self._model,
-                instructions=SYSTEM_PROMPT,
-                input=build_user_prompt(
-                    instruction=instruction,
-                    current_text=current_text,
-                    diagnostics=diagnostics,
-                ),
-                tools=[tool],
-                tool_choice=tool_choice,
+        saw_invalid_grammar_output = False
+        for _attempt in range(_MAX_TRANSPORT_ATTEMPTS):
+            try:
+                response = await self._client.responses.create(
+                    model=self._model,
+                    instructions=SYSTEM_PROMPT,
+                    input=request_input,
+                    tools=[tool],
+                    tool_choice=tool_choice,
+                )
+            except openai.OpenAIError as exc:
+                raise LlmUnavailable(f"OpenAI 호출에 실패했다: {exc}") from exc
+
+            saw_target_call = False
+            invalid_text: str | None = None
+            for item in response.output:
+                if not (
+                    isinstance(item, ResponseCustomToolCall)
+                    and item.name == _TOOL_NAME
+                    and item.input
+                ):
+                    continue
+                saw_target_call = True
+                if is_complete_lark_document(lark_definition, item.input):
+                    return item.input
+                saw_invalid_grammar_output = True
+                invalid_text = item.input
+
+            if not saw_target_call:
+                break
+            assert invalid_text is not None
+            request_input = _build_transport_retry_prompt(request_input, invalid_text)
+
+        if saw_invalid_grammar_output:
+            raise LlmUnavailable(
+                "OpenAI가 CFG 전체를 만족하지 않는 RSPDL 접두사를 반복해서 돌려주었다"
             )
-        except openai.OpenAIError as exc:
-            raise LlmUnavailable(f"OpenAI 호출에 실패했다: {exc}") from exc
-
-        for item in response.output:
-            if isinstance(item, ResponseCustomToolCall) and item.name == _TOOL_NAME and item.input:
-                return item.input
 
         # 빈 응답을 빈 소스로 취급하면 "모듈 선언이 없다" 는 엉뚱한 진단이 나가고,
         # 사용자는 자기 지시가 잘못됐다고 오해하게 된다.
