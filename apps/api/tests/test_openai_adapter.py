@@ -77,7 +77,7 @@ async def test_responses_api_receives_lark_custom_tool_and_returns_its_input() -
     with patch("dahaze_api.infrastructure.llm.openai_adapter.openai.AsyncOpenAI") as client_type:
         create = AsyncMock(return_value=SimpleNamespace(output=[wrong_call, rspdl_call]))
         client_type.return_value.responses.create = create
-        llm = OpenAiLlm(api_key="test-key", model="gpt-5.6")
+        llm = OpenAiLlm(api_key="test-key", model="gpt-5-nano")
 
         actual = await llm.draft_document(
             instruction="재고 모듈을 만든다.",
@@ -89,7 +89,7 @@ async def test_responses_api_receives_lark_custom_tool_and_returns_its_input() -
     assert actual == expected
     assert create.await_args is not None
     request = create.await_args.kwargs
-    assert request["model"] == "gpt-5.6"
+    assert request["model"] == "gpt-5-nano"
     assert request["instructions"] == SYSTEM_PROMPT
     assert "재고 모듈을 만든다." in request["input"]
     assert request["tool_choice"] == {
@@ -109,7 +109,7 @@ async def test_missing_target_custom_tool_call_is_not_treated_as_empty_source() 
         client_type.return_value.responses.create = AsyncMock(
             return_value=SimpleNamespace(output=[])
         )
-        llm = OpenAiLlm(api_key="test-key", model="gpt-5.6")
+        llm = OpenAiLlm(api_key="test-key", model="gpt-5-nano")
 
         with pytest.raises(LlmUnavailable, match="custom tool"):
             await llm.draft_document(
