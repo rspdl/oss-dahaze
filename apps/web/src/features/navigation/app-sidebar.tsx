@@ -21,7 +21,6 @@ import {
 
 import { AccountMenu } from '@/features/auth/account-menu'
 import { useSession } from '@/features/auth/use-session'
-import { RuntimeVersionBadge } from '@/features/analysis/runtime-version-badge'
 import { CreateProjectDialog } from '@/features/projects/create-project-dialog'
 import { useSidebarStore } from '@/shared/ui/sidebar-store'
 import {
@@ -179,9 +178,6 @@ export function AppSidebar() {
             railed ? 'md:items-center md:px-1.5' : 'px-3',
           )}
         >
-          <div className={cn(railed && 'md:hidden')}>
-            <RuntimeVersionBadge />
-          </div>
           <AccountMenu compact={railed} />
         </div>
       </aside>
