@@ -120,9 +120,13 @@ Lightsail·Terraform·시크릿 흐름을 정했지만 구현물은 없고, GitH
   `PUT /api/documents/{id}` 로 한다.
 - **진단을 severity 로 거르지 않는다.** 경고를 무시해도 된다고 판단하는 순간 dahaze 가 컴파일러를
   재해석하는 것이 된다.
-- **LLM 프롬프트는 rspdl 버전과 함께 늙는다.** [`infrastructure/llm/prompts/`](../apps/api/src/dahaze_api/infrastructure/llm/prompts/)
-  에 모아 두었다. 재컴파일 리포트로는 이 회귀가 드러나지 않는다 — 코퍼스는 이미 있는 문서만 보고
-  앞으로 생성될 텍스트는 보지 않는다. 승격 절차에 점검 단계가 있다.
+- **LLM 프롬프트와 출력 EBNF는 rspdl 버전과 함께 늙는다.** 프롬프트는
+  [`infrastructure/llm/prompts/`](../apps/api/src/dahaze_api/infrastructure/llm/prompts/), 저작용 EBNF
+  스냅샷은 [`infrastructure/llm/grammars/`](../apps/api/src/dahaze_api/infrastructure/llm/grammars/)에
+  모아 두었다. OpenAI 어댑터는 호출 직전에 EBNF를 Lark custom tool grammar로 바꾼다.
+  Lark는 OpenAI 전송 형식으로만 쓰고, custom tool input은 다시 파싱하지 않고 Rust RSPDL
+  컴파일러에 넘긴다. 재컴파일 리포트만으로는 앞으로 생성될 텍스트의 회귀가 드러나지 않으므로
+  승격 절차에서 프롬프트와 EBNF를 함께 점검한다.
 
 ---
 
@@ -442,8 +446,8 @@ interface/rest/**  →  apps/api/openapi.json  →  packages/api-client/src/gene
   [`broken.rspdl`](../fixtures/corpus/broken.rspdl))일 뿐 실사용 문법의 일부만 덮는다. 승격 전에는
   DB에서 실제 문서를 내보내 `--corpus` 로 넘겨야 한다. **그 내보내기 스크립트는 아직 없다** —
   스킬이 "스크립트를 돌린 뒤"라고만 적어 두었다.
-- **재컴파일 리포트는 LLM 프롬프트 회귀를 잡지 못한다.** 코퍼스는 이미 존재하는 문서만 검사하고
-  앞으로 생성될 텍스트는 검사하지 않는다. 프롬프트 점검은 별도 단계다.
+- **재컴파일 리포트는 LLM 프롬프트·출력 EBNF 회귀를 잡지 못한다.** 코퍼스는 이미 존재하는
+  문서만 검사하고 앞으로 생성될 텍스트는 검사하지 않는다. 두 자원 점검은 별도 단계다.
 - **사라진 진단을 개선으로 단정하지 않는다.** 검증이 조용히 약해진 것일 수도 있다.
 
 ---

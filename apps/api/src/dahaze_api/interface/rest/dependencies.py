@@ -22,6 +22,7 @@ from dahaze_api.application.authoring import DraftRspdlDocument
 from dahaze_api.application.workspace import WorkspaceService
 from dahaze_api.config import Settings, get_settings
 from dahaze_api.domain.entities import User
+from dahaze_api.domain.llm import EbnfGrammar
 from dahaze_api.domain.ports import (
     LlmPort,
     OAuthProviderPort,
@@ -40,6 +41,7 @@ from dahaze_api.infrastructure.db.repositories import (
 )
 from dahaze_api.infrastructure.db.session import get_session
 from dahaze_api.infrastructure.llm import LlmNotConfigured, OpenAiLlm
+from dahaze_api.infrastructure.llm.grammars import load_rspdl_grammar
 from dahaze_api.infrastructure.rspdl import LocalRspdlCompiler
 
 SESSION_COOKIE = "dahaze_session"
@@ -170,12 +172,22 @@ def get_llm() -> LlmPort:
 Llm = Annotated[LlmPort, Depends(get_llm)]
 
 
-def get_drafter(llm: Llm, analyzer: Analyzer) -> DraftRspdlDocument:
+@lru_cache
+def get_authoring_grammar() -> EbnfGrammar:
+    return load_rspdl_grammar()
+
+
+AuthoringGrammar = Annotated[EbnfGrammar, Depends(get_authoring_grammar)]
+
+
+def get_drafter(
+    llm: Llm, analyzer: Analyzer, grammar: AuthoringGrammar
+) -> DraftRspdlDocument:
     """저작 루프는 분석 유스케이스를 그대로 재사용한다.
 
     컴파일 게이트가 REST 분석 경로와 같아야 LLM 출력이 사람 출력과 같은 검사를 받는다.
     """
-    return DraftRspdlDocument(llm=llm, analyzer=analyzer)
+    return DraftRspdlDocument(llm=llm, analyzer=analyzer, grammar=grammar)
 
 
 Drafter = Annotated[DraftRspdlDocument, Depends(get_drafter)]
