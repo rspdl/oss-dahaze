@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from dahaze_api.application.analysis import AnalyzeWorkspace
+from dahaze_api.domain.llm import EbnfGrammar
 from dahaze_api.domain.ports import LlmPort
 from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlSource
 
@@ -69,9 +70,16 @@ def collect_diagnostics(outcome: AnalysisOutcome) -> list[Mapping[str, Any]]:
 class DraftRspdlDocument:
     """지시를 RSPDL 초안으로 옮기고, 컴파일러 게이트를 통과시킨다."""
 
-    def __init__(self, *, llm: LlmPort, analyzer: AnalyzeWorkspace) -> None:
+    def __init__(
+        self,
+        *,
+        llm: LlmPort,
+        analyzer: AnalyzeWorkspace,
+        grammar: EbnfGrammar,
+    ) -> None:
         self._llm = llm
         self._analyzer = analyzer
+        self._grammar = grammar
 
     async def draft(
         self,
@@ -95,6 +103,7 @@ class DraftRspdlDocument:
                 instruction=instruction,
                 current_text=text,
                 diagnostics=diagnostics,
+                grammar=self._grammar,
             )
             outcome = await self._analyzer.compile([RspdlSource(path=path, text=text)])
             diagnostics = collect_diagnostics(outcome)
