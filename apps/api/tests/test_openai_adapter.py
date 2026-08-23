@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from importlib import resources
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -9,6 +11,7 @@ import pytest
 from openai.types.responses.response_custom_tool_call import ResponseCustomToolCall
 
 from dahaze_api.domain.llm import EbnfGrammar
+from dahaze_api.domain.rspdl import RspdlSource
 from dahaze_api.infrastructure.llm.grammar import (
     EbnfConversionError,
     ebnf_to_lark,
@@ -23,9 +26,52 @@ from dahaze_api.infrastructure.llm.prompts import PROMPT_RSPDL_VERSION, SYSTEM_P
 from dahaze_api.infrastructure.rspdl import LocalRspdlCompiler
 
 
+def _passing_prompt_examples() -> list[str]:
+    """프롬프트가 통과한다고 선언한 RSPDL 코드 블록만 꺼낸다."""
+
+    markdown = (
+        resources.files("dahaze_api.infrastructure.llm.prompts")
+        .joinpath("examples_ko.md")
+        .read_text(encoding="utf-8")
+    )
+    passing, _, _rejected = markdown.partition("# 거부되는 예시")
+    sections = re.split(r"^## 예시 \d+.*$", passing, flags=re.MULTILINE)[1:]
+    examples: list[str] = []
+
+    for section in sections:
+        source_lines: list[str] = []
+        started = False
+        for line in section.splitlines():
+            if line.startswith("    "):
+                started = True
+                source_lines.append(line[4:])
+            elif started and not line:
+                source_lines.append("")
+            elif started:
+                break
+        examples.append("\n".join(source_lines).rstrip() + "\n")
+
+    return examples
+
+
 def test_prompt_grammar_and_compiler_versions_move_together() -> None:
     assert GRAMMAR_RSPDL_VERSION == PROMPT_RSPDL_VERSION
     assert LocalRspdlCompiler().runtime.rspdl_version == GRAMMAR_RSPDL_VERSION
+
+
+@pytest.mark.parametrize(
+    "source",
+    _passing_prompt_examples(),
+    ids=("inventory", "expense-policy", "relations", "screen-calculation"),
+)
+async def test_passing_prompt_examples_match_grammar_and_compiler(source: str) -> None:
+    definition = ebnf_to_lark(load_rspdl_grammar())
+
+    assert is_complete_lark_document(definition, source)
+    outcome = await LocalRspdlCompiler().compile(
+        [RspdlSource(path="prompt-example.rspdl", text=source)]
+    )
+    assert outcome.result["files"][0]["diagnostics"] == []
 
 
 def test_canonical_ebnf_is_converted_to_lark_at_the_provider_boundary() -> None:
