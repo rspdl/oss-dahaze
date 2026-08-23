@@ -61,17 +61,22 @@ mkdir -p /tmp/dahaze-corpus
 python3 scripts/rspdl_recompile_report.py --to 0.2.0 --corpus /tmp/dahaze-corpus
 ```
 
-### 4. LLM 프롬프트를 점검한다
+### 4. LLM 프롬프트와 출력 EBNF를 점검한다
 
 `infrastructure/llm/prompts/` 의 문법 요약과 예제는 **컴파일러 버전과 함께 늙는다.**
 문법이 바뀌었는데 프롬프트를 그대로 두면 LLM이 옛 문법을 계속 만들어내고, 사용자는
 "AI가 만든 초안이 항상 컴파일 오류를 낸다" 는 형태로 겪는다.
 
+`infrastructure/llm/grammars/rspdl.ebnf`도 같은 버전에 묶인다. 프롬프트만 새 문형을 설명하고
+constrained decoding 문법이 그 문형을 허용하지 않으면 모델은 올바른 출력을 만들 수 없다.
+
 **재컴파일 리포트로는 이 회귀가 드러나지 않는다.** 코퍼스는 이미 존재하는 문서를 검사할 뿐,
 앞으로 생성될 텍스트를 검사하지 않는다. 그러니 별도로 확인한다.
 
 - 프롬프트의 예제를 새 버전으로 컴파일해 진단이 없는지 본다
-- CHANGELOG 에 문법 추가·변경이 있으면 프롬프트에 반영한다
+- EBNF를 Lark로 변환하고 대표 예제를 그 문법으로 파싱한다
+- CHANGELOG 에 문법 추가·변경이 있으면 프롬프트와 EBNF에 함께 반영한다
+- `PROMPT_RSPDL_VERSION`, `GRAMMAR_RSPDL_VERSION`, 설치된 컴파일러 버전이 같은지 확인한다
 
 ### 5. wire schema가 바뀌었다면
 

@@ -3,8 +3,8 @@ id: mcp-and-llm-authoring
 title: MCP Server and LLM Authoring Loop
 type: adr
 status: accepted
-version: "1"
-summary: Serves MCP and an OpenAI-backed authoring loop from the API, and requires every generated draft to pass the compiler before a human sees it.
+version: "2"
+summary: Serves MCP and a provider-independent, grammar-constrained LLM authoring loop from the API, and requires every generated draft to pass the compiler before a human sees it.
 topics:
   - mcp
   - llm
@@ -14,7 +14,7 @@ related:
   - rspdl-compiler-integration
   - document-storage-model
   - monorepo-structure-and-stack
-last_updated: "2026-08-17"
+last_updated: "2026-08-23"
 owners:
   - rspdl-maintainers
 ---
@@ -51,6 +51,25 @@ RSPDL은 한국어 선언형 문법이고 `0.x`다. LLM이 그럴듯하지만 �
 
 이건 `AGENTS.md`의 "LLM 출력도 사람 출력과 같은 컴파일러 게이트를 통과한다" 를 코드로 옮긴 것이다.
 RSPDL `AGENTS.md`에도 같은 원칙이 있다.
+
+### 문법 정합성은 디코딩 시점에 강제한다
+
+프롬프트에 "RSPDL만 출력하라"고 쓰는 것은 형식 보장이 아니다. 모델이 코드 펜스나 설명을
+붙인 뒤 사후 처리로 걷어내는 방식도 새로운 해석 규칙을 dahaze에 만든다. 따라서 LLM 호출에는
+항상 **공급자 독립 EBNF 문법**을 함께 전달하고, 어댑터가 자신의 constrained decoding 형식으로
+변환한다.
+
+- dahaze 저작용 canonical EBNF 스냅샷은 `infrastructure/llm/grammars/rspdl.ebnf`에 둔다.
+  RSPDL의 규범 문법 소유권은 계속 `rspdl-core`에 있다.
+- `LlmPort`는 EBNF 값만 받는다. OpenAI SDK나 xgrammar 타입은 port 밖으로 나오지 않는다.
+- OpenAI 어댑터는 EBNF를 Lark CFG로 바꾸고 Responses API custom tool의
+  `format: {type: "grammar", syntax: "lark", definition: ...}`으로 보낸다. 생성 전문은 이름이
+  일치하는 `custom_tool_call.input`에서만 꺼낸다.
+- self-hosted 어댑터는 같은 EBNF를 xgrammar 등 해당 런타임의 요청 형식으로 바꿀 수 있다.
+
+문법 제약은 **구문 정합성**만 보장한다. 참조가 존재하는지, 데이터 lifecycle이 닫히는지,
+정책이 충돌하는지 같은 의미 정합성의 유일한 판정자는 여전히 RSPDL 컴파일러다. 그래서
+constrained decoding을 도입해도 기존 컴파일-진단-유한 재시도 루프를 제거하지 않는다.
 
 ### 자동 저장하지 않는다
 
@@ -92,6 +111,10 @@ MCP 클라이언트는 브라우저 쿠키를 쓸 수 없다. 완전한 MCP OAut
 ## 대안
 
 - **LLM 출력을 그대로 저장** — 가장 빠르지만 제품 약속과 정면으로 충돌한다.
+- **프롬프트와 사후 파싱만으로 형식을 교정** — 공급자가 형식을 어기면 재시도를 낭비하고,
+  dahaze가 코드 펜스 제거 같은 비공식 문법을 소유하게 된다.
+- **OpenAI Lark를 port 계약으로 사용** — 당장은 단순하지만 self-hosted xgrammar 구현까지
+  OpenAI 전송 형식에 결합된다.
 - **프론트에서 LLM 직접 호출** — API 키가 브라우저로 나가고, 컴파일 게이트를 우회할 수 있다.
 - **MCP를 별도 앱으로 분리** — 수명주기는 분리되지만 인증·DB 접근이 이중화된다. 도구가 결국
   같은 유스케이스를 부르므로 이득이 비용보다 작다.
@@ -99,6 +122,8 @@ MCP 클라이언트는 브라우저 쿠키를 쓸 수 없다. 완전한 MCP OAut
 ## 결과
 
 - MCP와 REST가 같은 접근 검사와 같은 컴파일 게이트를 지난다.
+- EBNF 원본 하나를 공급자별 constrained decoding 형식으로 변환할 수 있다.
+- OpenAI와 self-hosted LLM 구현이 같은 port를 구현하고 애플리케이션을 바꾸지 않는다.
 - LLM이 만든 어떤 텍스트도 진단 없이 사용자에게 도달하지 않는다.
 - MCP 토큰은 폐기할 수 없다. TTL 안에서만 유효하며, 폐기가 필요하면 후속 작업이 필요하다.
 - rspdl 버전을 올릴 때 프롬프트 점검이 절차에 포함된다.
