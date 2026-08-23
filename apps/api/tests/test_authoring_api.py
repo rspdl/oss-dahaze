@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dahaze_api.application.authoring import MAX_REPAIR_ATTEMPTS
 from dahaze_api.domain.entities import User
+from dahaze_api.domain.llm import EbnfGrammar
 from dahaze_api.infrastructure.db.session import get_session
 from dahaze_api.interface.rest import authoring
 from dahaze_api.interface.rest.dependencies import get_current_user, get_llm
@@ -54,12 +55,14 @@ class FakeLlm:
         instruction: str,
         current_text: str | None,
         diagnostics: Sequence[Mapping[str, Any]],
+        grammar: EbnfGrammar,
     ) -> str:
         self.calls.append(
             {
                 "instruction": instruction,
                 "current_text": current_text,
                 "diagnostics": list(diagnostics),
+                "grammar": grammar,
             }
         )
         index = min(len(self.calls) - 1, len(self._texts) - 1)
@@ -137,6 +140,8 @@ async def test_clean_draft_stops_after_one_attempt(
     assert body["attempts"] == [{"attempt": 1, "diagnostic_count": 0}]
     assert body["analysis"]["result"]["files"][0]["diagnostics"] == []
     assert len(llm.calls) == 1
+    assert llm.calls[0]["grammar"].name == "rspdl-0.1.0"
+    assert llm.calls[0]["grammar"].start_rule == "document"
 
 
 async def test_diagnostics_are_fed_back_until_the_draft_compiles(
@@ -164,6 +169,7 @@ async def test_diagnostics_are_fed_back_until_the_draft_compiles(
     # 같은 실수를 반복할 이유가 그대로 남는다.
     assert llm.calls[0]["diagnostics"] == []
     assert llm.calls[1]["current_text"] == BROKEN_TEXT
+    assert llm.calls[1]["grammar"] is llm.calls[0]["grammar"]
     # 진단은 컴파일러가 준 모양 그대로 간다. 요약해서 넘기면 어디를 고칠지 알 수 없다.
     fed_back = llm.calls[1]["diagnostics"][0]
     assert fed_back["rule_id"].startswith("RSPDL-")

@@ -13,21 +13,20 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 import openai
-from openai.types.chat import ChatCompletionMessageParam
+from openai.types.responses.custom_tool_param import CustomToolParam
+from openai.types.responses.response_custom_tool_call import ResponseCustomToolCall
+from openai.types.responses.tool_choice_custom_param import ToolChoiceCustomParam
 
+from dahaze_api.domain.llm import EbnfGrammar
+from dahaze_api.infrastructure.llm.grammar import ebnf_to_lark
 from dahaze_api.infrastructure.llm.prompts import SYSTEM_PROMPT, build_user_prompt
 
 # 초안 하나를 기다릴 한도. 저작 루프는 이 호출을 최대 `1 + MAX_REPAIR_ATTEMPTS` 번 하므로,
 # 한 번의 한도가 곧 요청 전체 지연의 배수가 된다.
 DEFAULT_TIMEOUT_S = 60.0
 
-# RSPDL 은 결정론이 계약인 언어다. 같은 지시에 매번 다른 초안이 나오면 사용자는 재시도가
-# 개선인지 운인지 구분할 수 없다.
-DEFAULT_TEMPERATURE = 0.0
-
-# 코드 펜스를 붙이지 말라고 프롬프트에 적어도 모델은 종종 붙인다. 그대로 컴파일러에 넣으면
-# 첫 줄부터 문법 오류가 나고, 수리 시도 한 번이 통째로 낭비된다.
-_FENCE = "```"
+_TOOL_NAME = "emit_rspdl_document"
+_TOOL_DESCRIPTION = "Return the complete RSPDL document and no other text."
 
 
 class LlmError(Exception):
@@ -46,24 +45,8 @@ class LlmUnavailable(LlmError):
     """상류 API 가 응답하지 않거나 쓸 수 없는 응답을 줬다."""
 
 
-def _strip_fence(text: str) -> str:
-    """모델이 감싼 코드 펜스를 벗긴다.
-
-    RSPDL 소스 자체에는 백틱 세 개로 시작하는 줄이 없으므로, 첫 줄과 마지막 줄만 보고
-    벗겨도 본문을 잘라낼 위험이 없다.
-    """
-    stripped = text.strip()
-    if not stripped.startswith(_FENCE):
-        return stripped
-
-    lines = stripped.splitlines()
-    if lines[-1].strip() == _FENCE:
-        lines = lines[:-1]
-    return "\n".join(lines[1:]).strip()
-
-
 class OpenAiLlm:
-    """OpenAI Chat Completions 로 RSPDL 초안을 만든다."""
+    """OpenAI Responses API의 Lark constrained decoding으로 RSPDL 초안을 만든다."""
 
     def __init__(
         self,
@@ -87,31 +70,39 @@ class OpenAiLlm:
         instruction: str,
         current_text: str | None,
         diagnostics: Sequence[Mapping[str, Any]],
+        grammar: EbnfGrammar,
     ) -> str:
-        messages: list[ChatCompletionMessageParam] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": build_user_prompt(
+        tool: CustomToolParam = {
+            "type": "custom",
+            "name": _TOOL_NAME,
+            "description": _TOOL_DESCRIPTION,
+            "format": {
+                "type": "grammar",
+                "syntax": "lark",
+                "definition": ebnf_to_lark(grammar),
+            },
+        }
+        tool_choice: ToolChoiceCustomParam = {"type": "custom", "name": _TOOL_NAME}
+
+        try:
+            response = await self._client.responses.create(
+                model=self._model,
+                instructions=SYSTEM_PROMPT,
+                input=build_user_prompt(
                     instruction=instruction,
                     current_text=current_text,
                     diagnostics=diagnostics,
                 ),
-            },
-        ]
-
-        try:
-            response = await self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                temperature=DEFAULT_TEMPERATURE,
+                tools=[tool],
+                tool_choice=tool_choice,
             )
         except openai.OpenAIError as exc:
             raise LlmUnavailable(f"OpenAI 호출에 실패했다: {exc}") from exc
 
-        content = response.choices[0].message.content if response.choices else None
-        if content is None:
-            # 빈 응답을 빈 소스로 취급하면 "모듈 선언이 없다" 는 엉뚱한 진단이 나가고,
-            # 사용자는 자기 지시가 잘못됐다고 오해하게 된다.
-            raise LlmUnavailable("OpenAI 가 본문 없는 응답을 돌려줬다")
-        return _strip_fence(content)
+        for item in response.output:
+            if isinstance(item, ResponseCustomToolCall) and item.name == _TOOL_NAME and item.input:
+                return item.input
+
+        # 빈 응답을 빈 소스로 취급하면 "모듈 선언이 없다" 는 엉뚱한 진단이 나가고,
+        # 사용자는 자기 지시가 잘못됐다고 오해하게 된다.
+        raise LlmUnavailable("OpenAI 가 RSPDL custom tool 호출을 돌려주지 않았다")

@@ -40,7 +40,8 @@ class Settings(BaseSettings):
 
     # --- LLM ---
     openai_api_key: str | None = None
-    openai_model: str = "gpt-4.1"
+    # custom tool의 Lark grammar constrained decoding을 지원하는 Responses API 모델.
+    openai_model: str = "gpt-5.6"
 
     @property
     def cors_origins(self) -> list[str]:

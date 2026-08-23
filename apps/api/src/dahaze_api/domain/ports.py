@@ -20,6 +20,7 @@ from dahaze_api.domain.entities import (
     ProjectRole,
     User,
 )
+from dahaze_api.domain.llm import EbnfGrammar
 from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlRuntime, RspdlSource
 
 
@@ -105,8 +106,9 @@ class LlmPort(Protocol):
         instruction: str,
         current_text: str | None,
         diagnostics: Sequence[Mapping[str, Any]],
+        grammar: EbnfGrammar,
     ) -> str:
-        """지시와 현재 진단을 받아 RSPDL 소스 전문을 돌려준다.
+        """지시, 현재 진단과 EBNF 문법을 받아 RSPDL 소스 전문을 돌려준다.
 
         결과는 항상 컴파일러를 다시 통과시킨다. LLM 출력도 사람 출력과 같은 게이트를
         지나야 한다 — RSPDL AGENTS.md 의 원칙과 같다.
@@ -114,6 +116,10 @@ class LlmPort(Protocol):
         `diagnostics` 는 컴파일러가 준 진단 그대로다. 구현체가 이를 요약하거나 걸러내면
         `rule_id` 와 `span` 이 사라져 무엇을 고쳐야 할지 알 수 없게 된다.
         부분 수정본이 아니라 **전문**을 돌려준다 — 병합은 또 하나의 해석이다.
+
+        `grammar` 는 공급자 독립 원본이다. OpenAI 어댑터는 Lark CFG로 바꾸고,
+        self-hosted 어댑터는 xgrammar 등 자신의 constrained decoding 형식으로 바꾼다.
+        application 계층이 그 전송 형식을 알면 벤더 교체 경계가 무너진다.
         """
         ...
 
