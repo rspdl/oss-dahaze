@@ -208,7 +208,7 @@ $ put $P/COOKIE_SECURE       "true"                                             
 $ put $P/COOKIE_SAMESITE     "lax"                                                     String
 $ put $P/OAUTH_REDIRECT_URI  "https://api.dahaze.xyz/api/auth/github/callback"         String
 $ put $P/WEB_POST_LOGIN_URL  "https://app.dahaze.xyz"                                  String
-$ put $P/OPENAI_MODEL        "gpt-5.6"                                                 String
+$ put $P/OPENAI_MODEL        "gpt-5-nano"                                              String
 $ put $P/POSTGRES_DB         "dahaze"                                                  String
 $ put $P/POSTGRES_USER       "dahaze"                                                  String
 ```
