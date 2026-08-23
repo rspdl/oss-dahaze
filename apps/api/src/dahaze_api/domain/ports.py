@@ -14,6 +14,7 @@ from dahaze_api.domain.entities import (
     Document,
     DocumentRevision,
     ExternalIdentity,
+    PasswordCredential,
     Project,
     ProjectMembership,
     ProjectRole,
@@ -130,6 +131,50 @@ class UserRepositoryPort(Protocol):
     async def create_from_identity(self, identity: ExternalIdentity) -> User:
         """신원으로 사용자를 새로 만든다. 같은 사람이 다른 벤더로 로그인하면
         별도 사용자가 된다 — 계정 병합은 아직 지원하지 않는다."""
+        ...
+
+    async def create(self, *, display_name: str, email: str | None) -> User:
+        """외부 신원 없이 사용자를 만든다. 회원가입으로 들어온 사람이 여기로 온다."""
+        ...
+
+
+class PasswordCredentialRepositoryPort(Protocol):
+    """아이디·비밀번호 자격증명.
+
+    `UserRepositoryPort` 와 나눠 둔 이유는 저장소가 아니라 **읽는 사람** 때문이다. 사용자
+    저장소에 `find_by_login` 이 섞여 있으면 그 login 이 GitHub 의 것인지 우리 것인지
+    이름만으로는 알 수 없다.
+    """
+
+    async def find_by_login(self, login: str) -> PasswordCredential | None:
+        """정규화된 아이디로 찾는다. 정규화는 유스케이스가 이미 끝냈다."""
+        ...
+
+    async def create(
+        self, *, user_id: UUID, login: str, password_hash: str
+    ) -> PasswordCredential | None:
+        """만들어진 자격증명. 그 아이디가 이미 있으면 `None`.
+
+        예외가 아니라 `None` 인 이유는 경쟁을 정상 흐름으로 다루기 위해서다. 유니크 제약
+        위반을 예외로 받으면 그 예외가 저장소 기술마다 다르고, 그걸 잡으려면 위 계층이
+        SQLAlchemy 를 알아야 한다.
+        """
+        ...
+
+
+class PasswordHasherPort(Protocol):
+    """비밀번호 → 저장 가능한 해시.
+
+    두 메서드가 async 인 것은 I/O 때문이 아니라 **CPU 때문**이다. 쓸 만한 비밀번호 해시는
+    일부러 느리게 만든 함수라, 구현체가 스레드로 넘기지 않으면 로그인 한 번이 이벤트 루프
+    전체를 그 시간만큼 멈춘다. port 를 async 로 두면 구현체가 그 사실을 잊기 어렵다.
+    """
+
+    async def hash(self, password: str) -> str:
+        ...
+
+    async def verify(self, *, password: str, hashed: str) -> bool:
+        """맞으면 `True`. 저장된 해시를 읽을 수 없어도 예외가 아니라 `False`."""
         ...
 
 

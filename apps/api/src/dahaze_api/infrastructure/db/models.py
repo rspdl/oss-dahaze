@@ -79,6 +79,35 @@ class UserIdentityRow(TimestampMixin, Base):
     user: Mapped[UserRow] = relationship(back_populates="identities")
 
 
+class PasswordCredentialRow(TimestampMixin, Base):
+    """아이디·비밀번호 자격증명. 사용자 한 명당 최대 하나.
+
+    `user_identities` 와 섞지 않는다. 저기는 외부 제공자가 확인해 준 신원을 담고, 여기는
+    우리가 직접 확인하는 비밀을 담는다. 한 테이블에 두면 "이 행에 해시가 있는가" 가
+    provider 값에 달린 분기가 되고, 그 분기는 언젠가 빠뜨려진다.
+
+    `login` 은 정규화된 형태(소문자)로만 들어온다. 정규화를 DB 가 아니라 유스케이스에서
+    하는 이유는, `citext` 나 함수 인덱스로 흉내 내면 조회하는 쪽이 무엇이 저장돼 있는지
+    모른 채 쓰게 되기 때문이다.
+    """
+
+    __tablename__ = "password_credentials"
+    __table_args__ = (
+        UniqueConstraint("login", name="uq_password_credential_login"),
+        # 한 사람이 비밀번호를 두 개 갖지 않는다.
+        UniqueConstraint("user_id", name="uq_password_credential_user"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    login: Mapped[str] = mapped_column(String(64), nullable=False)
+    # 알고리즘·파라미터·salt 가 함께 든 문자열이라 길이를 못 박지 않는다. 파라미터를
+    # 올리는 날 길이가 바뀌는데, 그때 `String(n)` 이 남아 있으면 조용히 잘린다.
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class ProjectRow(TimestampMixin, Base):
     __tablename__ = "projects"
     __table_args__ = (UniqueConstraint("slug", name="uq_project_slug"),)

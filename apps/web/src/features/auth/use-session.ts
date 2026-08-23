@@ -2,12 +2,13 @@
 
 import {
   getGetCurrentUserQueryKey,
-  useDevLogin,
   useGetCurrentUser,
   useLogout,
+  usePasswordLogin,
+  useRegister,
   type CurrentUserResponse,
 } from '@dahaze/api-client'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 import { isUnauthorized } from '@/shared/api/errors'
 
@@ -67,25 +68,36 @@ export function useSignOut() {
 }
 
 /**
- * 개발용 아이디·비밀번호 로그인.
+ * 아이디·비밀번호 로그인.
  *
  * OAuth 와 달리 페이지를 떠나지 않는다. 응답에 세션 쿠키가 실려 오므로, 성공하면 세션
  * 질의만 무효화하면 화면이 알아서 로그인 상태로 넘어간다.
  *
- * 이 문이 열려 있는지는 **서버가 정한다** (`/api/auth/providers` 의 `dev_login`).
- * 프론트에서 환경을 추측하지 않는다 — 빌드 환경과 붙어 있는 서버의 환경은 다를 수 있고,
- * 추측이 틀리면 열리지 않는 문의 폼을 그리게 된다.
+ * **환경을 보지 않는다.** 이 문은 개발이든 프로덕션이든 똑같이 열려 있다 — 환경에 따라
+ * 켜지고 꺼지는 로그인이 있으면 로컬에서 보는 화면과 배포된 화면이 갈린다.
  */
-export function useDevSignIn() {
+export function usePasswordSignIn() {
   const queryClient = useQueryClient()
 
-  return useDevLogin({
-    mutation: {
-      onSuccess: async () => {
-        await queryClient.invalidateQueries({
-          queryKey: getGetCurrentUserQueryKey(),
-        })
-      },
-    },
+  return usePasswordLogin({
+    mutation: { onSuccess: () => invalidateSession(queryClient) },
   })
+}
+
+/**
+ * 회원가입.
+ *
+ * 가입하면 그대로 로그인된 상태가 된다 (서버가 같은 응답에 세션 쿠키를 싣는다). 방금 정한
+ * 비밀번호를 로그인 탭에서 한 번 더 치게 하는 것은 확인이 아니라 마찰이다.
+ */
+export function useRegisterAccount() {
+  const queryClient = useQueryClient()
+
+  return useRegister({
+    mutation: { onSuccess: () => invalidateSession(queryClient) },
+  })
+}
+
+async function invalidateSession(queryClient: QueryClient) {
+  await queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() })
 }

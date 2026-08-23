@@ -19,8 +19,8 @@ import { useSession, useSignOut } from './use-session'
 /**
  * 계정 영역. 내비게이션 맨 아래에 산다.
  *
- * 로그아웃 상태에서는 아무 것도 그리지 않는다. 로그인 버튼은 첫 화면이 맥락과 함께 보여주는
- * 편이 낫고, 여기에도 두면 "지금 로그아웃 상태" 라는 사실이 두 곳에서 말해진다.
+ * 로그아웃 상태에서는 아무 것도 그리지 않는다. 그 상태에서는 `RequireSession` 이 이미
+ * `/login` 으로 보내는 중이라, 여기에 로그인 버튼을 두면 사라지는 화면에만 잠깐 보인다.
  */
 export function AccountMenu({ compact = false }: { compact?: boolean }) {
   const session = useSession()
@@ -68,7 +68,7 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
           onSelect={() => {
             signOut.mutate(undefined, {
               onSuccess: () => {
-                router.push('/')
+                router.push('/login')
               },
               onError: (error) => {
                 toast.error('로그아웃하지 못했습니다', {

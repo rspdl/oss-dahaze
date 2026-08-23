@@ -4,16 +4,14 @@
 구현하고 `build_providers` 에 자격증명이 있을 때만 등록되도록 넣는다. 라우터와 유스케이스는
 제공자 이름만 다루고 구현체를 모른다.
 
-개발용 비밀번호 로그인도 여기서 만든다. OAuth 제공자 목록에는 넣지 않는다 — 리다이렉트
-왕복이 없는 다른 종류의 문이라, 같은 목록에 섞으면 `/{provider}/login` 이 열지 못하는
-이름이 목록에 앉아 있게 된다.
+아이디·비밀번호 로그인은 여기 없다. 설정을 보고 고를 것이 없는 문이라 — 항상 열려 있고
+자격증명도 필요 없다 — registry 에 넣으면 "설정된 것만 담는다" 는 이 파일의 규칙이 깨진다.
 """
 
 from __future__ import annotations
 
 from dahaze_api.config import Settings
 from dahaze_api.domain.ports import OAuthProviderPort
-from dahaze_api.infrastructure.auth.dev import DevPasswordAuthenticator
 from dahaze_api.infrastructure.auth.github import GitHubOAuthProvider
 
 
@@ -36,15 +34,3 @@ def build_providers(settings: Settings) -> dict[str, OAuthProviderPort]:
     #     providers["google"] = GoogleOAuthProvider(...)
 
     return providers
-
-
-def build_dev_authenticator(settings: Settings) -> DevPasswordAuthenticator | None:
-    """개발용 비밀번호 로그인. 닫혀 있으면 `None`.
-
-    `None` 을 돌려주는 것이 곧 "이 문은 없다" 는 뜻이고, 라우터는 그 경우 404 를 준다.
-    끄는 판단은 전부 `Settings.dev_login_enabled` 안에 있다 — 조건이 두 군데로 갈라지면
-    한쪽만 고쳐지는 날이 온다.
-    """
-    if not settings.dev_login_enabled:
-        return None
-    return DevPasswordAuthenticator(password=settings.dev_login_password)

@@ -55,7 +55,7 @@ export function AppShell({
 
             {/* 좁은 화면에는 기둥이 접혀 있으니 제품 이름을 상단 막대가 대신 말한다. */}
             <Link
-              href="/"
+              href="/projects"
               className="rounded-control text-sm font-semibold tracking-tight md:hidden"
             >
               dahaze

@@ -116,7 +116,7 @@ export function AppSidebar() {
           )}
         >
           <Link
-            href="/"
+            href="/projects"
             className={cn(
               'rounded-control px-1 text-sm font-semibold tracking-tight',
               railed && 'md:hidden',
