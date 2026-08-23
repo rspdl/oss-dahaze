@@ -3,10 +3,14 @@
 # 프로덕션 compose 와 분리한다. 여기는 포트를 열고 비밀번호가 고정이며 하드닝이 없다 —
 # 로컬 전용이라는 뜻이다.
 #
-#   docker compose -f deploy/docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml up -d
 #
 # 이미지는 pgvector 포함본을 쓴다. 지금은 벡터 검색을 쓰지 않지만, 나중에 LLM 임베딩이
 # 필요해질 때 이미지를 바꾸면 로컬과 프로덕션이 갈라지므로 처음부터 맞춰 둔다.
+
+# 프로젝트 이름을 고정한다. 기본값은 이 파일이 든 디렉터리 이름이라, 파일을 옮기는 것만으로
+# 볼륨 이름이 바뀌고 로컬 DB 가 통째로 빈 것처럼 보인다 (실제로 deploy/ 에서 옮길 때 그랬다).
+name: dahaze
 
 services:
   db:

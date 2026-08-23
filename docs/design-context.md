@@ -15,7 +15,7 @@ related:
   - document-storage-model
   - deployment-infrastructure
   - mcp-and-llm-authoring
-last_updated: "2026-08-17"
+last_updated: "2026-08-23"
 owners:
   - rspdl-maintainers
 ---
@@ -89,8 +89,6 @@ API)과 `feat(api): 저장 계층과 인증 추가`(DB·OAuth·워크스페이�
 | `packages/ui` | shadcn 공용 컴포넌트 | 비어 있음 |
 | `packages/design-system` | 토큰·테마 | 비어 있음 |
 | `packages/rspdl-editor` | CodeMirror 6 RSPDL 모드 | 비어 있음 |
-| `infra/bootstrap`, `infra/prod` | Terraform (ADR-0004) | 비어 있음 |
-| `deploy/nginx`, `deploy/lightsail` | 리버스 프록시·롤아웃 | 비어 있음 |
 | `docs/rfcs`, `docs/guides` | ADR-0001이 예고한 문서 갈래 | 비어 있음 |
 | `packages/config` | 공유 tsconfig (eslint·tailwind 는 `apps/web` 과 함께) | `tsconfig/base.json` 하나뿐 |
 
@@ -98,10 +96,13 @@ API)과 `feat(api): 저장 계층과 인증 추가`(DB·OAuth·워크스페이�
 쓰는 소비자가 아직 없다는 뜻이고, [`.agents/skills/manage-ui-package/SKILL.md`](../.agents/skills/manage-ui-package/SKILL.md)의
 규칙은 전부 사전 규정이다.
 
-배포도 마찬가지다. [`docs/adr/0004-deployment-infrastructure.md`](adr/0004-deployment-infrastructure.md)가
-Lightsail·Terraform·시크릿 흐름을 정했지만 구현물은 없고, GitHub Actions에는
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) 하나만 있다 — 배포 워크플로우가 없다.
-로컬 Postgres용 [`deploy/docker-compose.dev.yml`](../deploy/docker-compose.dev.yml)만 존재한다.
+배포는 이 저장소에 없다. [`docs/adr/0004-deployment-infrastructure.md`](adr/0004-deployment-infrastructure.md)가
+정한 Lightsail·Terraform·시크릿 흐름의 **구현물은 비공개 저장소 `dahaze-infra` 가 소유한다.**
+여기 남은 배포 관련물은 이미지를 빌드하고 롤아웃을 트리거하는
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) 과
+[`apps/api/Dockerfile`](../apps/api/Dockerfile) 뿐이고, 그 워크플로우는 값을 파일에 두지 않고
+OIDC 와 repository variables 로만 받는다. 로컬 Postgres용
+[`docker-compose.dev.yml`](../docker-compose.dev.yml) 은 인프라가 아니라 개발 도구라 여기 남아 있다.
 
 ### MCP 와 LLM 저작에서 알아둘 것
 
@@ -188,7 +189,7 @@ packages/api-client/src/fetcher.ts        credentials: 'include'
 | **`result` 는 절대 재작성 금지** | 정렬·개명·평탄화 전부 | [ADR-0003](adr/0003-document-storage-model.md) |
 | **컴파일 결과를 테이블로 정규화 금지** | JSONB 한 칸에만 | [ADR-0003](adr/0003-document-storage-model.md) |
 | **접근 검사는 단일 진입점** | 소유자 전용 경로를 만들지 않는다 | [`workspace.py`](../apps/api/src/dahaze_api/application/workspace.py) |
-| **로컬 DB 호스트 포트는 55432** | 5432가 아니다 | [`docker-compose.dev.yml`](../deploy/docker-compose.dev.yml) |
+| **로컬 DB 호스트 포트는 55432** | 5432가 아니다 | [`docker-compose.dev.yml`](../docker-compose.dev.yml) |
 
 ### 4.1 arm64는 "느리다"가 아니라 "불가능하다"
 
@@ -291,7 +292,7 @@ RSPDL은 timeout을 성공으로 근사하지 않고 `unknown` 으로 남기므�
 
 ### 4.7 로컬 Postgres 호스트 포트는 55432다
 
-[`deploy/docker-compose.dev.yml`](../deploy/docker-compose.dev.yml) 은
+[`docker-compose.dev.yml`](../docker-compose.dev.yml) 은
 `127.0.0.1:${DAHAZE_DB_PORT:-55432}:5432` 로 바인딩한다. Windows/WSL이 5432를 예약 포트 범위에
 넣어 두는 경우가 있어 바인딩이 거부되기 때문이다. 그래서:
 
@@ -435,7 +436,7 @@ interface/rest/**  →  apps/api/openapi.json  →  packages/api-client/src/gene
 | LLM 초안 자동 저장 | 저장은 되돌릴 수 없는 리비전을 만든다. LLM이 조용히 덮어쓰면 사용자가 이력을 추적할 수 없다 | 하지 않는다 (결정) |
 | 인메모리 캐시 배선 | [`InMemoryAnalysisCache`](../apps/api/src/dahaze_api/infrastructure/cache.py) 는 존재하지만 dependencies가 `SqlAnalysisCache` 만 주입한다 | 필요가 확인되면 |
 | 프론트엔드 전체 | §2 — 아직 파일이 없다 | 다음 큰 작업 |
-| 배포 파이프라인·Terraform | [ADR-0004](adr/0004-deployment-infrastructure.md)가 설계만 해 뒀다 | 프론트 이후 |
+| 배포 파이프라인·Terraform | 이 저장소에 없다 — 비공개 저장소 `dahaze-infra` 가 소유한다 ([ADR-0004](adr/0004-deployment-infrastructure.md)) | 여기서 할 일이 아니다 |
 
 명시적 `TODO(` 마커는 커밋된 코드에 하나도 없다. 미완은 전부 위 표처럼 문서에 적혀 있다.
 
@@ -462,7 +463,7 @@ interface/rest/**  →  apps/api/openapi.json  →  packages/api-client/src/gene
 pnpm install
 cd apps/api && uv sync --extra dev && cp .env.example .env && cd -
 
-docker compose -f deploy/docker-compose.dev.yml up -d    # Postgres 17, 호스트 포트 55432
+docker compose -f docker-compose.dev.yml up -d    # Postgres 17, 호스트 포트 55432
 cd apps/api && uv run alembic upgrade head && cd -
 
 pnpm codegen                                             # openapi.json → API 클라이언트
@@ -514,9 +515,9 @@ cd apps/api && uv run pytest -q                     # Postgres 컨테이너가 �
 2. **프론트엔드** — `apps/web` · `packages/ui` · `packages/design-system` ·
    `packages/rspdl-editor` 넷 다 비어 있다. 백엔드 계약은 이미 준비되어 있으므로
    `pnpm codegen` 결과를 소비하는 것부터 시작한다.
-3. **배포** — Terraform(`infra/`), 프로덕션 compose와 nginx(`deploy/`), 배포 워크플로우.
-   [ADR-0004](adr/0004-deployment-infrastructure.md)에 아키텍처 가드·시크릿 흐름·컨테이너 하드닝
-   요구가 이미 적혀 있다.
+3. **배포** — 비공개 저장소 `dahaze-infra` 가 소유한다. 여기서 할 일은 아니지만,
+   [ADR-0004](adr/0004-deployment-infrastructure.md)의 아키텍처 가드·시크릿 흐름·컨테이너 하드닝
+   요구는 그대로 유효하다 — 그 저장소를 고칠 때 함께 읽는다.
 4. **rspdl 0.2.0 승격 준비** — DB의 `documents.text` 를 `.rspdl` 파일로 내보내는 스크립트가 없다
    (§6.1). 승격이 필요해지기 전에 만들어 두는 편이 낫다.
 

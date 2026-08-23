@@ -16,7 +16,7 @@ dahaze는 RSPDL 문법 파일을 저작하고 검증하는 웹 서비스입니�
 ```console
 pnpm install
 cd apps/api && uv sync --extra dev && cp .env.example .env && cd -
-docker compose -f deploy/docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml up -d
 cd apps/api && uv run alembic upgrade head && cd -
 ```
 
@@ -62,7 +62,6 @@ Apple Silicon 맥에서 로컬 개발은 됩니다. 그러나 **Linux arm64(AWS 
 | `packages/design-system` | 토큰과 테마 |
 | `packages/rspdl-editor` | CodeMirror 6 RSPDL 언어 모드 |
 | `packages/config` | 공유 tsconfig. eslint·tailwind 설정은 `apps/web` 과 함께 들어옵니다 |
-| `infra/` | Terraform (AWS Lightsail) |
 | `docs/adr` | 이미 내려진 기술 결정과 그 근거 |
 | `scripts/` | 검사 하네스 |
 
@@ -165,7 +164,7 @@ chore(deps): rspdl 0.2.0 으로 승격
 ```
 
 허용 타입: `feat` `fix` `docs` `refactor` `perf` `test` `build` `ci` `chore`
-스코프는 보통 `api` `web` `ui` `api-client` `infra` `adr` 중 하나입니다.
+스코프는 보통 `api` `web` `ui` `api-client` `adr` 중 하나입니다.
 
 ### 릴리스
 

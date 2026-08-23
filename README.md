@@ -19,7 +19,6 @@ RSPDL은 제품 기획의 데이터와 정책을 사람이 읽고 기계가 검�
 | `packages/ui` · `design-system` | 공용 컴포넌트와 디자인 토큰 |
 | `packages/config` | 공유 tsconfig. eslint·tailwind 설정은 `apps/web` 과 함께 들어온다 |
 | `packages/rspdl-editor` | CodeMirror 6 RSPDL 언어 모드 |
-| `infra/` | Terraform (AWS Lightsail) |
 
 ## 요구사항
 
@@ -50,7 +49,7 @@ Apple Silicon 맥에서 로컬 개발은 됩니다. 그러나 AWS Graviton(t4g) 
 pnpm install
 cd apps/api && uv sync --extra dev && cp .env.example .env && cd -
 
-docker compose -f deploy/docker-compose.dev.yml up -d   # Postgres
+docker compose -f docker-compose.dev.yml up -d   # Postgres
 cd apps/api && uv run alembic upgrade head && cd -
 
 pnpm codegen     # openapi.json 생성 → API 클라이언트 생성

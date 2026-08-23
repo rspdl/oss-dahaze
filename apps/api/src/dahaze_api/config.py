@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # --- DB ---
     # 앱은 postgresql:// 를 postgresql+asyncpg:// 로 치환한다 (infrastructure/db/session.py).
-    # 로컬 기본 포트가 5432 가 아닌 이유는 deploy/docker-compose.dev.yml 주석 참고.
+    # 로컬 기본 포트가 5432 가 아닌 이유는 docker-compose.dev.yml 주석 참고.
     database_url: str = "postgresql://dahaze:dahaze@localhost:55432/dahaze"
 
     # --- 세션 쿠키 ---

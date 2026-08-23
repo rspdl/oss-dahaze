@@ -4,7 +4,7 @@
 `ON CONFLICT DO NOTHING` 이 전부 방언에 의존한다. 이것들이 프로덕션에서만 다르게 동작하면
 테스트가 통과해도 아무것도 보장하지 못한다.
 
-    docker compose -f deploy/docker-compose.dev.yml up -d
+    docker compose -f docker-compose.dev.yml up -d
 """
 
 from __future__ import annotations
