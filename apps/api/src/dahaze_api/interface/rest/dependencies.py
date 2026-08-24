@@ -12,7 +12,7 @@ from uuid import UUID
 from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dahaze_api.application.analysis import AnalyzeWorkspace
+from dahaze_api.application.analysis import AnalyzeWorkspace, CompileProject
 from dahaze_api.application.auth import (
     RegisterWithPassword,
     SignInWithPassword,
@@ -122,6 +122,18 @@ def get_workspace(session: DbSession, compiler: Compiler) -> WorkspaceService:
     )
 
 
+Analyzer = Annotated[AnalyzeWorkspace, Depends(get_analyzer)]
+Workspace = Annotated[WorkspaceService, Depends(get_workspace)]
+
+
+def get_project_compiler(
+    workspace: Workspace, analyzer: Analyzer, compiler: Compiler
+) -> CompileProject:
+    """프로젝트 전체 컴파일. 접근 검사는 `WorkspaceService` 를, 캐시는 분석 유스케이스를
+    그대로 재사용한다 — 문서 하나를 컴파일하는 경로와 같은 게이트를 지나게 한다."""
+    return CompileProject(workspace=workspace, analyzer=analyzer, compiler=compiler)
+
+
 async def get_current_user(
     session: DbSession,
     tokens: Tokens,
@@ -143,8 +155,7 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
-Analyzer = Annotated[AnalyzeWorkspace, Depends(get_analyzer)]
-Workspace = Annotated[WorkspaceService, Depends(get_workspace)]
+ProjectCompiler = Annotated[CompileProject, Depends(get_project_compiler)]
 SignIn = Annotated[SignInWithProvider, Depends(get_sign_in)]
 Register = Annotated[RegisterWithPassword, Depends(get_register)]
 PasswordSignIn = Annotated[SignInWithPassword, Depends(get_password_sign_in)]

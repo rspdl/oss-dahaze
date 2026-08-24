@@ -30,6 +30,7 @@ import {
 } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
+import { documentHref } from '@/features/navigation/views'
 import { SpinnerIcon } from '@/shared/ui/icons'
 import { DraftResult } from '@/features/authoring/draft-result'
 
@@ -105,7 +106,7 @@ function useCreateAndOpen(projectId: string, onDone: () => void) {
           })
           toast.success(`문서 "${document.title}" 을(를) 만들었습니다`)
           onDone()
-          router.push(`/projects/${projectId}/documents/${document.id}`)
+          router.push(documentHref(projectId, document.id))
         },
         onError: (error) => {
           toast.error('문서를 만들지 못했습니다', { description: errorMessage(error) })

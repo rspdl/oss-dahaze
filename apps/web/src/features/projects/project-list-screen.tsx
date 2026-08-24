@@ -9,6 +9,10 @@ import { formatDateTime } from '@/shared/format'
 import { ChevronRightIcon, FolderIcon } from '@/shared/ui/icons'
 import { AppShell } from '@/shared/ui/app-shell'
 import { RequireSession } from '@/features/auth/require-session'
+import {
+  DEFAULT_PROJECT_VIEW,
+  viewHref,
+} from '@/features/navigation/views'
 import { CreateProjectDialog } from './create-project-dialog'
 
 export function ProjectListScreen() {
@@ -87,7 +91,9 @@ function ProjectList() {
 function ProjectRow({ project }: { project: ProjectResponse }) {
   return (
     <Link
-      href={`/projects/${project.id}`}
+      /* 기본 뷰로 곧장 보낸다. `/projects/{id}` 도 같은 곳으로 가지만 리다이렉트를
+         한 번 거치는 만큼 흰 화면이 길어진다. */
+      href={viewHref(project.id, DEFAULT_PROJECT_VIEW)}
       className="group flex items-start gap-4 py-4 transition-colors duration-200 ease-out-expo hover:bg-surface-raised"
     >
       <div className="min-w-0 flex-1">

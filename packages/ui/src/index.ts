@@ -105,6 +105,16 @@ export { Separator } from './components/separator'
 export { Skeleton } from './components/skeleton'
 export { Toaster } from './components/sonner'
 export {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './components/table'
+export {
   Tabs,
   TabsContent,
   TabsList,

@@ -5,9 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, type ReactNode } from 'react'
 import {
   useListDocuments,
-  useListProjects,
   type DocumentSummaryResponse,
-  type ProjectResponse,
 } from '@dahaze/api-client'
 import {
   Button,
@@ -21,24 +19,31 @@ import {
 
 import { AccountMenu } from '@/features/auth/account-menu'
 import { useSession } from '@/features/auth/use-session'
-import { CreateProjectDialog } from '@/features/projects/create-project-dialog'
 import { useSidebarStore } from '@/shared/ui/sidebar-store'
 import {
   FileIcon,
-  FolderIcon,
   PanelLeftIcon,
-  PlusIcon,
+  PenIcon,
+  ShieldIcon,
   XIcon,
 } from '@/shared/ui/icons'
+import { ProjectSwitcher } from './project-switcher'
+import {
+  PROJECT_VIEWS,
+  activeRoute,
+  documentHref,
+  viewHref,
+  type ProjectViewId,
+} from './views'
 
 /**
  * 왼쪽 내비게이션.
  *
- * 이 제품에서 사람이 오가는 축은 프로젝트 → 문서 하나뿐이다. 그 축을 헤더의 breadcrumb 로만
- * 표현하면 옆 문서로 건너가려 할 때마다 목록 화면을 거쳐야 한다. 그래서 축 자체를 화면
- * 왼쪽에 늘 펴 둔다 — **지금 있는 곳** 과 **갈 수 있는 곳** 이 한눈에 같이 보인다.
+ * 두 층으로 나뉜다. 위에서 **어느 프로젝트인지**를 고르고, 아래에서 **그 프로젝트를 어떻게
+ * 볼지**를 고른다. 두 가지를 한 트리에 섞어 두면 뷰가 늘어날 때마다 프로젝트 목록과 뷰
+ * 목록이 같은 자리를 다투고, 결국 둘 다 읽기 어려워진다.
  *
- * 도메인(프로젝트·문서)을 알기 때문에 `packages/ui` 가 아니라 여기 산다 (UI 패키지 스킬).
+ * 도메인(프로젝트·뷰·문서)을 알기 때문에 `packages/ui` 가 아니라 여기 산다 (UI 패키지 스킬).
  */
 export function AppSidebar() {
   const pathname = usePathname()
@@ -146,31 +151,72 @@ export function AppSidebar() {
           </Button>
         </div>
 
-        <nav
-          className={cn(
-            'flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto py-3',
-            railed ? 'md:items-center md:px-1.5' : 'px-2',
-          )}
-        >
-          {session.isSignedIn ? (
-            <SignedInNav
-              railed={railed}
-              activeProjectId={active.projectId}
-              activeDocumentId={active.documentId}
-            />
-          ) : session.isPending ? (
-            <NavSkeleton railed={railed} />
-          ) : (
-            <p
+        {session.isSignedIn ? (
+          <>
+            {/*
+              전환기는 스크롤 영역 **밖**에 둔다. 문서가 많아 아래가 길어져도 "지금 어느
+              프로젝트인지" 는 늘 보여야 한다 — 그게 아래 모든 것의 전제이기 때문이다.
+            */}
+            <div
               className={cn(
-                'px-2 py-1 text-xs leading-relaxed text-text-subtle',
-                railed && 'md:hidden',
+                'shrink-0 border-b py-2',
+                railed ? 'md:flex md:justify-center md:px-1.5' : 'px-2',
               )}
             >
-              로그인하면 프로젝트가 여기 나옵니다.
-            </p>
-          )}
-        </nav>
+              <ProjectSwitcher
+                activeProjectId={active.projectId}
+                activeView={active.view}
+                railed={railed}
+              />
+            </div>
+
+            <nav
+              aria-label="프로젝트 메뉴"
+              className={cn(
+                'flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3',
+                railed ? 'md:items-center md:px-1.5' : 'px-2',
+              )}
+            >
+              {active.projectId === null ? (
+                <p
+                  className={cn(
+                    'px-2 py-1 text-xs leading-relaxed text-text-subtle',
+                    railed && 'md:hidden',
+                  )}
+                >
+                  프로젝트를 고르면 메뉴가 나옵니다.
+                </p>
+              ) : (
+                <ProjectViewNav
+                  projectId={active.projectId}
+                  activeView={active.view}
+                  activeDocumentId={active.documentId}
+                  railed={railed}
+                />
+              )}
+            </nav>
+          </>
+        ) : (
+          <nav
+            className={cn(
+              'flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto py-3',
+              railed ? 'md:items-center md:px-1.5' : 'px-2',
+            )}
+          >
+            {session.isPending ? (
+              <NavSkeleton railed={railed} />
+            ) : (
+              <p
+                className={cn(
+                  'px-2 py-1 text-xs leading-relaxed text-text-subtle',
+                  railed && 'md:hidden',
+                )}
+              >
+                로그인하면 프로젝트가 여기 나옵니다.
+              </p>
+            )}
+          </nav>
+        )}
 
         <div
           className={cn(
@@ -185,131 +231,50 @@ export function AppSidebar() {
   )
 }
 
-/** 경로에서 지금 열려 있는 프로젝트·문서를 읽는다. 라우터가 이미 아는 사실이다. */
-function activeRoute(pathname: string): {
-  projectId: string | null
-  documentId: string | null
-} {
-  const match = /^\/projects\/([^/]+)(?:\/documents\/([^/]+))?/.exec(pathname)
-  if (match === null) return { projectId: null, documentId: null }
-  return { projectId: match[1] ?? null, documentId: match[2] ?? null }
+/** 뷰마다의 아이콘. 뜻은 옆 글자가 나르고, 기둥이 좁을 때만 혼자 선다. */
+const VIEW_ICONS: Record<ProjectViewId, ReactNode> = {
+  documents: <PenIcon className="size-4 shrink-0" />,
+  policies: <ShieldIcon className="size-4 shrink-0" />,
 }
 
-function SignedInNav({
-  railed,
-  activeProjectId,
+function ProjectViewNav({
+  projectId,
+  activeView,
   activeDocumentId,
+  railed,
 }: {
-  railed: boolean
-  activeProjectId: string | null
+  projectId: string
+  activeView: ProjectViewId | null
   activeDocumentId: string | null
+  railed: boolean
 }) {
-  const projects = useListProjects<ProjectResponse[]>(undefined, {
-    query: { staleTime: 30_000 },
-  })
-
   return (
     <>
-      <CreateProjectDialog
-        trigger={
-          <button
-            type="button"
-            className={cn(
-              'flex items-center rounded-control text-sm text-text-muted transition-colors duration-200 ease-out-expo hover:bg-surface-raised hover:text-text active:translate-y-px',
-              railed ? 'md:size-9 md:justify-center md:px-0' : 'gap-2 px-2 py-1.5',
-            )}
+      {PROJECT_VIEWS.map((view) => (
+        <div key={view.id}>
+          <NavRow
+            href={viewHref(projectId, view.id)}
+            railed={railed}
+            isActive={view.id === activeView}
+            tooltip={view.label}
+            icon={VIEW_ICONS[view.id]}
           >
-            <PlusIcon className="size-4 shrink-0" />
-            <span className={cn(railed && 'md:hidden')}>새 프로젝트</span>
-          </button>
-        }
-      />
+            {view.label}
+          </NavRow>
 
-      <SectionLabel railed={railed}>프로젝트</SectionLabel>
-
-      {projects.isPending ? (
-        <NavSkeleton railed={railed} />
-      ) : projects.error !== null ? (
-        <p
-          className={cn(
-            'px-2 py-1 text-xs leading-relaxed text-diagnostic-error',
-            railed && 'md:hidden',
-          )}
-        >
-          목록을 불러오지 못했습니다.
-        </p>
-      ) : (projects.data?.length ?? 0) === 0 ? (
-        <p
-          className={cn(
-            'px-2 py-1 text-xs leading-relaxed text-text-subtle',
-            railed && 'md:hidden',
-          )}
-        >
-          아직 프로젝트가 없습니다.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-0.5">
-          {projects.data?.map((project) => (
-            <li key={project.id}>
-              <ProjectNavItem
-                project={project}
-                railed={railed}
-                isActive={project.id === activeProjectId}
-                activeDocumentId={activeDocumentId}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
-    </>
-  )
-}
-
-function ProjectNavItem({
-  project,
-  railed,
-  isActive,
-  activeDocumentId,
-}: {
-  project: ProjectResponse
-  railed: boolean
-  isActive: boolean
-  activeDocumentId: string | null
-}) {
-  return (
-    <>
-      <NavRow
-        href={`/projects/${project.id}`}
-        railed={railed}
-        isActive={isActive}
-        tooltip={project.name}
-        icon={
-          railed ? (
-            /*
-              좁은 기둥에서는 프로젝트마다 아이콘이 같아 구분이 되지 않는다. 이름의 첫 글자를
-              쓰면 폴더 아이콘 열 개보다 훨씬 빨리 찾는다.
-            */
-            <span
-              aria-hidden
-              className="grid size-5 place-items-center rounded-indicator bg-surface-raised text-[0.625rem] font-semibold text-text-muted"
-            >
-              {[...project.name][0] ?? '·'}
-            </span>
-          ) : (
-            <FolderIcon className="size-4 shrink-0" />
-          )
-        }
-      >
-        {project.name}
-      </NavRow>
-
-      {/*
-        열려 있는 프로젝트의 문서만 펼친다. 전부 펼치면 목록이 길어져서 내비게이션이
-        아니라 또 하나의 목록 화면이 된다. 기둥 모드에서는 자리가 없어 아예 접는다.
-      */}
-      {isActive && !railed ? (
-        <DocumentNav projectId={project.id} activeDocumentId={activeDocumentId} />
-      ) : null}
+          {/*
+            문서 목록은 문서 편집 뷰 **안의** 것이므로 그 메뉴 아래에 들여 쓴다. 다른 뷰를
+            보는 동안에는 접는다 — 정책 표를 보는 사람에게 문서 목록은 지금 할 일이 아니다.
+            기둥 모드에서는 자리가 없어 아예 접는다.
+          */}
+          {view.id === 'documents' && activeView === 'documents' && !railed ? (
+            <DocumentNav
+              projectId={projectId}
+              activeDocumentId={activeDocumentId}
+            />
+          ) : null}
+        </div>
+      ))}
     </>
   )
 }
@@ -346,7 +311,7 @@ function DocumentNav({
           style={{ animationDelay: `${Math.min(index, 8) * 28}ms` }}
         >
           <NavRow
-            href={`/projects/${projectId}/documents/${document.id}`}
+            href={documentHref(projectId, document.id)}
             railed={false}
             isActive={document.id === activeDocumentId}
             icon={<FileIcon className="size-3.5 shrink-0" />}
@@ -410,25 +375,6 @@ function NavRow({
       <TooltipTrigger asChild>{row}</TooltipTrigger>
       <TooltipContent side="right">{tooltip}</TooltipContent>
     </Tooltip>
-  )
-}
-
-function SectionLabel({
-  children,
-  railed,
-}: {
-  children: ReactNode
-  railed: boolean
-}) {
-  return (
-    <p
-      className={cn(
-        'mt-3 mb-1 px-2 text-[0.6875rem] font-medium tracking-wide text-text-subtle uppercase',
-        railed && 'md:hidden',
-      )}
-    >
-      {children}
-    </p>
   )
 }
 
