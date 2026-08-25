@@ -25,3 +25,8 @@ __pycache__
 # 경로를 명시해 그것까지 함께 무시되지 않게 한다.
 apps/web/AGENTS.md
 apps/web/CLAUDE.md
+
+# 기여자가 각자 쓰는 로컬 도구와 OS 가 만드는 파일. 저장소의 내용이 아니므로 `git status`
+# 에서 진짜 변경을 가리지 않게 한다.
+.gstack/
+.DS_Store
