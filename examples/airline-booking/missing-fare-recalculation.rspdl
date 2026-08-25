@@ -1,0 +1,16 @@
+@모듈 운임 재계산 누락(fare_recalculation_missing)
+
+예약(booking)은 다음 필드들로 구성되어 있다.
+    총액(total): 필수 정수
+
+운임 항목(fare_item)은 다음 필드들로 구성되어 있다.
+    금액(amount): 필수 정수
+
+예약 작성 화면(create_booking)에서는 예약을 생성할 수 있다.
+예약 상세 화면(booking_detail)에서는 예약의 총액을 조회할 수 있다.
+운임 입력 화면(create_fare_item)에서는 운임 항목을 생성할 수 있다.
+운임 입력 화면(create_fare_item)에서는 운임 항목의 금액을 입력할 수 있다.
+운임 상세 화면(fare_detail)에서는 운임 항목의 금액을 조회할 수 있다.
+운임 변경 화면(update_fare_item)에서는 운임 항목의 금액을 수정할 수 있다.
+
+예약의 총액은 운임 항목의 금액의 합계로 계산한다.

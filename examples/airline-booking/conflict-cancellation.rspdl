@@ -1,0 +1,13 @@
+@모듈 예약 취소 결과 충돌(booking_cancellation_conflict)
+
+예약(booking)은 다음 필드들로 구성되어 있다.
+    예약 번호(id): 필수 문자열
+    상태(status): 필수 문자열
+
+예약 작성 화면(create_booking)에서는 예약을 생성할 수 있다.
+예약 작성 화면(create_booking)에서는 예약의 예약 번호, 상태를 입력할 수 있다.
+예약 상세 화면(booking_detail)에서는 예약의 예약 번호, 상태를 조회할 수 있다.
+
+예약 취소(cancel_booking)는 행동이다.
+예약 취소가 실행되면 예약을 수정한다.
+예약 취소가 실행되면 예약을 삭제한다.
