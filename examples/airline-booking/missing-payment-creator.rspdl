@@ -1,0 +1,9 @@
+@모듈 결제 생성 경로 누락(payment_creator_missing)
+
+결제(payment)는 다음 필드들로 구성되어 있다.
+    결제 번호(id): 필수 문자열
+    상태(status): 필수 문자열
+
+결제 상세 화면(payment_detail)에서는 결제의 결제 번호, 상태를 조회할 수 있다.
+결제 상태 변경 화면(update_payment)에서는 결제의 상태를 수정할 수 있다.
+결제 삭제 화면(delete_payment)에서는 결제를 삭제할 수 있다.

@@ -1,0 +1,7 @@
+@모듈 항공권 번호 생산자 누락(ticket_number_producer_missing)
+
+항공권(ticket)은 다음 필드들로 구성되어 있다.
+    항공권 번호(id): 필수 문자열
+
+발권 화면(issue_ticket)에서는 항공권을 생성할 수 있다.
+항공권 상세 화면(ticket_detail)에서는 항공권의 항공권 번호를 조회할 수 있다.
