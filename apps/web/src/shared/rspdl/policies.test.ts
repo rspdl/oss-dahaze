@@ -17,8 +17,14 @@ import {
  * IR 로 테스트하면 우리가 상상한 모양만 검증하게 되고, 정작 컴파일러가 주는 모양이
  * 달라도 초록불이 켜진다.
  *
+ * 입력은 `__policies-fixture/` 의 `.rspdl` 세 개다. 결과만 두면 픽스처를 넓히려 할 때마다
+ * 입력을 IR 에서 거꾸로 짐작해야 한다.
+ *
  * 재생성:
- *   rspdl.compile([...], locale=rspdl.SUPPORTED_LOCALE)["result"]
+ *   rspdl.compile(
+ *     [{path, text} for each __policies-fixture/*.rspdl],
+ *     locale=rspdl.SUPPORTED_LOCALE,
+ *   )["result"]
  */
 function response(result: unknown): ProjectCompileResponse {
   return {
@@ -47,7 +53,7 @@ describe('collectPolicies', () => {
   })
 
   it('여러 문서의 정책을 한 목록으로 모은다', () => {
-    expect(collected.rows).toHaveLength(5)
+    expect(collected.rows).toHaveLength(7)
     expect(new Set(collected.rows.map((row) => row.path))).toEqual(
       new Set(['expense.rspdl', 'ordering.rspdl', 'both.rspdl']),
     )
@@ -95,10 +101,23 @@ describe('collectPolicies', () => {
   it('정책이 걸린 필드에 제약을 붙인다', () => {
     const status = collected.fields.find((group) => group.field.name === '승인 상태')
     const amount = collected.fields.find((group) => group.field.name === '금액')
+    const applicant = collected.fields.find((group) => group.field.name === '신청자')
 
-    // `금액` 에는 정책이 없으므로 표에 등장하지 않는다 — 정책 검토는 스키마 뷰어가 아니다.
-    expect(amount).toBeUndefined()
+    // 제약이 걸리지 않은 필드는 빈 목록이지 누락이 아니다.
     expect(status?.constraints).toEqual([])
+    expect(amount?.constraints).toEqual([
+      expect.objectContaining({ left: '금액', operator: '>', right: '0' }),
+    ])
+    // 두 필드를 비교하는 제약은 양쪽 피연산자 모두에 붙어야 한다. `승인자` 에는 정책이
+    // 없어 표에 없지만, 그 사실이 `신청자` 쪽 부착까지 지우면 안 된다.
+    expect(applicant?.constraints).toEqual([
+      expect.objectContaining({ left: '신청자', operator: '≠', right: '승인자' }),
+    ])
+  })
+
+  it('정책이 없는 필드는 묶음에 넣지 않는다', () => {
+    // 정책 검토는 스키마 뷰어가 아니다. 제약이 걸려 있어도 정책이 없으면 나오지 않는다.
+    expect(collected.fields.find((group) => group.field.name === '승인자')).toBeUndefined()
   })
 
   it('필드를 건드리는 화면을 조작 종류와 함께 모은다', () => {
@@ -154,7 +173,7 @@ describe('필터와 묶기', () => {
       role: [roleId('회계 관리자'), roleId('사용자')],
     })
 
-    expect(rows).toHaveLength(2)
+    expect(rows).toHaveLength(4)
     expect(new Set(rows.map((row) => row.role.name))).toEqual(
       new Set(['회계 관리자', '사용자']),
     )

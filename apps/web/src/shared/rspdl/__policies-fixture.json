@@ -247,6 +247,22 @@
             "field_id": "expense.request.status",
             "action_id": "expense.change",
             "effect": "deny"
+          },
+          {
+            "id": "expense.policy_afde3595d96ead57",
+            "role_id": "expense.accounting_manager",
+            "model_id": "expense.request",
+            "field_id": "expense.request.amount",
+            "action_id": "expense.change",
+            "effect": "allow"
+          },
+          {
+            "id": "expense.policy_59ecfe6cbb6b2225",
+            "role_id": "expense.accounting_manager",
+            "model_id": "expense.request",
+            "field_id": "expense.request.applicant",
+            "action_id": "expense.change",
+            "effect": "allow"
           }
         ]
       },
@@ -259,8 +275,8 @@
             "field_id": "expense.request.amount"
           },
           "span": {
-            "start": 584,
-            "end": 697
+            "start": 572,
+            "end": 677
           }
         },
         {
@@ -271,8 +287,8 @@
             "field_id": "expense.request.applicant"
           },
           "span": {
-            "start": 584,
-            "end": 697
+            "start": 572,
+            "end": 677
           }
         },
         {
@@ -283,8 +299,8 @@
             "field_id": "expense.request.status"
           },
           "span": {
-            "start": 584,
-            "end": 697
+            "start": 572,
+            "end": 677
           }
         }
       ]
@@ -382,11 +398,11 @@
           "severity": "warning",
           "message_key": "semantic.lifecycle.produced_field_unread",
           "arguments": {
-            "field_id": "ordering.order.item_amount"
+            "field_id": "ordering.order.total"
           },
           "span": {
-            "start": 242,
-            "end": 331
+            "start": 171,
+            "end": 248
           }
         },
         {
@@ -394,11 +410,11 @@
           "severity": "warning",
           "message_key": "semantic.lifecycle.produced_field_unread",
           "arguments": {
-            "field_id": "ordering.order.total"
+            "field_id": "ordering.order.item_amount"
           },
           "span": {
-            "start": 333,
-            "end": 418
+            "start": 405,
+            "end": 490
           }
         }
       ]
