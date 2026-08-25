@@ -80,6 +80,11 @@ GitHub 으로도 들어오려면 OAuth App 을 만들어 `apps/api/.env` 에 자
 플랫폼, 아키텍처 경계, 린트, 타입, 테스트, OpenAPI 드리프트, codegen을 한 번에 검사합니다.
 CI와 같은 게이트입니다.
 
+## 데모
+
+- [항공 예약 시스템](examples/airline-booking/README.md) — 진단 없는 복합 기준선과 취소 결과
+  충돌, 관계 규칙 충돌, 데이터·필드 생산자 누락, 재계산 누락, 복수 생산자 반례
+
 ## 문서
 
 - [ADR-0001 모노레포 구조와 기술 스택](docs/adr/0001-monorepo-structure-and-stack.md)

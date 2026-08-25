@@ -1,0 +1,423 @@
+{
+  "files": [
+    {
+      "path": "both.rspdl",
+      "module": {
+        "id": "both",
+        "name": "이중",
+        "enums": [],
+        "models": [
+          {
+            "id": "both.doc",
+            "name": "문서",
+            "fields": [
+              {
+                "id": "both.doc.title",
+                "local_id": "title",
+                "name": "제목",
+                "required": true,
+                "value_type": {
+                  "kind": "string"
+                }
+              }
+            ]
+          }
+        ],
+        "constraints": [],
+        "roles": [
+          {
+            "id": "both.editor",
+            "name": "편집자"
+          }
+        ],
+        "actions": [
+          {
+            "id": "both.update",
+            "name": "수정"
+          }
+        ],
+        "policies": [
+          {
+            "id": "both.policy_097edfccb3b594cc",
+            "role_id": "both.editor",
+            "model_id": "both.doc",
+            "field_id": "both.doc.title",
+            "action_id": "both.update",
+            "effect": "allow"
+          },
+          {
+            "id": "both.policy_eca8a9a54aa55231",
+            "role_id": "both.editor",
+            "model_id": "both.doc",
+            "field_id": "both.doc.title",
+            "action_id": "both.update",
+            "effect": "deny"
+          }
+        ]
+      },
+      "diagnostics": []
+    },
+    {
+      "path": "expense.rspdl",
+      "module": {
+        "id": "expense",
+        "name": "비용 승인",
+        "enums": [
+          {
+            "id": "expense.status",
+            "name": "비용 상태",
+            "enum_type": {
+              "id": "expense.status",
+              "variants": [
+                "expense.status.approved",
+                "expense.status.draft",
+                "expense.status.submitted"
+              ]
+            },
+            "variants": [
+              {
+                "id": "expense.status.draft",
+                "local_id": "draft",
+                "name": "작성 중"
+              },
+              {
+                "id": "expense.status.submitted",
+                "local_id": "submitted",
+                "name": "제출됨"
+              },
+              {
+                "id": "expense.status.approved",
+                "local_id": "approved",
+                "name": "승인됨"
+              }
+            ]
+          }
+        ],
+        "models": [
+          {
+            "id": "expense.request",
+            "name": "비용 신청",
+            "fields": [
+              {
+                "id": "expense.request.applicant",
+                "local_id": "applicant",
+                "name": "신청자",
+                "required": true,
+                "value_type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "id": "expense.request.approver",
+                "local_id": "approver",
+                "name": "승인자",
+                "required": false,
+                "value_type": {
+                  "kind": "string"
+                }
+              },
+              {
+                "id": "expense.request.amount",
+                "local_id": "amount",
+                "name": "금액",
+                "required": true,
+                "value_type": {
+                  "kind": "integer"
+                }
+              },
+              {
+                "id": "expense.request.status",
+                "local_id": "status",
+                "name": "승인 상태",
+                "required": true,
+                "value_type": {
+                  "kind": "enum",
+                  "definition": {
+                    "id": "expense.status",
+                    "variants": [
+                      "expense.status.approved",
+                      "expense.status.draft",
+                      "expense.status.submitted"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "screens": [
+          {
+            "id": "expense.approve",
+            "name": "승인 화면",
+            "operations": [
+              {
+                "kind": "update",
+                "model_id": "expense.request",
+                "field_ids": [
+                  "expense.request.status"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "expense.create",
+            "name": "신청 화면",
+            "operations": [
+              {
+                "kind": "create",
+                "model_id": "expense.request"
+              },
+              {
+                "kind": "input",
+                "model_id": "expense.request",
+                "field_ids": [
+                  "expense.request.amount",
+                  "expense.request.applicant",
+                  "expense.request.status"
+                ]
+              }
+            ]
+          }
+        ],
+        "constraints": [
+          {
+            "id": "expense.constraint_72fbbd5f8aa621cb",
+            "model_id": "expense.request",
+            "left": {
+              "kind": "field",
+              "value": "expense.request.amount"
+            },
+            "operator": "greater_than",
+            "right": {
+              "kind": "constant",
+              "value": {
+                "value_type": {
+                  "kind": "integer"
+                },
+                "representation": {
+                  "kind": "integer",
+                  "value": "0"
+                }
+              }
+            }
+          },
+          {
+            "id": "expense.constraint_155bf2f54224bdd5",
+            "model_id": "expense.request",
+            "left": {
+              "kind": "field",
+              "value": "expense.request.applicant"
+            },
+            "operator": "not_equal",
+            "right": {
+              "kind": "field",
+              "value": "expense.request.approver"
+            }
+          }
+        ],
+        "roles": [
+          {
+            "id": "expense.accounting_manager",
+            "name": "회계 관리자"
+          },
+          {
+            "id": "expense.user",
+            "name": "사용자"
+          }
+        ],
+        "actions": [
+          {
+            "id": "expense.change",
+            "name": "변경"
+          }
+        ],
+        "policies": [
+          {
+            "id": "expense.policy_ba4affe2a2518f59",
+            "role_id": "expense.accounting_manager",
+            "model_id": "expense.request",
+            "field_id": "expense.request.status",
+            "action_id": "expense.change",
+            "effect": "allow"
+          },
+          {
+            "id": "expense.policy_ed44fa07413983b8",
+            "role_id": "expense.user",
+            "model_id": "expense.request",
+            "field_id": "expense.request.status",
+            "action_id": "expense.change",
+            "effect": "deny"
+          },
+          {
+            "id": "expense.policy_afde3595d96ead57",
+            "role_id": "expense.accounting_manager",
+            "model_id": "expense.request",
+            "field_id": "expense.request.amount",
+            "action_id": "expense.change",
+            "effect": "allow"
+          },
+          {
+            "id": "expense.policy_59ecfe6cbb6b2225",
+            "role_id": "expense.accounting_manager",
+            "model_id": "expense.request",
+            "field_id": "expense.request.applicant",
+            "action_id": "expense.change",
+            "effect": "allow"
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "expense.request.amount"
+          },
+          "span": {
+            "start": 572,
+            "end": 677
+          }
+        },
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "expense.request.applicant"
+          },
+          "span": {
+            "start": 572,
+            "end": 677
+          }
+        },
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "expense.request.status"
+          },
+          "span": {
+            "start": 572,
+            "end": 677
+          }
+        }
+      ]
+    },
+    {
+      "path": "ordering.rspdl",
+      "module": {
+        "id": "ordering",
+        "name": "주문",
+        "enums": [],
+        "models": [
+          {
+            "id": "ordering.order",
+            "name": "주문",
+            "fields": [
+              {
+                "id": "ordering.order.item_amount",
+                "local_id": "item_amount",
+                "name": "품목 금액",
+                "required": true,
+                "value_type": {
+                  "kind": "integer"
+                }
+              },
+              {
+                "id": "ordering.order.total",
+                "local_id": "total",
+                "name": "합계 금액",
+                "required": true,
+                "value_type": {
+                  "kind": "integer"
+                }
+              }
+            ]
+          }
+        ],
+        "screens": [
+          {
+            "id": "ordering.create_order",
+            "name": "주문 화면",
+            "operations": [
+              {
+                "kind": "create",
+                "model_id": "ordering.order"
+              },
+              {
+                "kind": "input",
+                "model_id": "ordering.order",
+                "field_ids": [
+                  "ordering.order.item_amount"
+                ]
+              }
+            ]
+          }
+        ],
+        "derivations": [
+          {
+            "target_field_id": "ordering.order.total",
+            "expression": {
+              "kind": "sum",
+              "source_field_id": "ordering.order.item_amount"
+            },
+            "recalculate_when_changed_field_ids": [
+              "ordering.order.item_amount"
+            ]
+          }
+        ],
+        "constraints": [],
+        "roles": [
+          {
+            "id": "ordering.admin",
+            "name": "관리자"
+          }
+        ],
+        "actions": [
+          {
+            "id": "ordering.read",
+            "name": "조회"
+          }
+        ],
+        "policies": [
+          {
+            "id": "ordering.policy_d64fbcb4171c8c87",
+            "role_id": "ordering.admin",
+            "model_id": "ordering.order",
+            "field_id": "ordering.order.total",
+            "action_id": "ordering.read",
+            "effect": "allow"
+          }
+        ]
+      },
+      "diagnostics": [
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "ordering.order.total"
+          },
+          "span": {
+            "start": 171,
+            "end": 248
+          }
+        },
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "ordering.order.item_amount"
+          },
+          "span": {
+            "start": 405,
+            "end": 490
+          }
+        }
+      ]
+    }
+  ]
+}

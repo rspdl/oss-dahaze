@@ -18,14 +18,20 @@ from dahaze_api.domain.entities import (
     ProjectMembership,
     ProjectRole,
 )
-from dahaze_api.interface.rest.dependencies import CurrentUser, Workspace
+from dahaze_api.interface.rest.dependencies import (
+    CurrentUser,
+    ProjectCompiler,
+    Workspace,
+)
 from dahaze_api.interface.rest.schemas import (
     AddMemberRequest,
+    CompiledDocumentRef,
     CreateDocumentRequest,
     CreateProjectRequest,
     DocumentResponse,
     DocumentRevisionResponse,
     DocumentSummaryResponse,
+    ProjectCompileResponse,
     ProjectMemberResponse,
     ProjectResponse,
     UpdateDocumentRequest,
@@ -148,6 +154,46 @@ async def archive_project(
     except AccessDenied as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     return _project(project)
+
+
+@router.get("/projects/{project_id}/compile", name="compile_project")
+async def compile_project(
+    project_id: UUID, user: CurrentUser, compile_project: ProjectCompiler
+) -> ProjectCompileResponse:
+    """프로젝트의 문서 전부를 한 워크스페이스로 컴파일한다.
+
+    정책 검토처럼 **문서 하나가 아니라 프로젝트 전체가 단위인 화면**을 위한 경로다. 프론트가
+    문서를 하나씩 받아 이어 붙이면 요청이 문서 수만큼 늘고, 진단이 언제 다 모였는지 알 수
+    없어 화면이 부분적으로 갱신된다.
+
+    `GET` 인 이유는 이 호출이 아무것도 바꾸지 않기 때문이다 — 같은 텍스트는 같은 결과를
+    낳고, 결과는 캐시에서 나온다.
+
+    진단은 여기서도 HTTP 오류가 아니다. `result` 안에 담겨 200 으로 돌아온다.
+    """
+    try:
+        compilation = await compile_project(actor_id=user.id, project_id=project_id)
+    except NotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+    return ProjectCompileResponse(
+        rspdl_version=compilation.runtime.rspdl_version,
+        wire_schema_version=compilation.runtime.wire_schema_version,
+        locale=compilation.runtime.locale,
+        result=(
+            None if compilation.outcome is None else dict(compilation.outcome.result)
+        ),
+        documents=[
+            CompiledDocumentRef(
+                id=d.id,
+                path=d.path,
+                title=d.title,
+                target_rspdl_version=d.target_rspdl_version,
+                updated_at=d.updated_at,
+            )
+            for d in compilation.documents
+        ],
+    )
 
 
 @router.get("/projects/{project_id}/members", name="list_project_members")
