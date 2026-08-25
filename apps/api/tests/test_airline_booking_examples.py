@@ -30,7 +30,7 @@ EXPECTED_DIAGNOSTICS = {
 @pytest.mark.parametrize("filename", EXPECTED_DIAGNOSTICS)
 async def test_airline_booking_example_diagnostics(filename: str) -> None:
     path = EXAMPLE_DIR / filename
-    source = RspdlSource(path=filename, text=path.read_text())
+    source = RspdlSource(path=filename, text=path.read_text(encoding="utf-8"))
 
     outcome = await LocalRspdlCompiler().compile([source])
 
