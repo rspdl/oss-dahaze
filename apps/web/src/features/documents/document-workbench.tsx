@@ -30,6 +30,7 @@ import { errorMessage } from '@/shared/api/errors'
 import { formatDateTime } from '@/shared/format'
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
 import { RequireSession } from '@/features/auth/require-session'
+import { viewHref } from '@/features/navigation/views'
 import { useCompile } from '@/features/analysis/use-compile'
 import { RevisePanel } from '@/features/authoring/revise-panel'
 import { DiagnosticsPanel } from './diagnostics-panel'
@@ -56,8 +57,7 @@ export function DocumentWorkbenchScreen({
       fullBleed
       breadcrumb={
         <>
-          <Crumb href="/projects">프로젝트</Crumb>
-          <Crumb href={`/projects/${projectId}`}>문서</Crumb>
+          <Crumb href={viewHref(projectId, 'documents')}>문서 편집</Crumb>
         </>
       }
     >
@@ -94,7 +94,7 @@ function DocumentLoader({
         description={errorMessage(query.error)}
         action={
           <Button variant="outline" asChild>
-            <Link href={`/projects/${projectId}`}>프로젝트로 돌아가기</Link>
+            <Link href={viewHref(projectId, 'documents')}>문서 목록으로</Link>
           </Button>
         }
       />

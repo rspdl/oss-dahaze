@@ -222,6 +222,42 @@ class DocumentSummaryResponse(BaseModel):
     updated_at: datetime
 
 
+class CompiledDocumentRef(BaseModel):
+    """컴파일에 참여한 문서 하나.
+
+    `path` 가 IR 의 `files[].path` 와 이어지는 유일한 고리다. 화면은 이것으로 "이 정책이
+    어느 문서에서 왔는가" 를 말한다 — IR 안에 문서 id 를 심지 않는다 (ADR-0003).
+    """
+
+    id: UUID = Field(description="문서 식별자")
+    path: str = Field(description="result.files[].path 와 같은 소스 경로")
+    title: str = Field(description="화면에 표시할 문서 제목")
+    target_rspdl_version: str = Field(description="문서가 대상으로 삼는 rspdl 버전")
+    updated_at: datetime = Field(description="컴파일에 사용한 저장 문서의 마지막 수정 시각")
+
+
+class ProjectCompileResponse(BaseModel):
+    """프로젝트의 문서 전부를 한 워크스페이스로 컴파일한 결과.
+
+    `result` 는 `AnalysisResponse` 와 같은 값이다 — RSPDL SDK 가 준 그대로이며 dahaze 가
+    재작성하지 않는다 (ADR-0003). 진단도 그 안에 담겨 온다.
+
+    문서가 하나도 없으면 컴파일러를 부르지 않으므로 `result` 는 `None` 이다. 파일 0개짜리
+    결과를 지어내면 "컴파일했는데 아무 문제 없었다" 와 "컴파일한 적이 없다" 가 화면에서
+    같아 보인다.
+    """
+
+    rspdl_version: str = Field(description="결과를 만든 컴파일러 버전")
+    wire_schema_version: int = Field(description="result 의 wire schema 버전")
+    locale: str = Field(description="컴파일에 사용한 locale")
+    result: dict[str, Any] | None = Field(
+        default=None, description="RSPDL SDK 결과 원본. 문서가 없으면 null"
+    )
+    documents: list[CompiledDocumentRef] = Field(
+        description="컴파일에 참여한 문서. `path` 로 `result.files[].path` 와 잇는다"
+    )
+
+
 class DocumentRevisionResponse(BaseModel):
     id: UUID
     document_id: UUID

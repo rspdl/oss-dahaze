@@ -58,9 +58,27 @@ function toDiagnostic(value: unknown): RspdlDiagnostic | null {
 export function collectDiagnostics(
   response: AnalysisResponse | undefined,
 ): CollectedDiagnostics {
-  if (response === undefined) return { diagnostics: [], recognized: true }
+  return collectDiagnosticsFromResult(response?.result)
+}
 
-  const files = response.result.files
+/**
+ * `result` 만 받는 형태.
+ *
+ * 문서 하나를 컴파일한 응답과 프로젝트 전체를 컴파일한 응답은 감싸는 봉투가 다르지만
+ * `result` 는 같다. 진단을 세려고 한쪽 응답을 다른 쪽 모양으로 꾸며 넘기는 대신 알맹이만
+ * 받는다 — 응답을 흉내내다 보면 언젠가 흉내가 어긋난다.
+ *
+ * 컴파일한 적이 없으면 (`null`·`undefined`) 진단 0건이다. "모르는 모양" 과는 다르므로
+ * `recognized` 는 참이다.
+ */
+export function collectDiagnosticsFromResult(
+  result: Record<string, unknown> | null | undefined,
+): CollectedDiagnostics {
+  if (result === null || result === undefined) {
+    return { diagnostics: [], recognized: true }
+  }
+
+  const files = result.files
   if (!Array.isArray(files)) return { diagnostics: [], recognized: false }
 
   const diagnostics: RspdlDiagnostic[] = []

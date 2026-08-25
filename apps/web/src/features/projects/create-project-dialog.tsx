@@ -24,6 +24,10 @@ import {
 } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
+import {
+  DEFAULT_PROJECT_VIEW,
+  viewHref,
+} from '@/features/navigation/views'
 
 /**
  * slug 는 서버가 소문자·숫자·하이픈만 받는다. 규칙을 두 곳에서 다르게 쓰지 않으려고
@@ -72,7 +76,7 @@ export function CreateProjectDialog({ trigger }: { trigger: ReactNode }) {
           setSlug('')
           setSlugTouched(false)
           setDescription('')
-          router.push(`/projects/${project.id}`)
+          router.push(viewHref(project.id, DEFAULT_PROJECT_VIEW))
         },
         onError: (error) => {
           toast.error('프로젝트를 만들지 못했습니다', {

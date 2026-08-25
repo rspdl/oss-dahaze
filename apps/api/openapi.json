@@ -179,6 +179,47 @@
         "title": "CompileRequest",
         "type": "object"
       },
+      "CompiledDocumentRef": {
+        "description": "컴파일에 참여한 문서 하나.\n\n`path` 가 IR 의 `files[].path` 와 이어지는 유일한 고리다. 화면은 이것으로 \"이 정책이\n어느 문서에서 왔는가\" 를 말한다 — IR 안에 문서 id 를 심지 않는다 (ADR-0003).",
+        "properties": {
+          "id": {
+            "description": "문서 식별자",
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "path": {
+            "description": "result.files[].path 와 같은 소스 경로",
+            "title": "Path",
+            "type": "string"
+          },
+          "target_rspdl_version": {
+            "description": "문서가 대상으로 삼는 rspdl 버전",
+            "title": "Target Rspdl Version",
+            "type": "string"
+          },
+          "title": {
+            "description": "화면에 표시할 문서 제목",
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "컴파일에 사용한 저장 문서의 마지막 수정 시각",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "title",
+          "target_rspdl_version",
+          "updated_at"
+        ],
+        "title": "CompiledDocumentRef",
+        "type": "object"
+      },
       "CreateDocumentRequest": {
         "properties": {
           "path": {
@@ -603,6 +644,55 @@
           "password"
         ],
         "title": "PasswordLoginRequest",
+        "type": "object"
+      },
+      "ProjectCompileResponse": {
+        "description": "프로젝트의 문서 전부를 한 워크스페이스로 컴파일한 결과.\n\n`result` 는 `AnalysisResponse` 와 같은 값이다 — RSPDL SDK 가 준 그대로이며 dahaze 가\n재작성하지 않는다 (ADR-0003). 진단도 그 안에 담겨 온다.\n\n문서가 하나도 없으면 컴파일러를 부르지 않으므로 `result` 는 `None` 이다. 파일 0개짜리\n결과를 지어내면 \"컴파일했는데 아무 문제 없었다\" 와 \"컴파일한 적이 없다\" 가 화면에서\n같아 보인다.",
+        "properties": {
+          "documents": {
+            "description": "컴파일에 참여한 문서. `path` 로 `result.files[].path` 와 잇는다",
+            "items": {
+              "$ref": "#/components/schemas/CompiledDocumentRef"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "locale": {
+            "description": "컴파일에 사용한 locale",
+            "title": "Locale",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RSPDL SDK 결과 원본. 문서가 없으면 null",
+            "title": "Result"
+          },
+          "rspdl_version": {
+            "description": "결과를 만든 컴파일러 버전",
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "wire_schema_version": {
+            "description": "result 의 wire schema 버전",
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "documents"
+        ],
+        "title": "ProjectCompileResponse",
         "type": "object"
       },
       "ProjectMemberResponse": {
@@ -1977,6 +2067,66 @@
           }
         },
         "summary": "Archive Project",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/compile": {
+      "get": {
+        "description": "프로젝트의 문서 전부를 한 워크스페이스로 컴파일한다.\n\n정책 검토처럼 **문서 하나가 아니라 프로젝트 전체가 단위인 화면**을 위한 경로다. 프론트가\n문서를 하나씩 받아 이어 붙이면 요청이 문서 수만큼 늘고, 진단이 언제 다 모였는지 알 수\n없어 화면이 부분적으로 갱신된다.\n\n`GET` 인 이유는 이 호출이 아무것도 바꾸지 않기 때문이다 — 같은 텍스트는 같은 결과를\n낳고, 결과는 캐시에서 나온다.\n\n진단은 여기서도 HTTP 오류가 아니다. `result` 안에 담겨 200 으로 돌아온다.",
+        "operationId": "compile_project",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectCompileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compile Project",
         "tags": [
           "workspace"
         ]

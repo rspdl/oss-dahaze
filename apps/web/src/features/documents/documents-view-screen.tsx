@@ -28,6 +28,7 @@ import {
 } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
+import { documentHref } from '@/features/navigation/views'
 import { formatDateTime } from '@/shared/format'
 import { ChevronRightIcon, FileIcon } from '@/shared/ui/icons'
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
@@ -35,10 +36,16 @@ import { RequireSession } from '@/features/auth/require-session'
 import { useRspdlRuntime } from '@/features/analysis/use-runtime'
 import { CreateDocumentDialog } from '@/features/documents/create-document-dialog'
 
-export function ProjectScreen({ projectId }: { projectId: string }) {
+/**
+ * 문서 편집 뷰. 프로젝트를 고른 뒤 왼쪽 메뉴에서 처음 만나는 화면이다.
+ *
+ * 프로젝트의 신원(이름·슬러그·기본 버전·보관)도 여기 있다. 그것만을 위한 화면을 따로
+ * 두면 아무도 가지 않는 경유지가 하나 생긴다 — 문서를 보러 온 김에 같이 보게 둔다.
+ */
+export function DocumentsViewScreen({ projectId }: { projectId: string }) {
   return (
     <AppShell
-      breadcrumb={<Crumb href="/projects">프로젝트</Crumb>}
+      breadcrumb={<Crumb>문서 편집</Crumb>}
       actions={
         <CreateDocumentDialog
           projectId={projectId}
@@ -230,7 +237,7 @@ function DocumentList({ projectId }: { projectId: string }) {
           style={{ animationDelay: `${Math.min(index, 10) * 35}ms` }}
         >
           <Link
-            href={`/projects/${projectId}/documents/${document.id}`}
+            href={documentHref(projectId, document.id)}
             className="group flex items-start gap-4 py-4 transition-colors duration-200 ease-out-expo hover:bg-surface-raised"
           >
             <div className="min-w-0 flex-1">
