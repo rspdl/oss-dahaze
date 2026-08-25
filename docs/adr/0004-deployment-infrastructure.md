@@ -4,7 +4,7 @@ title: Deployment Infrastructure
 type: adr
 status: accepted
 version: "1"
-summary: Deploys the frontend to Vercel and the backend to a single x86_64 AWS Lightsail instance running docker-compose, with Terraform owning the infrastructure.
+summary: Deploys the frontend to Vercel and the backend to a single x86_64 AWS Lightsail instance running docker-compose, with Terraform in a separate private repository owning the infrastructure.
 topics:
   - deployment
   - infrastructure
@@ -13,7 +13,7 @@ topics:
 related:
   - rspdl-compiler-integration
   - monorepo-structure-and-stack
-last_updated: "2026-08-17"
+last_updated: "2026-08-23"
 owners:
   - rspdl-maintainers
 ---
@@ -33,7 +33,38 @@ Accepted.
 | DB (Postgres) | 같은 인스턴스의 컨테이너 | 외부 노출 없음 |
 | 쿠키 | `.dahaze.xyz` 상위 도메인, `SameSite=Lax` | `app` ↔ `api` 세션 공유 |
 
-인프라는 `infra/` 의 Terraform 이 소유한다.
+인프라는 Terraform 이 소유하고, **그 Terraform 은 비공개 저장소 `dahaze-infra` 에 있다.**
+
+### 인프라 코드는 이 저장소에 두지 않는다
+
+이 저장소는 공개다. Terraform 과 배포 스크립트에는 시크릿이 없지만 — 시크릿은 Parameter
+Store 가 소유한다 — 인스턴스 ID·계정 ID·IAM 정책·nginx 설정·롤아웃 절차가 그대로 드러난다.
+그건 시크릿이 아니라 지도이고, 공개할 이유가 없다.
+
+| 무엇 | 어디 |
+|---|---|
+| Terraform (`infra/bootstrap` · `infra/prod`) | `dahaze-infra` (비공개) |
+| 프로덕션 compose · nginx · 롤아웃 스크립트 (`deploy/`) | `dahaze-infra` (비공개) |
+| 이미지 빌드와 롤아웃 트리거 (`.github/workflows/deploy.yml`) | 이 저장소 |
+| API 이미지 정의 (`apps/api/Dockerfile`) | 이 저장소 |
+| 로컬 개발용 Postgres (`docker-compose.dev.yml`) | 이 저장소 |
+
+배포 워크플로우가 여기 남은 것은 **이미지 빌드가 애플리케이션 코드의 일**이기 때문이다.
+그 워크플로우는 값을 파일에 두지 않는다 — AWS 는 OIDC 로 붙고, 인스턴스 ID·ECR 저장소·
+도메인은 전부 repository variables 에서 읽는다. 그래서 파일이 공개돼도 새로 드러나는 값이 없다.
+
+로컬 개발용 compose 는 인프라가 아니라 개발 도구다. 그게 없으면 기여자가 테스트를 돌릴 수
+없으므로 공개 저장소에 남긴다.
+
+인스턴스는 비공개 저장소를 clone 하지 않는다. deploy key 를 인스턴스에 두면 위의 "시크릿을
+인스턴스에 밀어 넣지 않는다"가 무너지기 때문이다. 대신 롤아웃 스크립트·프로덕션 compose·
+nginx 설정 세 파일을 운영자가 부트스트랩 때 한 번 놓고, 배포는 이미 놓인 스크립트를 SSM 으로
+부를 뿐이다. 인스턴스가 늘어나기 시작하면 S3 + 인스턴스 IAM 역할로 옮긴다.
+
+이 갈라짐의 대가는 **배포 방식을 바꿀 때 두 저장소를 함께 고치고 인스턴스에도 다시 놓아야
+한다**는 것이다. `rollout.sh` 의 인자가 바뀌면 `deploy.yml` 의 `send-command` 도 함께
+바뀌어야 하고, 그 불일치를 CI 가 잡아 주지 않는다. 그래서 배포 경로를 건드리는 PR 은 짝이
+되는 PR 을 함께 연다.
 
 ### 아키텍처는 x86_64 로 고정한다
 
@@ -97,3 +128,5 @@ Postgres 는 컨테이너이므로 스냅샷 백업을 별도로 챙겨야 한�
 - 인스턴스가 SSM 에서 떨어져 나가면 배포가 막힌다. SSH 라는 우회로를 없앤 대가이며,
   복구는 Lightsail 콘솔의 브라우저 SSH 로 한다.
 - 첫 인증서 발급과 DNS 등록은 여전히 사람이 한 번 한다.
+- 공개 저장소만 보고는 인프라를 재현할 수 없다. 의도한 결과이며, 대신 이 ADR 이
+  무엇이 어디 있는지를 밝힌다.

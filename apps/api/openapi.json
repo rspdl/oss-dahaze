@@ -60,13 +60,8 @@
         "type": "object"
       },
       "AuthProvidersResponse": {
-        "description": "설정된 로그인 방법. 프론트가 버튼을 하드코딩하지 않게 한다.",
+        "description": "설정된 OAuth 제공자. 프론트가 버튼을 하드코딩하지 않게 한다.\n\n아이디·비밀번호 로그인은 여기 없다. 설정과 무관하게 항상 열려 있으므로, 늘 참인 값을\n실어 보내면 프론트가 \"혹시 꺼져 있을 수도 있다\" 는 분기를 영원히 들고 있게 된다.",
         "properties": {
-          "dev_login": {
-            "description": "아이디·비밀번호로 바로 들어가는 개발용 로그인이 열려 있는지. development 환경에서만 열리며 프로덕션에서는 항상 false",
-            "title": "Dev Login",
-            "type": "boolean"
-          },
           "providers": {
             "description": "OAuth 제공자 id 목록. 자격증명이 없는 제공자는 빠진다",
             "items": {
@@ -77,8 +72,7 @@
           }
         },
         "required": [
-          "providers",
-          "dev_login"
+          "providers"
         ],
         "title": "AuthProvidersResponse",
         "type": "object"
@@ -305,30 +299,6 @@
           "avatar_url"
         ],
         "title": "CurrentUserResponse",
-        "type": "object"
-      },
-      "DevLoginRequest": {
-        "description": "개발용 로그인 입력.\n\n아이디는 아무거나 받고 비밀번호만 확인한다. 같은 아이디로 다시 들어오면 같은 사용자가\n되므로, 여러 사람이 필요한 화면을 로컬에서 확인할 때 아이디를 바꿔 가며 쓴다.",
-        "properties": {
-          "password": {
-            "description": "DEV_LOGIN_PASSWORD 에 설정된 값 (기본값 dahaze)",
-            "minLength": 1,
-            "title": "Password",
-            "type": "string"
-          },
-          "username": {
-            "description": "계정을 구분하는 이름. 대소문자와 앞뒤 공백은 무시된다",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Username",
-            "type": "string"
-          }
-        },
-        "required": [
-          "username",
-          "password"
-        ],
-        "title": "DevLoginRequest",
         "type": "object"
       },
       "DocumentResponse": {
@@ -612,6 +582,29 @@
         "title": "McpTokenResponse",
         "type": "object"
       },
+      "PasswordLoginRequest": {
+        "properties": {
+          "login": {
+            "description": "아이디. 대소문자와 앞뒤 공백은 무시된다",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Login",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "login",
+          "password"
+        ],
+        "title": "PasswordLoginRequest",
+        "type": "object"
+      },
       "ProjectMemberResponse": {
         "properties": {
           "project_id": {
@@ -702,6 +695,46 @@
           "archived_at"
         ],
         "title": "ProjectResponse",
+        "type": "object"
+      },
+      "RegisterRequest": {
+        "description": "회원가입 입력.",
+        "properties": {
+          "display_name": {
+            "description": "화면에 보일 이름",
+            "examples": [
+              "김지원"
+            ],
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "login": {
+            "description": "아이디. 영문·숫자와 `.`·`_`·`-`. 대소문자는 구분하지 않는다",
+            "examples": [
+              "jiwon"
+            ],
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-zA-Z0-9._-]+$",
+            "title": "Login",
+            "type": "string"
+          },
+          "password": {
+            "description": "8자 이상",
+            "maxLength": 256,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "login",
+          "password",
+          "display_name"
+        ],
+        "title": "RegisterRequest",
         "type": "object"
       },
       "ReviseDocumentRequest": {
@@ -994,15 +1027,15 @@
         ]
       }
     },
-    "/api/auth/dev/login": {
+    "/api/auth/login": {
       "post": {
-        "description": "개발 환경 전용 아이디·비밀번호 로그인.\n\nOAuth 왕복이 없으므로 리다이렉트가 아니라 XHR 로 부르고, 응답에 세션 쿠키가 실린다.\n로그인 뒤에 하는 일은 OAuth 콜백과 완전히 같다 — 같은 유스케이스로 사용자를 찾거나\n만들고, 같은 쿠키를 심는다. 개발용이라고 다른 세션 구조를 쓰면 로컬에서만 되는 버그가\n생긴다.\n\n닫혀 있으면 404 다. \"설정이 없다\" 와 \"비밀번호가 틀렸다\" 를 같은 401 로 묶으면\n기여자가 무엇을 고쳐야 하는지 알 수 없다.",
-        "operationId": "dev_login",
+        "description": "아이디·비밀번호 로그인.\n\nOAuth 와 달리 페이지를 떠나지 않는다. 응답에 세션 쿠키가 실려 오므로, 성공하면 프론트는\n세션 질의만 무효화하면 된다.\n\n실패는 전부 같은 401 이다. \"없는 아이디\" 와 \"틀린 비밀번호\" 를 나눠 말하면 로그인 화면이\n곧 계정 존재 여부를 묻는 창구가 된다.",
+        "operationId": "password_login",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DevLoginRequest"
+                "$ref": "#/components/schemas/PasswordLoginRequest"
               }
             }
           },
@@ -1030,7 +1063,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Dev Login",
+        "summary": "Password Login",
         "tags": [
           "auth"
         ]
@@ -1151,7 +1184,7 @@
     },
     "/api/auth/providers": {
       "get": {
-        "description": "쓸 수 있는 로그인 방법.\n\n프론트가 로그인 버튼을 하드코딩하지 않도록 서버가 알려준다. 자격증명이 없는\n제공자는 애초에 등록되지 않고, 개발용 비밀번호 로그인은 development 에서만 켜진다.",
+        "description": "쓸 수 있는 OAuth 제공자.\n\n프론트가 로그인 버튼을 하드코딩하지 않도록 서버가 알려준다. 자격증명이 없는\n제공자는 애초에 등록되지 않는다. 아이디·비밀번호 로그인은 여기 없다 — 항상 열려\n있으므로 알려줄 것이 없다.",
         "operationId": "list_auth_providers",
         "responses": {
           "200": {
@@ -1166,6 +1199,48 @@
           }
         },
         "summary": "List Auth Providers",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "description": "아이디·비밀번호로 계정을 만들고 바로 로그인시킨다.\n\n가입 직후 로그인 화면으로 돌려보내지 않는다. 방금 정한 비밀번호를 한 번 더 치게 하는\n것은 확인이 아니라 마찰이다.\n\n가입해도 보이는 프로젝트는 없다. 프로젝트는 멤버십으로만 열리므로, 계정이 생겼다는\n사실만으로는 남의 것에 닿지 못한다.",
+        "operationId": "register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register",
         "tags": [
           "auth"
         ]

@@ -133,3 +133,19 @@ class ExternalIdentity:
     login: str
     email: str | None = None
     avatar_url: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PasswordCredential:
+    """아이디·비밀번호로 들어오는 문 하나.
+
+    `user_identities` 에 넣지 않는다. 저 테이블은 **외부 제공자가 확인해 준** 신원을 담는
+    곳이고, 여기 있는 것은 우리가 직접 확인하는 비밀이다. 같은 테이블에 섞으면 "이 행은
+    비밀을 들고 있는가" 가 provider 값에 따라 달라지고, 그 분기는 언젠가 빠뜨려진다.
+
+    사용자 한 명당 최대 하나다. 비밀번호를 여러 개 두는 제품이 아니다.
+    """
+
+    user_id: UUID
+    login: str
+    password_hash: str

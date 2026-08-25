@@ -6,13 +6,21 @@ name: deploy
 # SSH 를 쓰지 않는다. 인스턴스는 SSM 관리형으로 등록돼 있고 (ADR-0004) 배포는
 # `ssm send-command` 로 한다. 그래서 이 워크플로우는 **시크릿을 인스턴스로 보내지 않는다** —
 # 인스턴스가 자기 IAM 역할로 Parameter Store 에서 직접 읽는다.
+#
+# 인프라 자체(Terraform · nginx · rollout.sh)는 비공개 저장소 `dahaze-infra` 에 있다
+# (ADR-0004). 여기 남은 것은 이미지 빌드와 롤아웃 트리거뿐이고, 실제 값은 파일이 아니라
+# repository variables 에 있다. 그래서 이 파일이 공개돼도 새로 드러나는 값이 없다.
+#
+# 아래 `send-command` 가 부르는 `/opt/dahaze/rollout.sh` 는 그 비공개 저장소가 소유하고,
+# 인스턴스에는 운영자가 손으로 놓아 둔 것이다 — 배포는 이미지만 바꾸고 그 파일은 건드리지
+# 않는다. 인자가 바뀌면 두 저장소를 함께 고치고 인스턴스에도 다시 놓아야 하며, CI 는 그
+# 불일치를 잡아 주지 않는다.
 
 on:
   push:
     branches: [main]
     paths:
       - "apps/api/**"
-      - "deploy/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 

@@ -13,7 +13,6 @@
 .git
 apps/web
 packages
-infra
 docs
 fixtures
 *.md

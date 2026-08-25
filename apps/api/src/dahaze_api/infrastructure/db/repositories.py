@@ -9,12 +9,14 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dahaze_api.domain.entities import (
     Document,
     DocumentRevision,
     ExternalIdentity,
+    PasswordCredential,
     Project,
     ProjectMembership,
     ProjectRole,
@@ -23,6 +25,7 @@ from dahaze_api.domain.entities import (
 from dahaze_api.infrastructure.db.models import (
     DocumentRevisionRow,
     DocumentRow,
+    PasswordCredentialRow,
     ProjectMemberRow,
     ProjectRow,
     UserIdentityRow,
@@ -37,6 +40,12 @@ def _to_user(row: UserRow) -> User:
         email=row.email,
         avatar_url=row.avatar_url,
         created_at=row.created_at,
+    )
+
+
+def _to_password_credential(row: PasswordCredentialRow) -> PasswordCredential:
+    return PasswordCredential(
+        user_id=row.user_id, login=row.login, password_hash=row.password_hash
     )
 
 
@@ -126,6 +135,42 @@ class SqlUserRepository:
         self._session.add(user)
         await self._session.flush()
         return _to_user(user)
+
+    async def create(self, *, display_name: str, email: str | None) -> User:
+        user = UserRow(id=uuid4(), display_name=display_name, email=email, avatar_url=None)
+        self._session.add(user)
+        await self._session.flush()
+        return _to_user(user)
+
+
+class SqlPasswordCredentialRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def find_by_login(self, login: str) -> PasswordCredential | None:
+        stmt = select(PasswordCredentialRow).where(PasswordCredentialRow.login == login)
+        row = (await self._session.execute(stmt)).scalar_one_or_none()
+        return _to_password_credential(row) if row else None
+
+    async def create(
+        self, *, user_id: UUID, login: str, password_hash: str
+    ) -> PasswordCredential | None:
+        """아이디가 이미 있으면 `None`.
+
+        `ON CONFLICT DO NOTHING` 으로 미리 확인과 삽입 사이의 경쟁을 DB 에게 맡긴다.
+        먼저 `SELECT` 로 확인하고 `INSERT` 하는 방식은 동시에 같은 아이디로 가입하는 두
+        요청 중 하나가 유니크 제약 위반으로 500 이 된다.
+        """
+        stmt = (
+            insert(PasswordCredentialRow)
+            .values(
+                id=uuid4(), user_id=user_id, login=login, password_hash=password_hash
+            )
+            .on_conflict_do_nothing()
+            .returning(PasswordCredentialRow)
+        )
+        row = (await self._session.execute(stmt)).scalar_one_or_none()
+        return _to_password_credential(row) if row else None
 
 
 class SqlProjectRepository:

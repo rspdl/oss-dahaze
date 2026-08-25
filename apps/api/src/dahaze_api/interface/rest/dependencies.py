@@ -13,23 +13,35 @@ from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dahaze_api.application.analysis import AnalyzeWorkspace
-from dahaze_api.application.auth import SignInWithProvider
+from dahaze_api.application.auth import (
+    RegisterWithPassword,
+    SignInWithPassword,
+    SignInWithProvider,
+)
 from dahaze_api.application.authoring import DraftRspdlDocument
 from dahaze_api.application.workspace import WorkspaceService
 from dahaze_api.config import Settings, get_settings
 from dahaze_api.domain.entities import User
-from dahaze_api.domain.ports import LlmPort, OAuthProviderPort, RspdlCompilerPort
-from dahaze_api.infrastructure.auth.dev import DevPasswordAuthenticator
-from dahaze_api.infrastructure.auth.registry import build_dev_authenticator, build_providers
+from dahaze_api.domain.llm import EbnfGrammar
+from dahaze_api.domain.ports import (
+    LlmPort,
+    OAuthProviderPort,
+    PasswordHasherPort,
+    RspdlCompilerPort,
+)
+from dahaze_api.infrastructure.auth.password import ScryptPasswordHasher
+from dahaze_api.infrastructure.auth.registry import build_providers
 from dahaze_api.infrastructure.auth.session import InvalidToken, SessionTokens
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
 from dahaze_api.infrastructure.db.repositories import (
     SqlDocumentRepository,
+    SqlPasswordCredentialRepository,
     SqlProjectRepository,
     SqlUserRepository,
 )
 from dahaze_api.infrastructure.db.session import get_session
 from dahaze_api.infrastructure.llm import LlmNotConfigured, OpenAiLlm
+from dahaze_api.infrastructure.llm.grammars import load_rspdl_grammar
 from dahaze_api.infrastructure.rspdl import LocalRspdlCompiler
 
 SESSION_COOKIE = "dahaze_session"
@@ -46,29 +58,36 @@ def get_session_tokens() -> SessionTokens:
     return SessionTokens(get_settings().session_secret)
 
 
-@lru_cache
-def get_oauth_providers() -> dict[str, OAuthProviderPort]:
-    return build_providers(get_settings())
-
-
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 Compiler = Annotated[RspdlCompilerPort, Depends(get_compiler)]
 Tokens = Annotated[SessionTokens, Depends(get_session_tokens)]
+
+
+def get_oauth_providers(settings: SettingsDep) -> dict[str, OAuthProviderPort]:
+    """설정된 OAuth 제공자. 자격증명이 없으면 빈 registry.
+
+    **`lru_cache` 를 붙이지 않는다.** 캐시가 붙어 있으면
+    `get_settings` 를 갈아끼워도 registry 는 프로세스 전역 설정(즉 개발자 기계의 `.env`)을
+    계속 읽어서, "자격증명이 없으면 제공자가 없다" 를 확인하려는 테스트가 그 기계에 무엇이
+    설정돼 있느냐에 따라 통과하거나 실패한다.
+
+    만드는 비용은 문자열 두 개를 든 객체다. httpx 클라이언트는 `exchange_code` 안에서
+    요청마다 따로 만든다 — 캐시해서 아낄 것이 없다.
+    """
+    return build_providers(settings)
+
+
 Providers = Annotated[dict[str, OAuthProviderPort], Depends(get_oauth_providers)]
 
 
-def get_dev_authenticator(settings: SettingsDep) -> DevPasswordAuthenticator | None:
-    """개발용 비밀번호 로그인. 닫혀 있으면 `None`.
-
-    `lru_cache` 를 붙이지 않는다. 설정을 인자로 받아야 테스트가 `get_settings` 를 갈아끼워
-    "프로덕션에서는 닫혀 있는가" 를 실제로 확인할 수 있다. 만드는 비용은 문자열 하나를
-    들고 있는 객체라 캐시할 것도 없다.
-    """
-    return build_dev_authenticator(settings)
+@lru_cache
+def get_password_hasher() -> PasswordHasherPort:
+    """비밀번호 해시 어댑터. 상태가 없어 프로세스당 하나면 충분하다."""
+    return ScryptPasswordHasher()
 
 
-DevAuth = Annotated[DevPasswordAuthenticator | None, Depends(get_dev_authenticator)]
+Hasher = Annotated[PasswordHasherPort, Depends(get_password_hasher)]
 
 
 def get_analyzer(session: DbSession, compiler: Compiler) -> AnalyzeWorkspace:
@@ -77,6 +96,22 @@ def get_analyzer(session: DbSession, compiler: Compiler) -> AnalyzeWorkspace:
 
 def get_sign_in(session: DbSession) -> SignInWithProvider:
     return SignInWithProvider(SqlUserRepository(session))
+
+
+def get_register(session: DbSession, hasher: Hasher) -> RegisterWithPassword:
+    return RegisterWithPassword(
+        users=SqlUserRepository(session),
+        credentials=SqlPasswordCredentialRepository(session),
+        hasher=hasher,
+    )
+
+
+def get_password_sign_in(session: DbSession, hasher: Hasher) -> SignInWithPassword:
+    return SignInWithPassword(
+        users=SqlUserRepository(session),
+        credentials=SqlPasswordCredentialRepository(session),
+        hasher=hasher,
+    )
 
 
 def get_workspace(session: DbSession, compiler: Compiler) -> WorkspaceService:
@@ -111,6 +146,8 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 Analyzer = Annotated[AnalyzeWorkspace, Depends(get_analyzer)]
 Workspace = Annotated[WorkspaceService, Depends(get_workspace)]
 SignIn = Annotated[SignInWithProvider, Depends(get_sign_in)]
+Register = Annotated[RegisterWithPassword, Depends(get_register)]
+PasswordSignIn = Annotated[SignInWithPassword, Depends(get_password_sign_in)]
 
 
 @lru_cache
@@ -135,12 +172,22 @@ def get_llm() -> LlmPort:
 Llm = Annotated[LlmPort, Depends(get_llm)]
 
 
-def get_drafter(llm: Llm, analyzer: Analyzer) -> DraftRspdlDocument:
+@lru_cache
+def get_authoring_grammar() -> EbnfGrammar:
+    return load_rspdl_grammar()
+
+
+AuthoringGrammar = Annotated[EbnfGrammar, Depends(get_authoring_grammar)]
+
+
+def get_drafter(
+    llm: Llm, analyzer: Analyzer, grammar: AuthoringGrammar
+) -> DraftRspdlDocument:
     """저작 루프는 분석 유스케이스를 그대로 재사용한다.
 
     컴파일 게이트가 REST 분석 경로와 같아야 LLM 출력이 사람 출력과 같은 검사를 받는다.
     """
-    return DraftRspdlDocument(llm=llm, analyzer=analyzer)
+    return DraftRspdlDocument(llm=llm, analyzer=analyzer, grammar=grammar)
 
 
 Drafter = Annotated[DraftRspdlDocument, Depends(get_drafter)]

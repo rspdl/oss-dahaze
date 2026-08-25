@@ -45,8 +45,6 @@ packages/
   design-system/ 토큰과 테마
   rspdl-editor/  CodeMirror 6 RSPDL 언어 모드
   config/      eslint · tsconfig · tailwind 공유 설정
-infra/         Terraform (AWS Lightsail)
-deploy/        docker-compose · nginx · 롤아웃 스크립트
 docs/          adr · rfcs · guides
 ```
 

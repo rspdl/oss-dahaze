@@ -16,18 +16,19 @@ dahaze는 RSPDL 문법 파일을 저작하고 검증하는 웹 서비스입니�
 ```console
 pnpm install
 cd apps/api && uv sync --extra dev && cp .env.example .env && cd -
-docker compose -f deploy/docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml up -d
 cd apps/api && uv run alembic upgrade head && cd -
 ```
 
-여기까지 하고 `pnpm dev` 를 띄우면 바로 로그인할 수 있습니다. `.env.example` 이
-`ENVIRONMENT=development` 로 오기 때문에 첫 화면에 아이디·비밀번호 폼이 뜹니다 — 아이디는
-아무거나, 비밀번호는 `DEV_LOGIN_PASSWORD`(기본값 `dahaze`)입니다. **OAuth App 을 만들지
-않아도 됩니다.**
+여기까지 하고 `pnpm dev` 를 띄운 뒤 `/login` 의 가입 탭에서 계정을 만들면 바로 들어갑니다.
+아이디·표시 이름·비밀번호(8자 이상)면 되고 **OAuth App 을 만들지 않아도 됩니다.**
 
-아이디가 곧 계정입니다. 다른 아이디로 들어오면 다른 사용자가 되므로 접근 격리를 손으로
-확인할 때 그렇게 씁니다. 이 문은 `development` 에서만 열리며, 그 근거는
-`Settings.dev_login_enabled` 와 `tests/test_auth_api.py` 에 있습니다.
+계정을 둘 이상 만들면 접근 격리를 손으로 확인할 수 있습니다. 프로젝트는 멤버십으로만 열리므로
+가입만 한 계정에는 아무 것도 보이지 않습니다.
+
+**이 로그인은 환경에 따라 달라지지 않습니다.** 로컬에서 보는 로그인 화면이 배포된 화면과
+같습니다 — 그 근거는 `tests/test_auth_api.py` 의
+`test_password_login_works_in_production` 에 있습니다.
 
 테스트는 **실제 Postgres 에 붙습니다.** SQLite 로 대체하지 않는 이유는 JSONB, 부분 유니크
 인덱스, `ON CONFLICT DO NOTHING` 이 전부 방언에 의존하기 때문입니다 — 그것들이 프로덕션에서만
@@ -61,7 +62,6 @@ Apple Silicon 맥에서 로컬 개발은 됩니다. 그러나 **Linux arm64(AWS 
 | `packages/design-system` | 토큰과 테마 |
 | `packages/rspdl-editor` | CodeMirror 6 RSPDL 언어 모드 |
 | `packages/config` | 공유 tsconfig. eslint·tailwind 설정은 `apps/web` 과 함께 들어옵니다 |
-| `infra/` | Terraform (AWS Lightsail) |
 | `docs/adr` | 이미 내려진 기술 결정과 그 근거 |
 | `scripts/` | 검사 하네스 |
 
@@ -164,7 +164,7 @@ chore(deps): rspdl 0.2.0 으로 승격
 ```
 
 허용 타입: `feat` `fix` `docs` `refactor` `perf` `test` `build` `ci` `chore`
-스코프는 보통 `api` `web` `ui` `api-client` `infra` `adr` 중 하나입니다.
+스코프는 보통 `api` `web` `ui` `api-client` `adr` 중 하나입니다.
 
 ### 릴리스
 

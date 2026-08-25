@@ -6,17 +6,16 @@ __pycache__
 *.pyc
 .venv
 .env
-.env.local
+# .env.local 뿐 아니라 .env.bak · .env.prod 같은 파생 이름도 함께 막는다. 실제 시크릿이
+# 든 파일이 이름 하나 다르다는 이유로 커밋 가능한 상태가 되는 것을 막는 것이 목적이다.
+# 추적해야 하는 예시 파일은 아래에서 다시 열어 준다.
+.env.*
+!.env.example
+!.env.*.example
 .pytest_cache
 .mypy_cache
 .ruff_cache
 **/src/generated/
-*.tfstate
-*.tfstate.*
-.terraform
-deploy/lightsail/secrets.env
-# 실제 값이 든 tfvars. 예시는 terraform.tfvars.example 로 추적한다.
-*.tfvars
 .vercel
 
 # TypeScript 증분 빌드 캐시. 빌드할 때마다 내용이 바뀌어 커밋마다 노이즈가 된다.

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # --- DB ---
     # 앱은 postgresql:// 를 postgresql+asyncpg:// 로 치환한다 (infrastructure/db/session.py).
-    # 로컬 기본 포트가 5432 가 아닌 이유는 deploy/docker-compose.dev.yml 주석 참고.
+    # 로컬 기본 포트가 5432 가 아닌 이유는 docker-compose.dev.yml 주석 참고.
     database_url: str = "postgresql://dahaze:dahaze@localhost:55432/dahaze"
 
     # --- 세션 쿠키 ---
@@ -38,13 +38,10 @@ class Settings(BaseSettings):
     oauth_redirect_uri: str = "http://localhost:8400/api/auth/github/callback"
     web_post_login_url: str = "http://localhost:3400"
 
-    # --- 개발용 로그인 ---
-    # 기여자가 GitHub OAuth App 없이 바로 로그인할 수 있게 하는 문. 비워 두면 닫힌다.
-    dev_login_password: str = "dahaze"
-
     # --- LLM ---
     openai_api_key: str | None = None
-    openai_model: str = "gpt-4.1"
+    # custom tool의 Lark grammar constrained decoding을 지원하는 Responses API 모델.
+    openai_model: str = "gpt-5-nano"
 
     @property
     def cors_origins(self) -> list[str]:
@@ -53,19 +50,6 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.environment == "development"
-
-    @property
-    def dev_login_enabled(self) -> bool:
-        """개발용 비밀번호 로그인이 열려 있는지.
-
-        **`is_development` 에서 파생시킨 것이 핵심이다.** `DEV_LOGIN_ENABLED=true` 같은
-        독립 스위치를 두면 언젠가 누군가 프로덕션에서 켠다 — 비밀번호 하나로 아무 계정이나
-        만들 수 있는 문이므로, 환경변수만으로는 열 수 없어야 한다.
-
-        비밀번호를 비우면 development 에서도 닫힌다. 공유된 개발 서버처럼 문을 닫고 싶은
-        경우를 위한 유일한 스위치다.
-        """
-        return self.is_development and bool(self.dev_login_password)
 
     def assert_production_ready(self) -> None:
         """운영으로 뜨기 전에 치명적인 설정 누락을 잡는다.
