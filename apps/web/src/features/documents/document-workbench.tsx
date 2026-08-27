@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   getGetDocumentQueryKey,
   getListDocumentRevisionsQueryKey,
@@ -14,26 +14,34 @@ import { RspdlEditor } from '@dahaze/rspdl-editor'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
   ErrorState,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
   Skeleton,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
+  cn,
   toast,
 } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
 import { formatDateTime } from '@/shared/format'
+import {
+  renderDiagnosticMessage,
+  renderDiagnosticTitle,
+} from '@/shared/rspdl/diagnostic-messages'
+import { ChevronRightIcon, SparkleIcon } from '@/shared/ui/icons'
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
 import { RequireSession } from '@/features/auth/require-session'
 import { viewHref } from '@/features/navigation/views'
 import { useCompile } from '@/features/analysis/use-compile'
 import { RevisePanel } from '@/features/authoring/revise-panel'
-import { DiagnosticsPanel } from './diagnostics-panel'
+import { DocumentIssueBanner } from './document-issue-banner'
 import { RevisionHistory } from './revision-history'
 import { VersionMismatchNotice } from './version-mismatch-notice'
 import { useDraft, useDraftStore } from './draft-store'
@@ -75,8 +83,7 @@ function DocumentLoader({
   projectId: string
   documentId: string
 }) {
-  const query = useGetDocument<DocumentResponse>(documentId, {
-      })
+  const query = useGetDocument<DocumentResponse>(documentId)
 
   if (query.isPending) {
     return (
@@ -129,10 +136,35 @@ function Workbench({
 
   const editorSize = useWorkbenchStore((state) => state.editorSize)
   const setEditorSize = useWorkbenchStore((state) => state.setEditorSize)
+  const isAiPanelCollapsed = useWorkbenchStore((state) => state.isAiPanelCollapsed)
+  const setAiPanelCollapsed = useWorkbenchStore((state) => state.setAiPanelCollapsed)
 
   const [summary, setSummary] = useState('')
+  const [selectedIssueIndex, setSelectedIssueIndex] = useState(0)
+  const [revealSpan, setRevealSpan] = useState<{ start: number; end: number } | null>(
+    null,
+  )
+  const [suggestedAiRequest, setSuggestedAiRequest] = useState<{
+    key: number
+    text: string
+  }>()
   const queryClient = useQueryClient()
   const updateDocument = useUpdateDocument()
+
+  const diagnostics = useMemo(
+    () => compile.snapshot?.diagnostics ?? [],
+    [compile.snapshot],
+  )
+
+  /*
+   * 다시 컴파일하면 진단 목록은 통째로 갈린다. 범위를 벗어난 index 를 그냥 들고 있으면
+   * 0 건이 됐다가 다시 생겼을 때 아무도 고르지 않은 문제가 선택된 채로 살아난다. 그래서
+   * 렌더 중에 바로 0 으로 되돌린다 — effect 로 미루면 그 사이 한 프레임 동안 배너와
+   * `onAskAi` 가 서로 다른 진단을 가리킨다.
+   */
+  if (selectedIssueIndex !== 0 && selectedIssueIndex >= diagnostics.length) {
+    setSelectedIssueIndex(0)
+  }
 
   const save = useCallback(() => {
     if (!isDirty || updateDocument.isPending) return
@@ -247,6 +279,22 @@ function Workbench({
               편집 취소
             </Button>
           ) : null}
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline">이력</Button>
+            </DialogTrigger>
+            <DialogContent className="flex max-h-[80dvh] min-h-96 flex-col sm:max-w-xl">
+              <DialogHeader>
+                <DialogTitle>문서 저장 이력</DialogTitle>
+                <DialogDescription>
+                  저장할 때마다 남은 리비전과 변경 요약을 확인합니다.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="min-h-0 flex-1 overflow-hidden rounded-panel border">
+                <RevisionHistory documentId={documentId} />
+              </div>
+            </DialogContent>
+          </Dialog>
           <Button onClick={save} disabled={!isDirty || updateDocument.isPending}>
             {updateDocument.isPending ? '저장 중…' : '저장'}
           </Button>
@@ -255,63 +303,130 @@ function Workbench({
 
       <VersionMismatchNotice targetVersion={document.target_rspdl_version} />
 
+      <DocumentIssueBanner
+        diagnostics={diagnostics}
+        selectedIndex={selectedIssueIndex}
+        hasResult={compile.snapshot !== null}
+        isCompiling={compile.isCompiling}
+        isCurrent={compile.isCurrent}
+        recognized={compile.snapshot?.recognized ?? true}
+        errorMessage={
+          compile.error === null || compile.error === undefined
+            ? undefined
+            : errorMessage(compile.error)
+        }
+        onRetry={compile.recompile}
+        renderMessage={renderDiagnosticMessage}
+        renderTitle={renderDiagnosticTitle}
+        onSelect={(diagnostic, index) => {
+          setSelectedIssueIndex(index)
+          if (compile.isCurrent) setRevealSpan({ ...diagnostic.span })
+        }}
+        onAskAi={(diagnostic, index) => {
+          setSelectedIssueIndex(index)
+          // 접힌 채로 요청을 보내면 아무 일도 안 일어난 것처럼 보인다. 요청을 받는 자리를
+          // 먼저 펼친다.
+          setAiPanelCollapsed(false)
+          const message = renderDiagnosticMessage(diagnostic)
+          const title = renderDiagnosticTitle(diagnostic)
+          setSuggestedAiRequest((current) => ({
+            key: (current?.key ?? 0) + 1,
+            text: `다음 검토 문제를 해결하도록 문서를 수정해 주세요.\n\n${title}\n${message}\n\n규칙: ${diagnostic.rule_id}`,
+          }))
+        }}
+      />
+
       {/*
         높이를 `calc(100dvh - 16rem)` 처럼 계산하지 않는다. 그 16rem 은 위쪽 요소들의 높이를
         손으로 더한 값이라, 줄 하나만 늘어도 편집기가 화면 밖으로 밀린다. 남은 공간을
         그대로 차지하게 두면 위가 무엇으로 바뀌든 알아서 맞는다.
       */}
-      <ResizablePanelGroup
-        orientation="horizontal"
-        className="min-h-96 flex-1 overflow-hidden rounded-panel border bg-surface"
-      >
-        {/*
-          `defaultSize` 는 숫자면 픽셀, 문자열이면 퍼센트다. 우리가 저장하는 값은 비율이므로
-          반드시 문자열로 넘긴다 — 숫자로 넘기면 62px 짜리 편집기가 나온다.
-        */}
-        <ResizablePanel
-          defaultSize={`${editorSize}`}
-          minSize="30"
-          onResize={(panelSize) => setEditorSize(panelSize.asPercentage)}
+      <div className="flex min-h-96 flex-1 overflow-hidden rounded-panel border bg-surface">
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="min-w-0 flex-1"
         >
-          <RspdlEditor
-            value={text}
-            onChange={(next) => setDraft(documentId, next)}
-            /*
-             * 진단은 **그 진단을 만든 텍스트에 대해서만** 위치가 맞는다. 편집 중이라 짝이
-             * 어긋난 동안에는 밑줄을 아예 그리지 않는다 — 엉뚱한 곳에 그어진 밑줄은 없느니만
-             * 못하다. 그동안에도 진단 목록은 자기 텍스트 기준으로 계속 보인다.
-             */
-            diagnostics={compile.isCurrent ? compile.snapshot?.diagnostics : []}
-            placeholder="여기에 RSPDL 로 제품 의도를 씁니다."
-            ariaLabel={`${document.title} 본문`}
-            className="h-full"
-          />
-        </ResizablePanel>
+          {/*
+            `defaultSize` 는 숫자면 픽셀, 문자열이면 퍼센트다. 우리가 저장하는 값은 비율이므로
+            반드시 문자열로 넘긴다 — 숫자로 넘기면 62px 짜리 편집기가 나온다.
+          */}
+          <ResizablePanel
+            defaultSize={`${editorSize}`}
+            minSize="30"
+            onResize={(panelSize) => setEditorSize(panelSize.asPercentage)}
+          >
+            <RspdlEditor
+              value={text}
+              onChange={(next) => setDraft(documentId, next)}
+              /*
+               * 진단은 **그 진단을 만든 텍스트에 대해서만** 위치가 맞는다. 편집 중이라 짝이
+               * 어긋난 동안에는 밑줄을 아예 그리지 않는다 — 엉뚱한 곳에 그어진 밑줄은 없느니만
+               * 못하다. 그동안에도 진단 목록은 자기 텍스트 기준으로 계속 보인다.
+               */
+              diagnostics={compile.isCurrent ? compile.snapshot?.diagnostics : []}
+              renderMessage={renderDiagnosticMessage}
+              revealSpan={revealSpan}
+              placeholder="여기에 RSPDL 로 제품 의도를 씁니다."
+              ariaLabel={`${document.title} 본문`}
+              className="h-full"
+            />
+          </ResizablePanel>
 
-        <ResizableHandle withHandle />
+          <ResizableHandle withHandle className={cn(isAiPanelCollapsed && 'hidden')} />
 
-        <ResizablePanel defaultSize={`${100 - editorSize}`} minSize="25">
-          <Tabs defaultValue="diagnostics" className="flex h-full min-h-0 flex-col">
-            <TabsList variant="line" className="mx-3 mt-2">
-              <TabsTrigger value="diagnostics">진단</TabsTrigger>
-              <TabsTrigger value="authoring">LLM 저작</TabsTrigger>
-              <TabsTrigger value="history">이력</TabsTrigger>
-            </TabsList>
-            <TabsContent value="diagnostics" className="min-h-0 flex-1">
-              <DiagnosticsPanel compile={compile} />
-            </TabsContent>
-            <TabsContent value="authoring" className="min-h-0 flex-1">
-              <RevisePanel
-                documentId={documentId}
-                onApplyDraft={(next) => setDraft(documentId, next)}
-              />
-            </TabsContent>
-            <TabsContent value="history" className="min-h-0 flex-1">
-              <RevisionHistory documentId={documentId} />
-            </TabsContent>
-          </Tabs>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          {/*
+            접을 때 AI 패널을 트리에서 떼지 않고 감춘다. 떼면 지금까지의 대화가 사라지고,
+            사람은 접었다 편 대가로 방금 받은 초안을 잃는다. 감춘 동안 편집기 패널이 남은
+            폭을 전부 가져간다.
+          */}
+          <ResizablePanel
+            defaultSize={`${100 - editorSize}`}
+            minSize="25"
+            className={cn('relative', isAiPanelCollapsed && 'hidden')}
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="AI 도우미 접기"
+              className="absolute top-2.5 right-2 z-10"
+              onClick={() => setAiPanelCollapsed(true)}
+            >
+              <ChevronRightIcon className="size-4" />
+            </Button>
+            <RevisePanel
+              documentId={documentId}
+              currentText={text}
+              onApplyDraft={(next) => setDraft(documentId, next)}
+              suggestedRequest={suggestedAiRequest}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+
+        {/*
+          접힌 상태에서도 되돌아올 자리가 화면에 남아 있어야 한다. 세로 바가 없으면 AI 패널은
+          접는 순간 사라진 기능이 된다.
+        */}
+        {isAiPanelCollapsed ? (
+          <div className="flex w-11 shrink-0 flex-col items-center gap-2 border-l bg-surface-raised py-2.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="AI 도우미 펼치기"
+              onClick={() => setAiPanelCollapsed(false)}
+            >
+              <SparkleIcon className="size-4" />
+            </Button>
+            <span
+              aria-hidden
+              className="text-xs whitespace-nowrap text-text-muted [writing-mode:vertical-rl]"
+            >
+              AI 도우미
+            </span>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
