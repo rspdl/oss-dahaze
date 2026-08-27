@@ -63,6 +63,12 @@ export function DocumentWorkbenchScreen({
   return (
     <AppShell
       fullBleed
+      /*
+       * 이 화면은 페이지가 길어지면 안 된다. 편집기와 AI 대화는 각자 자기 안에서 스크롤하고,
+       * 화면 아래에 붙은 AI 입력창은 언제든 그 자리에 있어야 한다. 페이지가 늘어나면 입력창이
+       * 화면 밖으로 밀려나고, 거기 닿으려고 스크롤하면 편집기가 위로 사라진다.
+       */
+      lockToViewport
       breadcrumb={
         <>
           <Crumb href={viewHref(projectId, 'documents')}>문서 편집</Crumb>
@@ -340,8 +346,12 @@ function Workbench({
         높이를 `calc(100dvh - 16rem)` 처럼 계산하지 않는다. 그 16rem 은 위쪽 요소들의 높이를
         손으로 더한 값이라, 줄 하나만 늘어도 편집기가 화면 밖으로 밀린다. 남은 공간을
         그대로 차지하게 두면 위가 무엇으로 바뀌든 알아서 맞는다.
+
+        최소 높이를 두지 않는다. 바닥값을 주면 화면이 짧을 때 그 값이 뷰포트를 넘겨, 가둬 둔
+        레이아웃이 도로 페이지를 밀어낸다 — 편집기가 좁아지는 것보다 입력창이 사라지는 쪽이
+        나쁘다. 편집기는 자기 안에서 스크롤하므로 좁아져도 내용을 잃지 않는다.
       */}
-      <div className="flex min-h-96 flex-1 overflow-hidden rounded-panel border bg-surface">
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-panel border bg-surface">
         <ResizablePanelGroup
           orientation="horizontal"
           className="min-w-0 flex-1"
