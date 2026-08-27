@@ -19,6 +19,11 @@ export const PROJECT_VIEWS = [
     label: '정책 검토',
     description: '프로젝트 전체의 정책을 표로 가로질러 본다',
   },
+  {
+    id: 'data-models',
+    label: '데이터 모델',
+    description: '컴파일된 모델과 필드를 한 곳에서 살핀다',
+  },
 ] as const
 
 export type ProjectViewId = (typeof PROJECT_VIEWS)[number]['id']
