@@ -107,6 +107,42 @@ describe('diffLines', () => {
   })
 })
 
+describe('아주 큰 입력', () => {
+  /*
+   * 한도를 넘는 입력에서 정확한 줄 대응 대신 통째 교체로 떨어지는지 본다. 여기서 확인할 것은
+   * diff 의 모양보다 **끝난다는 사실** 이다 — 한도가 없으면 이 테스트가 수십 초를 먹거나
+   * 메모리를 다 쓴다.
+   */
+  it('표 한도를 넘으면 바뀐 구간을 통째 교체로 보이고 제때 끝난다', () => {
+    const before = Array.from({ length: 2200 }, (_, index) => `원본 ${index}.`).join('\n')
+    const after = Array.from({ length: 2200 }, (_, index) => `수정 ${index}.`).join('\n')
+
+    const lines = diffLines(before, after)
+    const summary = summarizeDiff(lines)
+
+    expect(summary).toEqual({ added: 2200, removed: 2200, changed: true })
+    // 삭제가 전부 앞에 오고 추가가 뒤따른다.
+    expect(lines[0]?.kind).toBe('removed')
+    expect(lines[2199]?.kind).toBe('removed')
+    expect(lines[2200]?.kind).toBe('added')
+    // 줄 번호는 통째 교체에서도 각자 1부터 이어진다.
+    expect(lines[0]?.beforeLine).toBe(1)
+    expect(lines[2200]?.afterLine).toBe(1)
+  })
+
+  it('한도 안에서는 앞뒤 공통 줄을 그대로 알아본다', () => {
+    const middle = Array.from({ length: 40 }, (_, index) => `본문 ${index}.`)
+    const before = ['머리.', ...middle, '꼬리.'].join('\n')
+    const after = ['머리.', ...middle, '새 줄.', '꼬리.'].join('\n')
+
+    expect(summarizeDiff(diffLines(before, after))).toEqual({
+      added: 1,
+      removed: 0,
+      changed: true,
+    })
+  })
+})
+
 describe('toHunks', () => {
   it('변경이 없으면 hunk 도 없다', () => {
     expect(toHunks(diffLines('가.\n나.', '가.\n나.'))).toEqual([])

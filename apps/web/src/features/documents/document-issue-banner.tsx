@@ -249,11 +249,18 @@ export function DocumentIssueBanner({
             >
               <ChevronRightIcon className="size-4 rotate-180" />
             </Button>
-            <span
-              className="min-w-12 text-center text-xs tabular-nums text-text-muted"
-              aria-label={`전체 ${diagnostics.length}개 중 ${currentIndex + 1}번째 문제`}
-            >
-              {currentIndex + 1} / {diagnostics.length}
+            {/*
+              `aria-label` 은 이름을 가질 수 있는 role 에서만 노출된다. 이 span 은 role 이
+              generic 이라 라벨이 무시되고 "1 / 3" 만 읽힌다. 보이는 표기와 읽히는 문장을
+              따로 둔다.
+            */}
+            <span className="min-w-12 text-center text-xs tabular-nums text-text-muted">
+              <span aria-hidden>
+                {currentIndex + 1} / {diagnostics.length}
+              </span>
+              <span className="sr-only">
+                전체 {diagnostics.length}개 중 {currentIndex + 1}번째 문제
+              </span>
             </span>
             <Button
               type="button"

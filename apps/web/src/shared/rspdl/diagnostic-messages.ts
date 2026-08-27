@@ -219,6 +219,13 @@ function fallback(diagnostic: RspdlDiagnostic): string {
 }
 
 export function renderDiagnosticMessage(diagnostic: RspdlDiagnostic): string {
+  /*
+   * 서버가 이미 사람 말로 바꿔 준 문구가 있으면 그것이 이긴다. 아는 key 라고 우리 표를 먼저
+   * 보면 컴파일러가 한 말을 화면이 덮어쓰는 셈이고, 그 순간 진단의 출처가 둘로 갈린다.
+   * 우리 표는 컴파일러가 문장을 주지 않을 때를 위한 것이다.
+   */
+  if (diagnostic.message !== undefined) return diagnostic.message
+
   const staticMessage = STATIC_MESSAGES[diagnostic.message_key]
   if (staticMessage !== undefined) return staticMessage
 

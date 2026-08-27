@@ -37,6 +37,14 @@ function splitLines(text: string): string[] {
   return lines
 }
 
+/**
+ * LCS 표에 허용하는 최대 칸 수. `Int32Array` 기준 약 16MB 다.
+ *
+ * 실제 RSPDL 문서는 이 근처에 오지 않는다. 이 한도는 정상 동작을 위한 값이 아니라, 비정상적인
+ * 입력이 브라우저를 멈추게 두지 않기 위한 것이다.
+ */
+const MAX_TABLE_CELLS = 4_000_000
+
 export function diffLines(before: string, after: string): DiffLine[] {
   const a = splitLines(before)
   const b = splitLines(after)
@@ -74,6 +82,27 @@ export function diffLines(before: string, after: string): DiffLine[] {
 
   const n = midA.length
   const m = midB.length
+
+  /*
+   * DP 표는 n·m 칸이다. 앞뒤를 떼어내도 문서 전체가 새로 쓰인 수정안에서는 두 구간이 거의
+   * 그대로 남는다. 만 줄짜리 문서끼리면 표가 1억 칸(400MB)이 되어 편집 중인 탭이 멈추고,
+   * 사람은 수정안을 보기는커녕 쓰던 문서를 잃는다.
+   *
+   * 한도를 넘으면 정확한 줄 대응을 포기하고 바뀐 구간을 통째로 교체로 보인다. 덜 친절하지만
+   * 거짓말은 아니다 — 그 구간이 전부 바뀌는 것은 사실이고, 적용 결과도 달라지지 않는다.
+   */
+  if (n * m > MAX_TABLE_CELLS) {
+    for (const text of midA) {
+      beforeLine += 1
+      lines.push({ kind: 'removed', text, beforeLine, afterLine: null })
+    }
+    for (const text of midB) {
+      afterLine += 1
+      lines.push({ kind: 'added', text, beforeLine: null, afterLine })
+    }
+    for (const text of a.slice(a.length - suffix)) pushContext(text)
+    return lines
+  }
 
   /*
    * lcs(i, j) = midA[i..] 와 midB[j..] 의 LCS 길이. 뒤에서부터 채운다. 한 줄짜리 평면 배열을

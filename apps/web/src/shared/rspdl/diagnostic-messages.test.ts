@@ -133,6 +133,17 @@ describe('renderDiagnosticMessage', () => {
     ).toBe('컴파일러가 렌더링한 문구')
   })
 
+  it('아는 키라도 컴파일러가 문장을 주면 그 문장이 이긴다', () => {
+    expect(
+      renderDiagnosticMessage(
+        diagnostic({
+          message_key: 'ko.syntax.period_required',
+          message: '컴파일러가 직접 고른 문장',
+        }),
+      ),
+    ).toBe('컴파일러가 직접 고른 문장')
+  })
+
   it('message도 없는 알 수 없는 키는 인자를 정렬해 솔직하게 표시한다', () => {
     expect(
       renderDiagnosticMessage(
