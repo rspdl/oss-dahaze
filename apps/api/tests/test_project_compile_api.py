@@ -95,6 +95,37 @@ async def test_every_document_lands_in_one_response(client: httpx.AsyncClient) -
     assert all(f["diagnostics"] == [] for f in files), files
 
 
+async def test_models_and_fields_are_passed_through_unchanged(
+    client: httpx.AsyncClient,
+) -> None:
+    """데이터 모델 화면은 프로젝트 컴파일 결과를 그대로 읽는다.
+
+    모델·필드의 표시용 DTO를 새로 만들면 RSPDL IR의 사본이 생기고 wire schema 변화에 쉽게
+    어긋난다. 이 경로는 컴파일러가 준 id·이름·필드·value_type을 재작성하지 않는다.
+    """
+    project_id = await _project(client, "data-model")
+    await _document(client, project_id, "inventory.rspdl", INVENTORY_TEXT)
+
+    body = (await client.get(f"/api/projects/{project_id}/compile")).json()
+
+    models = body["result"]["files"][0]["module"]["models"]
+    assert models == [
+        {
+            "id": "inventory.item",
+            "name": "재고 항목",
+            "fields": [
+                {
+                    "id": "inventory.item.name",
+                    "local_id": "name",
+                    "name": "이름",
+                    "required": True,
+                    "value_type": {"kind": "string"},
+                }
+            ],
+        }
+    ]
+
+
 async def test_policies_carry_the_four_axes_untouched(
     client: httpx.AsyncClient,
 ) -> None:
