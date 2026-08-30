@@ -48,6 +48,20 @@ export function DraftResult({
   currentText?: string
 }) {
   const { diagnostics, recognized } = collectDiagnostics(draft.analysis)
+
+  // 저작 응답은 컴파일 결과와 한 쌍이어야 한다. 모르는 모양의 analysis 를 정상으로
+  // 추측하면 검증되지 않은 LLM 출력이 편집기에 닿을 수 있으므로, 본문과 diff 는 숨긴다.
+  if (!recognized) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-text">수정안을 확인할 수 없습니다.</p>
+        <p className="text-sm leading-relaxed text-text-muted">
+          컴파일 결과 형식을 확인하지 못했습니다. 수정안을 다시 요청해 주세요.
+        </p>
+      </div>
+    )
+  }
+
   const counts = countBySeverity(diagnostics)
   const diagnosticCount = diagnostics.length
   const change = describeChange(summarizeDiff(diffLines(currentText, draft.text)))
@@ -58,11 +72,9 @@ export function DraftResult({
         <p className="text-sm font-medium text-text">수정안을 만들었습니다.</p>
         <p className="mt-1 text-sm leading-relaxed text-text-muted">
           적용하면 {change}.{' '}
-          {recognized
-            ? diagnosticCount === 0
-              ? '컴파일러가 이 수정안에서 문제를 찾지 못했습니다.'
-              : `컴파일 결과 확인할 문제가 ${diagnosticCount}건 남아 있습니다.`
-            : '컴파일 결과 형식을 확인하지 못했습니다. 적용 전에 내용을 살펴보세요.'}
+          {diagnosticCount === 0
+            ? '컴파일러가 이 수정안에서 문제를 찾지 못했습니다.'
+            : `컴파일 결과 확인할 문제가 ${diagnosticCount}건 남아 있습니다.`}
         </p>
       </div>
 

@@ -22,6 +22,7 @@ import {
 } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
+import { collectDiagnostics } from '@/shared/rspdl/analysis'
 import { SparkleIcon, SpinnerIcon } from '@/shared/ui/icons'
 import { diffLines, summarizeDiff } from './diff-lines'
 import { DraftResult, describeChange } from './draft-result'
@@ -292,6 +293,7 @@ function AssistantTurn({
   currentText: string
   onApplyDraft: (text: string) => void
 }) {
+  const { recognized } = collectDiagnostics(draft.analysis)
   const change = describeChange(summarizeDiff(diffLines(currentText, draft.text)))
 
   return (
@@ -300,7 +302,9 @@ function AssistantTurn({
       <div className="flex gap-2">
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button size="sm">편집기에 적용</Button>
+            <Button size="sm" disabled={!recognized}>
+              편집기에 적용
+            </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
