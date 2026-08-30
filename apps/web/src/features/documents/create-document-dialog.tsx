@@ -62,14 +62,14 @@ export function CreateDocumentDialog({
         <DialogHeader>
           <DialogTitle>새 문서</DialogTitle>
           <DialogDescription>
-            빈 문서로 시작하거나, 하고 싶은 말을 적어 LLM 초안을 받아 볼 수 있습니다.
+            빈 문서로 시작하거나, 하고 싶은 일을 AI에게 말해 초안을 만들 수 있습니다.
           </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="blank" className="my-4">
           <TabsList>
             <TabsTrigger value="blank">빈 문서</TabsTrigger>
-            <TabsTrigger value="draft">LLM 초안</TabsTrigger>
+            <TabsTrigger value="draft">AI로 시작</TabsTrigger>
           </TabsList>
           <TabsContent value="blank" className="pt-4">
             <BlankDocumentForm
@@ -272,12 +272,12 @@ function DraftDocumentForm({
           {draftDocument.isPending ? (
             <>
               <SpinnerIcon className="size-4" />
-              초안 만드는 중…
+              AI가 초안 만드는 중…
             </>
           ) : draft === null ? (
-            '초안 만들기'
+            'AI에게 초안 요청'
           ) : (
-            '초안 다시 만들기'
+            'AI에게 다시 요청'
           )}
         </Button>
       </form>

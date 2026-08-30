@@ -27,20 +27,44 @@ export function AppShell({
    * 읽는 화면에서 켜면 한 줄이 너무 길어져 눈이 다음 줄을 찾지 못한다.
    */
   fullBleed = false,
+  /**
+   * 본문을 뷰포트 높이에 가둘지 여부.
+   *
+   * 기본값은 페이지가 내용만큼 길어지는 보통의 문서 흐름이다. 하지만 편집기처럼 자식이
+   * **스스로 스크롤하는** 화면에서는 그 흐름이 해가 된다. 페이지가 함께 길어지면 패널 아래에
+   * 붙어 있는 것들 — 편집 화면이라면 AI 입력창 — 이 화면 밖으로 밀려나고, 거기 닿으려면
+   * 페이지를 스크롤해야 하는데 그러면 정작 보고 있던 편집기가 위로 사라진다.
+   *
+   * 켜면 본문이 정확히 뷰포트만큼만 차지하고 넘치는 것은 자식이 자기 안에서 스크롤한다.
+   * 자식이 최소 높이를 못 줄이는 화면(ERD 처럼 `min-h` 가 박힌 다이어그램)에서 켜면 잘리므로
+   * 켜지 않는다.
+   */
+  lockToViewport = false,
 }: {
   children: ReactNode
   breadcrumb?: ReactNode
   actions?: ReactNode
   fullBleed?: boolean
+  lockToViewport?: boolean
 }) {
   const setMobileOpen = useSidebarStore((state) => state.setMobileOpen)
 
   return (
-    <div className="min-h-dvh md:grid md:grid-cols-[auto_1fr]">
+    <div
+      className={cn(
+        'min-h-dvh md:grid md:grid-cols-[auto_1fr]',
+        lockToViewport && 'h-dvh overflow-hidden',
+      )}
+    >
       <AppSidebar />
 
       {/* `min-w-0` 이 없으면 편집기처럼 넓은 자식이 그리드 칸을 밀어내 가로 스크롤이 생긴다. */}
-      <div className="flex min-h-dvh min-w-0 flex-col">
+      <div
+        className={cn(
+          'flex min-w-0 flex-col',
+          lockToViewport ? 'h-dvh overflow-hidden' : 'min-h-dvh',
+        )}
+      >
         <header className="sticky top-0 z-20 border-b bg-canvas/85 backdrop-blur">
           <div className="flex h-14 items-center gap-2 px-4 md:px-6">
             <Button
@@ -82,8 +106,13 @@ export function AppShell({
         */}
         <main
           className={cn(
-            'flex-1 px-4 py-7 md:px-8 md:py-9',
+            'flex-1 px-4 md:px-8',
             fullBleed ? 'flex min-h-0 flex-col' : 'w-full max-w-5xl',
+            /*
+              가둔 화면에서는 위아래 여백을 줄인다. 여백은 남는 공간에서 덜어내는 것인데,
+              높이가 고정되면 남는 공간이 없어 그만큼 편집기와 대화창이 좁아진다.
+            */
+            lockToViewport ? 'min-h-0 overflow-hidden py-4 md:py-5' : 'py-7 md:py-9',
           )}
         >
           {children}
