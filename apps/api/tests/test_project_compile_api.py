@@ -109,19 +109,28 @@ async def test_models_and_fields_are_passed_through_unchanged(
     body = (await client.get(f"/api/projects/{project_id}/compile")).json()
 
     models = body["result"]["files"][0]["module"]["models"]
-    assert models == [
+
+    # 컴파일러가 **준 것을 그대로 주는지**만 본다. 모양 전체를 정확일치로 묶으면 IR 에
+    # 필드가 하나 붙을 때마다 여기가 깨지는데, 그건 dahaze 가 IR 을 소유한다는 뜻이 되어
+    # ADR-0003 과 정면으로 어긋난다. 실제로 0.1.1 이 `span` 을 더했을 때 그렇게 깨졌다.
+    # 우리가 지켜야 할 것은 "빠뜨리거나 이름을 바꾸지 않는다" 이고, 그건 부분집합으로 검사된다.
+    def only(entry: dict[str, object], keys: tuple[str, ...]) -> dict[str, object]:
+        return {key: entry[key] for key in keys if key in entry}
+
+    assert [only(model, ("id", "name")) for model in models] == [
+        {"id": "inventory.item", "name": "재고 항목"}
+    ]
+    assert [
+        only(field, ("id", "local_id", "name", "required", "value_type"))
+        for model in models
+        for field in model["fields"]
+    ] == [
         {
-            "id": "inventory.item",
-            "name": "재고 항목",
-            "fields": [
-                {
-                    "id": "inventory.item.name",
-                    "local_id": "name",
-                    "name": "이름",
-                    "required": True,
-                    "value_type": {"kind": "string"},
-                }
-            ],
+            "id": "inventory.item.name",
+            "local_id": "name",
+            "name": "이름",
+            "required": True,
+            "value_type": {"kind": "string"},
         }
     ]
 
