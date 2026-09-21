@@ -18,6 +18,8 @@ from dahaze_api.application.authoring import MAX_REPAIR_ATTEMPTS
 from dahaze_api.domain.entities import User
 from dahaze_api.domain.llm import EbnfGrammar
 from dahaze_api.infrastructure.db.session import get_session
+from dahaze_api.infrastructure.llm.grammars import GRAMMAR_RSPDL_VERSION
+from dahaze_api.infrastructure.llm.prompts import PROMPT_RSPDL_VERSION
 from dahaze_api.interface.rest import authoring
 from dahaze_api.interface.rest.dependencies import get_current_user, get_llm
 from dahaze_api.main import create_app
@@ -140,7 +142,7 @@ async def test_clean_draft_stops_after_one_attempt(
     assert body["attempts"] == [{"attempt": 1, "diagnostic_count": 0}]
     assert body["analysis"]["result"]["files"][0]["diagnostics"] == []
     assert len(llm.calls) == 1
-    assert llm.calls[0]["grammar"].name == "rspdl-0.1.0"
+    assert llm.calls[0]["grammar"].name == f"rspdl-{GRAMMAR_RSPDL_VERSION}"
     assert llm.calls[0]["grammar"].start_rule == "document"
 
 
@@ -328,3 +330,18 @@ async def test_missing_api_key_is_503_not_a_crash(
 
     assert response.status_code == 503
     assert healthy.status_code == 200
+
+
+def test_prompt_and_grammar_travel_with_the_installed_compiler() -> None:
+    """프롬프트·출력 문법·설치된 컴파일러는 **같은 버전이어야 한다**.
+
+    프롬프트와 EBNF 는 컴파일러 버전과 함께 늙는다. 문법이 바뀌었는데 프롬프트가 옛 문형을
+    계속 설명하면 LLM 은 컴파일되지 않는 초안만 만들어내고, 사용자는 "AI 가 만든 초안이 늘
+    오류를 낸다" 는 형태로 겪는다. 승격 절차가 셋을 함께 올리라고 요구하지만
+    (`.agents/skills/upgrade-rspdl/SKILL.md`), 지금까지 그것을 확인하는 곳이 없어
+    하나를 빠뜨려도 조용히 지나갔다.
+    """
+    import rspdl
+
+    assert rspdl.__version__ == PROMPT_RSPDL_VERSION
+    assert rspdl.__version__ == GRAMMAR_RSPDL_VERSION

@@ -373,7 +373,7 @@ requires-dist = [
     { name = "pyjwt", specifier = ">=2.10.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
-    { name = "rspdl", specifier = "==0.1.0" },
+    { name = "rspdl", specifier = "==0.1.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
@@ -1392,13 +1392,13 @@ wheels = [
 
 [[package]]
 name = "rspdl"
-version = "0.1.0"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/de/c344fc6abe49169a71740378831045a7cd82a5fa478a1df082997f627dbb/rspdl-0.1.0-cp311-abi3-macosx_14_0_arm64.whl", hash = "sha256:d6d88c1fe806ab108016c71c9f67da694a485aa4188e6270dc8003f1a6450e7d", size = 8509833, upload-time = "2026-08-16T16:04:37.416Z" },
-    { url = "https://files.pythonhosted.org/packages/30/81/5d9d39e5bcd3120298b9d2664b08c273a3b83b97d22383352e736ae73f70/rspdl-0.1.0-cp311-abi3-macosx_14_0_x86_64.whl", hash = "sha256:bd900115d3edd1ea0d883642d03f3db55ed8c81e53da7c62d84ded2d4cb2b217", size = 9205283, upload-time = "2026-08-16T16:04:39.751Z" },
-    { url = "https://files.pythonhosted.org/packages/ed/0d/765901fd2a3c75c8749c01ddba0e7cd9a253cac082aacf3bfcbce4e081be/rspdl-0.1.0-cp311-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:0c0e37ed60c8b62124cba4ed390dbfa7808943841e95b766e6f23e3c3d8afe1e", size = 12694516, upload-time = "2026-08-16T16:04:41.636Z" },
-    { url = "https://files.pythonhosted.org/packages/af/4e/6a73d0ca0af48c805d3b02626c767c9e657b3cac16aab9b7a2c77e289076/rspdl-0.1.0-cp311-abi3-win_amd64.whl", hash = "sha256:240a46f803e594ddcc1e2e2e3f55f651da2b30c7e1ae97b996de50466f620d14", size = 8364947, upload-time = "2026-08-16T16:04:43.818Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/61/2b242513316e9da30651b2b0ebaf2d2004c638b49da92e2b6c1841212b8f/rspdl-0.1.2-cp311-abi3-macosx_14_0_arm64.whl", hash = "sha256:19081b66be54e75ca1c040a9bced676e212010d593f413340d1d09b4c3f696ba", size = 9059123, upload-time = "2026-09-20T08:43:17.921Z" },
+    { url = "https://files.pythonhosted.org/packages/47/34/6fd4174501763040c54ef293ea89aeb2f25f429394cebc4b6cae22056db1/rspdl-0.1.2-cp311-abi3-macosx_14_0_x86_64.whl", hash = "sha256:f86d0db787cd2941b2f8ffb7b5c5348408c070293805f961a65a826a0fd9e9c7", size = 9793365, upload-time = "2026-09-20T08:43:20.266Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/91/36434021171d76a05fee73f2eb06728aaf3bd76d57deea1d19cc1976bb09/rspdl-0.1.2-cp311-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:3fdc2c8448a95486a43e6f41a363e766b5318ecdbcdff95ca899481873afc6a9", size = 13364336, upload-time = "2026-09-20T08:43:22.482Z" },
+    { url = "https://files.pythonhosted.org/packages/64/70/e76ac3f2bfdbd9e5d2276c812e010b7687adb55395e5a663ba5d8bd1e6d0/rspdl-0.1.2-cp311-abi3-win_amd64.whl", hash = "sha256:80ca27bdce662d76dc6fda2ee5c5485b72630d5fd2acb062e7eb463eb988a46f", size = 8986284, upload-time = "2026-09-20T08:43:24.637Z" },
 ]
 
 [[package]]
