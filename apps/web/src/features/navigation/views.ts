@@ -24,6 +24,16 @@ export const PROJECT_VIEWS = [
     label: '데이터 모델',
     description: '컴파일된 모델과 필드를 한 곳에서 살핀다',
   },
+  {
+    id: 'ia',
+    label: '화면 구조',
+    description: '선언된 분류와 화면을 트리로 본다',
+  },
+  {
+    id: 'screen-flow',
+    label: '화면 흐름',
+    description: '선언된 레이아웃을 그리고 화면 사이 경로를 잇는다',
+  },
 ] as const
 
 export type ProjectViewId = (typeof PROJECT_VIEWS)[number]['id']

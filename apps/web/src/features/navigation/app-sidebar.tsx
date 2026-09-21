@@ -22,6 +22,8 @@ import { useSession } from '@/features/auth/use-session'
 import { useSidebarStore } from '@/shared/ui/sidebar-store'
 import {
   FileIcon,
+  FlowIcon,
+  HierarchyIcon,
   PanelLeftIcon,
   PenIcon,
   ShieldIcon,
@@ -237,6 +239,8 @@ const VIEW_ICONS: Record<ProjectViewId, ReactNode> = {
   documents: <PenIcon className="size-4 shrink-0" />,
   policies: <ShieldIcon className="size-4 shrink-0" />,
   'data-models': <TableIcon className="size-4 shrink-0" />,
+  ia: <HierarchyIcon className="size-4 shrink-0" />,
+  'screen-flow': <FlowIcon className="size-4 shrink-0" />,
 }
 
 function ProjectViewNav({
