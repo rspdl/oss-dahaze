@@ -114,3 +114,35 @@ describe('모르는 것을 화면이 숨기지 않는다', () => {
     )
   })
 })
+
+describe('프로토타입 체험', () => {
+  it('체험 모드에서는 실제 입력 컨트롤을 제공한다', () => {
+    const screen = findScreenMockup(collected, 'reservation.create_facility')!
+    const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} mode="experience" />)
+    expect(markup).toContain('<input')
+  })
+
+  it('한 행동에 여러 경로가 있으면 결과 선택을 요구한다', () => {
+    const screen = findScreenMockup(collected, 'reservation.facility_list')!
+    const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} mode="experience" outcomesByElementId={{ open: [{ id: 'success', label: '성공', targetScreenKey: 'detail' }, { id: 'failure', label: '실패', targetScreenKey: 'error' }] }} />)
+    expect(markup).toContain('결과 선택')
+    expect(markup).toContain('성공')
+    expect(markup).toContain('실패')
+  })
+
+  it('샘플 상황을 모델 단위의 표시된 예시로 일관되게 만든다', () => {
+    const screen = findScreenMockup(collected, 'reservation.facility_list')!
+    const normal = renderToStaticMarkup(<ScreenMockupFrame screen={screen} sampleVariant="normal" />)
+    const empty = renderToStaticMarkup(<ScreenMockupFrame screen={screen} sampleVariant="empty" />)
+    expect(normal).toContain('예시 데이터')
+    expect(normal).toContain('예시 1')
+    expect(empty).toContain('샘플이 비어 있습니다')
+  })
+
+  it('사용자 지정 너비와 높이를 적용한다', () => {
+    const screen = findScreenMockup(collected, 'reservation.facility_list')!
+    const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} dimensions={{ width: 720, height: 900 }} />)
+    expect(markup).toContain('width:720px')
+    expect(markup).toContain('height:900px')
+  })
+})

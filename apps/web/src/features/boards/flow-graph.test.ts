@@ -4,7 +4,7 @@ import type { ProjectCompileResponse } from '@dahaze/api-client'
 import screenStructure from '../mockup/__screen-structure-fixture.json'
 import { collectScreenMockups } from '../mockup/screen-layouts'
 import { collectBoard, type CollectedBoard } from './board-ir'
-import { buildFlowGraph } from './flow-graph'
+import { buildFlowGraph, outcomesByScreen } from './flow-graph'
 
 function response(result: unknown): ProjectCompileResponse {
   return {
@@ -137,5 +137,18 @@ describe('buildFlowGraph', () => {
     )
     expect(empty.nodes).toHaveLength(0)
     expect(empty.edges).toHaveLength(0)
+  })
+
+  it('같은 버튼 id의 결과를 화면별로 분리한다', () => {
+    const byScreen = outcomesByScreen({
+      nodes: [],
+      danglingPaths: [],
+      edges: [
+        { id: 'a', source: 'checkout', target: 'success', label: '결제 성공', path: { key: 'a', sourceScreenId: 'checkout', sourceElementId: 'submit', targetScreenId: 'success', label: '결제 성공', path: 'a.rspdl', span: null } },
+        { id: 'b', source: 'login', target: 'home', label: '로그인 성공', path: { key: 'b', sourceScreenId: 'login', sourceElementId: 'submit', targetScreenId: 'home', label: '로그인 성공', path: 'a.rspdl', span: null } },
+      ],
+    })
+    expect(byScreen.checkout?.submit?.[0]?.targetScreenKey).toBe('success')
+    expect(byScreen.login?.submit?.[0]?.targetScreenKey).toBe('home')
   })
 })

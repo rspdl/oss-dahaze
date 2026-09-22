@@ -9,6 +9,11 @@
  */
 export const PROJECT_VIEWS = [
   {
+    id: 'planning',
+    label: '기획 워크스페이스',
+    description: '인터뷰, 검토, 변경안과 프로젝트 버전을 함께 다룬다',
+  },
+  {
     id: 'documents',
     label: '문서 편집',
     /** 목록에서 이 뷰가 무엇을 하는 곳인지. 좁은 기둥에서는 tooltip 이 된다. */
@@ -44,7 +49,7 @@ export type ProjectViewId = (typeof PROJECT_VIEWS)[number]['id']
  * 문서 편집이 기본인 이유: 정책 검토는 **쓴 것이 있어야** 볼 것이 생긴다. 빈 프로젝트에서
  * 정책 표를 먼저 보여 주면 처음 온 사람에게 빈 표를 내미는 셈이 된다.
  */
-export const DEFAULT_PROJECT_VIEW: ProjectViewId = 'documents'
+export const DEFAULT_PROJECT_VIEW: ProjectViewId = 'planning'
 
 export function viewHref(projectId: string, view: ProjectViewId): string {
   return `/projects/${projectId}/${view}`

@@ -9,6 +9,19 @@ import type {
   MockupField,
   ScreenMockup,
 } from './screen-layouts'
+import type {
+  ActionOutcome,
+  DesignBinding,
+  DesignChange,
+  ElementDesign,
+  MockupDimensions,
+  ModelSampleSet,
+  PrototypeAction,
+  PrototypeMode,
+  SampleVariant,
+  SemanticProposal,
+} from './prototype-contract'
+import { designBindingKey } from './prototype-contract'
 
 /**
  * 선언된 레이아웃을 화면처럼 그린다.
@@ -31,6 +44,38 @@ export type MockupViewport = 'desktop' | 'mobile'
 const VIEWPORT_WIDTH: Record<MockupViewport, number> = {
   desktop: 1024,
   mobile: 390,
+}
+
+export const DEFAULT_VIEWPORT_DIMENSIONS: Record<MockupViewport, MockupDimensions> = {
+  desktop: { width: 1024, height: 768 },
+  mobile: { width: 390, height: 844 },
+}
+
+export interface ScreenMockupFrameProps {
+  screen: ScreenMockup
+  viewport?: MockupViewport
+  dimensions?: MockupDimensions
+  mode?: PrototypeMode
+  sampleVariant?: SampleVariant
+  samples?: ModelSampleSet[]
+  outcomesByElementId?: Readonly<Record<string, ActionOutcome[]>>
+  selectedElementPath?: string | null
+  selectedElementScreenKey?: string | null
+  designByElementPath?: Readonly<Record<string, ElementDesign>>
+  sourceHash?: string
+  onElementSelect?: (binding: DesignBinding) => void
+  onDesignChange?: (change: DesignChange) => void
+  onAction?: (action: PrototypeAction) => void
+  selectedSampleIdByModel?: Readonly<Record<string, string>>
+  onSampleSelect?: (modelId: string, recordId: string) => void
+  values?: Readonly<Record<string, string | boolean>>
+  onValueChange?: (fieldId: string, value: string | boolean) => void
+  onProposeSemanticEdit?: (proposal: SemanticProposal) => void
+  className?: string
+}
+
+interface ElementContext extends Omit<ScreenMockupFrameProps, 'screen' | 'viewport' | 'dimensions' | 'className'> {
+  screenKey: string
 }
 
 /** 입력칸 모양을 사람이 읽을 이름으로. 색이나 모양에만 기대지 않기 위해 텍스트로도 남긴다. */
@@ -71,7 +116,15 @@ function FieldLabel({ field }: { field: MockupField }) {
  * `select` 는 선언된 값들을 그대로 보여준다. 그것은 지어낸 내용이 아니라 문서가 말한 사실이라
  * 화면에 드러나는 편이 낫다.
  */
-function Control({ field }: { field: MockupField }) {
+function Control({ field, experience, value, onChange }: { field: MockupField; experience: boolean; value?: string | boolean; onChange?: (value: string | boolean) => void }) {
+  if (experience) {
+    if (field.control === 'checkbox') return <input aria-label={field.name} type="checkbox" checked={value === true} onChange={(event) => onChange?.(event.target.checked)} />
+    if (field.control === 'select') {
+      return <select aria-label={field.name} value={typeof value === 'string' ? value : ''} onChange={(event) => onChange?.(event.target.value)} className="h-8 rounded-md border bg-surface px-2 text-xs"><option value="">선택</option>{field.options?.map((option) => <option key={option}>{option}</option>)}</select>
+    }
+    const type = field.control === 'datetime' ? 'datetime-local' : field.control
+    return <input aria-label={field.name} type={type} value={typeof value === 'string' ? value : ''} onChange={(event) => onChange?.(event.target.value)} className="h-8 rounded-md border bg-surface px-2 text-xs" />
+  }
   if (field.control === 'checkbox') {
     return (
       <span className="flex items-center gap-2">
@@ -110,11 +163,11 @@ function Control({ field }: { field: MockupField }) {
   )
 }
 
-function Input({ field }: { field: MockupField }) {
+function Input({ field, experience, value, onChange }: { field: MockupField; experience: boolean; value?: string | boolean; onChange?: (value: string | boolean) => void }) {
   return (
     <div className="flex flex-col gap-1">
       <FieldLabel field={field} />
-      <Control field={field} />
+      <Control field={field} experience={experience} value={value} onChange={onChange} />
     </div>
   )
 }
@@ -126,18 +179,30 @@ function Input({ field }: { field: MockupField }) {
  * 쓰지 않은 것을 쓴 것처럼 보인다. 빈 줄은 "여기에 데이터가 온다" 는 자리일 뿐이다.
  */
 function ListElement({
+  modelId,
   modelName,
   fields,
+  records,
+  isExample,
+  selectedId,
+  onSelect,
 }: {
+  modelId: string
   modelName: string
   fields: MockupField[]
+  records: ModelSampleSet['variants'][SampleVariant] | null
+  isExample: boolean
+  selectedId?: string
+  onSelect?: (modelId: string, recordId: string) => void
 }) {
   return (
     <div className="overflow-hidden rounded-md border border-border">
       <div className="border-b border-border bg-surface-raised px-3 py-1.5">
-        <span className="text-[11px] text-text-subtle">{modelName} 목록</span>
+        <span className="text-[11px] text-text-subtle">{modelName} 목록{isExample ? ' · 예시 데이터' : ''}</span>
       </div>
-      {fields.length === 0 ? (
+      {records !== null && records.length === 0 ? (
+        <div className="px-3 py-5 text-center text-[11px] text-text-subtle">{modelName} 샘플이 비어 있습니다</div>
+      ) : fields.length === 0 ? (
         <div className="px-3 py-3 text-[11px] text-text-subtle">보여줄 필드가 없다</div>
       ) : (
         <table className="w-full table-fixed">
@@ -150,16 +215,17 @@ function ListElement({
               ))}
             </tr>
           </thead>
-          <tbody aria-hidden>
-            {[0, 1, 2].map((row) => (
-              <tr key={row} className="border-b border-border last:border-b-0">
+          <tbody>
+            {(records ?? []).map((record) => (
+              <tr key={record.id} aria-selected={record.id === selectedId} className={cn('border-b border-border last:border-b-0', record.id === selectedId && 'bg-accent-subtle')} onClick={() => onSelect?.(modelId, record.id)}>
                 {fields.map((field) => (
                   <td key={field.id} className="px-3 py-2">
-                    <span className="block h-2 rounded-full bg-shimmer" />
+                    <span className="block truncate text-[11px] text-text-muted">{String(record.values[field.id] ?? '')}</span>
                   </td>
                 ))}
               </tr>
             ))}
+            {records === null ? [0, 1, 2].map((row) => <tr key={row} aria-hidden className="border-b border-border last:border-b-0">{fields.map((field) => <td key={field.id} className="px-3 py-2"><span className="block h-2 rounded-full bg-shimmer" /></td>)}</tr>) : null}
           </tbody>
         </table>
       )}
@@ -206,13 +272,18 @@ function Unrecognized({
   )
 }
 
-function Element({ element }: { element: MockupElement }) {
+function Element({ element, path, context }: { element: MockupElement; path: string; context: ElementContext }) {
+  const stableId = element.kind === 'button' ? element.id : undefined
+  const binding: DesignBinding = { screenKey: context.screenKey, elementId: stableId, elementPath: path, sourceHash: context.sourceHash }
+  const design = context.designByElementPath?.[designBindingKey(binding)]
+  const selected = context.selectedElementPath === path && context.selectedElementScreenKey === context.screenKey
+  const child = (() => {
   switch (element.kind) {
     case 'header':
       return (
         <header className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-raised px-4 py-3">
           {element.children.map((child, index) => (
-            <Element key={index} element={child} />
+            <Element key={index} element={child} path={`${path}.children.${index}`} context={context} />
           ))}
         </header>
       )
@@ -220,7 +291,7 @@ function Element({ element }: { element: MockupElement }) {
       return (
         <section className="flex flex-col gap-3 px-4 py-3">
           {element.children.map((child, index) => (
-            <Element key={index} element={child} />
+            <Element key={index} element={child} path={`${path}.children.${index}`} context={context} />
           ))}
         </section>
       )
@@ -232,25 +303,33 @@ function Element({ element }: { element: MockupElement }) {
       return (
         <div className="flex flex-col gap-3 rounded-md border border-border bg-surface p-3">
           {element.inputs.map((input, index) => (
-            <Element key={index} element={input} />
+            <Element key={index} element={input} path={`${path}.inputs.${index}`} context={context} />
           ))}
         </div>
       )
     case 'input':
-      return <Input field={element.field} />
-    case 'list':
-      return <ListElement modelName={element.modelName} fields={element.fields} />
-    case 'button':
-      return (
-        <span className="inline-flex h-8 items-center rounded-md bg-accent px-3 text-xs font-medium text-on-solid">
-          {element.name}
-        </span>
-      )
+      return <Input field={element.field} experience={context.mode === 'experience'} value={context.values?.[element.field.id]} onChange={(value) => context.onValueChange?.(element.field.id, value)} />
+    case 'list': {
+      const supplied = context.samples?.find((set) => set.modelId === element.modelId)
+      const variant = context.sampleVariant ?? 'normal'
+      const count = variant === 'empty' ? 0 : variant === 'many' ? 12 : 3
+      const fallback = Array.from({ length: count }, (_, index) => ({ id: `${element.modelId}:example:${index + 1}`, values: Object.fromEntries(element.fields.map((field) => [field.id, variant === 'long' ? `예시 ${field.name} 값이 길게 표시되는 경우 ${index + 1}` : `예시 ${index + 1}`])) }))
+      return <ListElement modelId={element.modelId} modelName={element.modelName} fields={element.fields} records={supplied?.variants[variant] ?? fallback} isExample={supplied === undefined} selectedId={context.selectedSampleIdByModel?.[element.modelId]} onSelect={context.onSampleSelect} />
+    }
+    case 'button': {
+      if (context.mode !== 'experience') return <span className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text">{element.name}</span>
+      const outcomes = context.outcomesByElementId?.[element.id] ?? []
+      if (outcomes.length > 1) return <label className="inline-flex items-center gap-2 text-xs"><span>{element.name}</span><select aria-label={`${element.name} 결과`} defaultValue="" onChange={(event) => { const outcome = outcomes.find((item) => item.id === event.target.value); if (outcome) context.onAction?.({ screenKey: context.screenKey, elementId: element.id, outcome }) }}><option value="" disabled>결과 선택</option>{outcomes.map((outcome) => <option key={outcome.id} value={outcome.id}>{outcome.label}</option>)}</select></label>
+      if (outcomes.length === 0) return <button type="button" disabled title="선언된 결과가 없어 체험할 수 없습니다" className="inline-flex h-8 items-center rounded-md bg-accent px-3 text-xs font-medium text-on-solid opacity-50">{element.name} · 결과 없음</button>
+      return <button type="button" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text" onClick={(event) => { event.stopPropagation(); const outcome = outcomes[0]; if (outcome) context.onAction?.({ screenKey: context.screenKey, elementId: element.id, outcome }) }}>{element.name}</button>
+    }
     case 'placeholder':
       return <Placeholder text={element.text} />
     case 'unrecognized':
       return <Unrecognized rawKind={element.rawKind} reason={element.reason} />
   }
+  })()
+  return <div data-element-path={path} className={cn('relative', selected && 'ring-2 ring-accent')} style={{ width: design?.width, minHeight: design?.height }} onClick={(event) => { if (context.mode !== 'edit') return; event.stopPropagation(); context.onElementSelect?.(binding) }}>{child}{selected && context.mode === 'edit' ? <div className="nodrag absolute top-1 right-1 flex gap-1 rounded bg-surface p-1 shadow"><label className="text-[10px]">W <input aria-label="요소 너비" type="number" className="w-14 border" value={design?.width ?? ''} onChange={(event) => context.onDesignChange?.({ binding, patch: { width: Number(event.target.value) || undefined } })} /></label><label className="text-[10px]">H <input aria-label="요소 높이" type="number" className="w-14 border" value={design?.height ?? ''} onChange={(event) => context.onDesignChange?.({ binding, patch: { height: Number(event.target.value) || undefined } })} /></label><button type="button" className="text-[10px] text-diagnostic-error" onClick={() => context.onProposeSemanticEdit?.({ kind: 'delete-element', binding })}>삭제 제안</button></div> : null}</div>
 }
 
 /**
@@ -263,18 +342,21 @@ export function ScreenMockupFrame({
   screen,
   viewport = 'desktop',
   className,
-}: {
-  screen: ScreenMockup
-  viewport?: MockupViewport
-  className?: string
-}) {
+  dimensions,
+  mode = 'edit', sampleVariant = 'normal', samples, outcomesByElementId,
+  selectedElementPath, selectedElementScreenKey, designByElementPath, sourceHash, onElementSelect, onDesignChange,
+  onAction, onProposeSemanticEdit,
+  selectedSampleIdByModel, onSampleSelect,
+  values, onValueChange,
+}: ScreenMockupFrameProps) {
+  const context: ElementContext = { screenKey: screen.key, mode, sampleVariant, samples, outcomesByElementId, selectedElementPath, selectedElementScreenKey, designByElementPath, sourceHash, onElementSelect, onDesignChange, onAction, onProposeSemanticEdit, selectedSampleIdByModel, onSampleSelect, values, onValueChange }
   return (
     <figure
       className={cn(
         'flex flex-col overflow-hidden rounded-lg border border-border bg-canvas',
         className,
       )}
-      style={{ width: VIEWPORT_WIDTH[viewport] }}
+      style={{ width: dimensions?.width ?? VIEWPORT_WIDTH[viewport], height: dimensions?.height }}
     >
       <figcaption className="flex items-baseline gap-2 border-b border-border bg-surface px-4 py-2">
         <span className="text-xs font-semibold text-text">
@@ -290,9 +372,9 @@ export function ScreenMockupFrame({
           레이아웃에 요소가 없다
         </div>
       ) : (
-        <div className="flex flex-col">
+        <div className="flex min-h-0 flex-col overflow-y-auto">
           {screen.elements.map((element, index) => (
-            <Element key={index} element={element} />
+            <Element key={index} element={element} path={`elements.${index}`} context={context} />
           ))}
         </div>
       )}

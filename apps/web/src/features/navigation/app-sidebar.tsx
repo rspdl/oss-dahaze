@@ -27,6 +27,7 @@ import {
   PanelLeftIcon,
   PenIcon,
   ShieldIcon,
+  SparkleIcon,
   TableIcon,
   XIcon,
 } from '@/shared/ui/icons'
@@ -236,6 +237,7 @@ export function AppSidebar() {
 
 /** 뷰마다의 아이콘. 뜻은 옆 글자가 나르고, 기둥이 좁을 때만 혼자 선다. */
 const VIEW_ICONS: Record<ProjectViewId, ReactNode> = {
+  planning: <SparkleIcon className="size-4 shrink-0" />,
   documents: <PenIcon className="size-4 shrink-0" />,
   policies: <ShieldIcon className="size-4 shrink-0" />,
   'data-models': <TableIcon className="size-4 shrink-0" />,

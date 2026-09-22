@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo } from 'react'
+import { memo, useMemo, useState } from 'react'
 import {
   Background,
   Controls,
@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react'
 import { cn } from '@dahaze/ui'
 
-import { ScreenMockupFrame, type MockupViewport } from '@/features/mockup/screen-mockup'
+import { ScreenMockupFrame, type MockupViewport, type ScreenMockupFrameProps } from '@/features/mockup/screen-mockup'
 import type { FlowGraph, FlowNode } from './flow-graph'
 
 /**
@@ -32,12 +32,14 @@ interface FlowNodeData extends Record<string, unknown> {
   node: FlowNode
   viewport: MockupViewport
   selected: boolean
+  prototype: Omit<ScreenMockupFrameProps, 'screen' | 'viewport'>
+  detailed: boolean
 }
 
 type ScreenFlowNode = Node<FlowNodeData, 'screen'>
 
 const ScreenNodeCard = memo(function ScreenNodeCard({ data }: NodeProps<ScreenFlowNode>) {
-  const { node, viewport, selected } = data
+  const { node, viewport, selected, prototype, detailed } = data
 
   return (
     <div
@@ -47,10 +49,10 @@ const ScreenNodeCard = memo(function ScreenNodeCard({ data }: NodeProps<ScreenFl
       )}
     >
       <Handle type="target" position={Position.Left} className="!size-2.5 !border-0 !bg-accent" />
-      {node.mockup === null ? (
-        <EmptyScreenBox name={node.screen.name} id={node.screen.id} viewport={viewport} />
+      {!detailed ? <div className="flex h-28 w-72 flex-col justify-center rounded-lg border bg-surface px-4"><p className="truncate text-sm font-semibold text-text">{node.screen.name}</p><p className="mt-1 truncate font-mono text-[11px] text-text-subtle">{node.screen.id}</p><p className="mt-2 text-[11px] text-text-muted">{node.mockup === null ? '레이아웃 없음' : `요소 ${node.mockup.elements.length}개`}</p></div> : node.mockup === null ? (
+        <EmptyScreenBox name={node.screen.name} id={node.screen.id} viewport={viewport} dimensions={prototype.dimensions} />
       ) : (
-        <ScreenMockupFrame screen={node.mockup} viewport={viewport} />
+        <ScreenMockupFrame screen={node.mockup} viewport={viewport} {...prototype} />
       )}
       <Handle type="source" position={Position.Right} className="!size-2.5 !border-0 !bg-accent" />
     </div>
@@ -62,15 +64,17 @@ function EmptyScreenBox({
   name,
   id,
   viewport,
+  dimensions,
 }: {
   name: string
   id: string
   viewport: MockupViewport
+  dimensions?: { width: number; height: number }
 }) {
   return (
     <figure
       className="flex flex-col overflow-hidden rounded-lg border border-dashed border-border bg-canvas"
-      style={{ width: viewport === 'mobile' ? 390 : 1024 }}
+      style={{ width: dimensions?.width ?? (viewport === 'mobile' ? 390 : 1024), height: dimensions?.height }}
     >
       <figcaption className="border-b border-border bg-surface px-4 py-2">
         <span className="text-xs font-semibold text-text">{name}</span>
@@ -90,20 +94,31 @@ export function FlowBoard({
   viewport,
   selectedId,
   onSelect,
+  prototype = {},
+  prototypeForNode,
+  editable = false,
+  onPositionChange,
 }: {
   graph: FlowGraph
   viewport: MockupViewport
   selectedId: string | null
   onSelect: (id: string) => void
+  prototype?: Omit<ScreenMockupFrameProps, 'screen' | 'viewport'>
+  prototypeForNode?: (node: FlowNode) => Omit<ScreenMockupFrameProps, 'screen' | 'viewport'>
+  editable?: boolean
+  onPositionChange?: (screenKey: string, position: { x: number; y: number }) => void
 }) {
+  const [zoom, setZoom] = useState(1)
   const { nodes, edges } = useMemo(() => {
-    const nodes: ScreenFlowNode[] = graph.nodes.map((node) => ({
+    const visibleNodes = prototype.mode === 'experience' && selectedId !== null ? graph.nodes.filter((node) => node.id === selectedId) : graph.nodes
+    const nodes: ScreenFlowNode[] = visibleNodes.map((node) => ({
       id: node.id,
       type: 'screen',
-      position: node.position,
-      data: { node, viewport, selected: node.id === selectedId },
+      position: prototype.mode === 'experience' ? { x: 0, y: 0 } : node.position,
+      data: { node, viewport, selected: node.id === selectedId, detailed: prototype.mode === 'experience' || node.id === selectedId || zoom >= 0.35, prototype: prototypeForNode?.(node) ?? prototype },
     }))
-    const edges: Edge[] = graph.edges.map((edge) => ({
+    const visibleIds = new Set(nodes.map((node) => node.id))
+    const edges: Edge[] = graph.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)).map((edge) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
@@ -117,33 +132,38 @@ export function FlowBoard({
       ariaLabel: `${edge.path.sourceElementId}에서 출발: ${edge.label}`,
     }))
     return { nodes, edges }
-  }, [graph, viewport, selectedId])
+  }, [graph, viewport, selectedId, prototype, prototypeForNode, zoom])
 
   return (
     <section
       aria-label="화면 흐름"
-      className="relative min-h-[34rem] flex-1 overflow-hidden rounded-lg border bg-surface-raised/30"
+      className="relative min-h-0 flex-1 overflow-hidden rounded-lg border bg-surface-raised/30"
     >
       <ReactFlow<ScreenFlowNode, Edge>
+        key={`${prototype.mode ?? 'edit'}:${selectedId ?? 'all'}`}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.15, maxZoom: 0.9 }}
+        onInit={(instance) => { const selectedNode = nodes.find((node) => node.id === selectedId); if (selectedNode) void instance.fitView({ nodes: [selectedNode], padding: 0.18, maxZoom: 0.9, duration: 200 }) }}
         minZoom={0.05}
         maxZoom={1.4}
         nodesConnectable={false}
-        nodesDraggable={false}
-        onNodeClick={(_, node) => onSelect(node.id)}
+        nodesDraggable={editable}
+        onNodeDragStop={(_, node) => onPositionChange?.(node.id, node.position)}
+        onMove={(_, viewportState) => setZoom(viewportState.zoom)}
+        onlyRenderVisibleElements
+        onNodeClick={(_, node) => { if (prototype.mode !== 'experience') onSelect(node.id) }}
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={20} size={1} color="var(--color-border)" />
-        <MiniMap
+        {prototype.mode === 'experience' ? null : <MiniMap
           pannable
           zoomable
           nodeColor="var(--color-accent)"
           className="!border !border-border !bg-surface"
-        />
+        />}
         <Controls
           showInteractive={false}
           className="!border-border !bg-surface [&>button]:!border-border [&>button]:!bg-surface"

@@ -1,5 +1,6 @@
 import type { MockupViewport } from '@/features/mockup/screen-mockup'
 import type { ScreenMockup } from '@/features/mockup/screen-layouts'
+import type { ActionOutcome } from '@/features/mockup/prototype-contract'
 import { refKey, type BoardPath, type BoardScreen, type CollectedBoard } from './board-ir'
 
 /**
@@ -38,6 +39,16 @@ export interface FlowGraph {
   danglingPaths: BoardPath[]
 }
 
+export function outcomesByScreen(graph: FlowGraph): Record<string, Record<string, ActionOutcome[]>> {
+  const result: Record<string, Record<string, ActionOutcome[]>> = {}
+  for (const edge of graph.edges) {
+    const screen = result[edge.source] ?? (result[edge.source] = {})
+    const outcomes = screen[edge.path.sourceElementId] ?? (screen[edge.path.sourceElementId] = [])
+    outcomes.push({ id: edge.id, label: edge.label, targetScreenKey: edge.target })
+  }
+  return result
+}
+
 /** 목업 폭. `screen-mockup.tsx` 의 기기 폭과 같아야 노드가 잘리지 않는다. */
 const NODE_WIDTH: Record<MockupViewport, number> = { desktop: 1024, mobile: 390 }
 const COLUMN_GAP = 180
@@ -49,12 +60,14 @@ export function buildFlowGraph(
   collected: CollectedBoard,
   mockups: ScreenMockup[],
   viewport: MockupViewport,
+  options: { visibleScreenKeys?: ReadonlySet<string>; positions?: Readonly<Record<string, { x: number; y: number }>>; nodeWidth?: number } = {},
 ): FlowGraph {
   /* 전부 `path + id` 로 가른다. 같은 모듈 id 를 쓰는 두 문서에서 화면 id 가 글자 그대로
      같아지므로, 바깥 id 로 묶으면 한 문서의 화면이 다른 문서의 것을 덮어쓴다. 경로의 끝점도
      자기 문서 안의 화면을 가리키므로 같은 규칙으로 푼다. */
   const mockupByKey = new Map(mockups.map((mockup) => [mockup.key, mockup]))
-  const screenByKey = new Map(collected.screens.map((screen) => [screen.key, screen]))
+  const visibleScreens = options.visibleScreenKeys === undefined ? collected.screens : collected.screens.filter((screen) => options.visibleScreenKeys!.has(screen.key))
+  const screenByKey = new Map(visibleScreens.map((screen) => [screen.key, screen]))
   const sourceKeyOf = (path: BoardPath) => refKey(path.path, path.sourceScreenId)
   const targetKeyOf = (path: BoardPath) => refKey(path.path, path.targetScreenId)
 
@@ -80,7 +93,7 @@ export function buildFlowGraph(
 
   const depth = new Map<string, number>()
   const queue: string[] = []
-  for (const screen of collected.screens) {
+  for (const screen of visibleScreens) {
     if (!incoming.has(screen.key)) {
       depth.set(screen.key, 0)
       queue.push(screen.key)
@@ -96,12 +109,12 @@ export function buildFlowGraph(
     }
   }
   /* 순환 안에만 있는 화면은 위 탐색이 닿지 못한다. 선언 순서대로 0층에 세운다. */
-  for (const screen of collected.screens) {
+  for (const screen of visibleScreens) {
     if (!depth.has(screen.key)) depth.set(screen.key, 0)
   }
 
   const rowInColumn = new Map<number, number>()
-  const nodes: FlowNode[] = collected.screens.map((screen) => {
+  const nodes: FlowNode[] = visibleScreens.map((screen) => {
     const column = depth.get(screen.key) ?? 0
     const row = rowInColumn.get(column) ?? 0
     rowInColumn.set(column, row + 1)
@@ -109,8 +122,8 @@ export function buildFlowGraph(
       id: screen.key,
       screen,
       mockup: mockupByKey.get(screen.key) ?? null,
-      position: {
-        x: column * (NODE_WIDTH[viewport] + COLUMN_GAP),
+      position: options.positions?.[screen.key] ?? {
+        x: column * ((options.nodeWidth ?? NODE_WIDTH[viewport]) + COLUMN_GAP),
         y: row * (ROW_HEIGHT + ROW_GAP),
       },
     }
