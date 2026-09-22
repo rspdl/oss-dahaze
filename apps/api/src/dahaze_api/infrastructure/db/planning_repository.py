@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dahaze_api.domain.planning import DecisionResolutionOutcome, DecisionResolutionStatus
 from dahaze_api.domain.rspdl import RspdlSource, project_source_hash
 from dahaze_api.infrastructure.db.models import (
     DocumentRevisionRow,
@@ -170,6 +171,58 @@ class SqlPlanningRepository:
         row.revision += 1
         await self._session.flush()
         return {"item": item, "state": _state(row)}
+
+    async def resolve_decision(
+        self,
+        project_id: UUID,
+        *,
+        decision_id: UUID,
+        expected_revision: int,
+        status: str,
+        rationale: str | None,
+    ) -> DecisionResolutionOutcome:
+        row = await self._lock_state(project_id)
+        if row.revision != expected_revision:
+            return DecisionResolutionOutcome(DecisionResolutionStatus.STALE)
+        index = next(
+            (
+                index
+                for index, value in enumerate(row.decisions)
+                if isinstance(value, Mapping) and value.get("id") == str(decision_id)
+            ),
+            None,
+        )
+        if index is None:
+            return DecisionResolutionOutcome(DecisionResolutionStatus.NOT_FOUND)
+        current = row.decisions[index]
+        assert isinstance(current, Mapping)
+        resolved_at = datetime.now(UTC).isoformat()
+        history = current.get("resolution_history", [])
+        if not isinstance(history, list):
+            history = []
+        event = {
+            "from_status": current.get("status"),
+            "to_status": status,
+            "previous_rationale": current.get("rationale"),
+            "rationale": rationale,
+            "resolved_at": resolved_at,
+        }
+        item = {
+            **dict(current),
+            "status": status,
+            "rationale": rationale,
+            "resolved_at": resolved_at,
+            "resolution_history": [*history, event],
+        }
+        decisions = list(row.decisions)
+        decisions[index] = item
+        row.decisions = decisions
+        row.revision += 1
+        await self._session.flush()
+        return DecisionResolutionOutcome(
+            DecisionResolutionStatus.UPDATED,
+            {"item": item, "state": _state(row)},
+        )
 
     async def _lock_state(self, project_id: UUID) -> PlanningStateRow:
         await self._ensure_state(project_id)

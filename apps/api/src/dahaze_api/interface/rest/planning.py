@@ -27,6 +27,8 @@ from dahaze_api.interface.rest.schemas import (
     ProjectSnapshotSummaryResponse,
     ProposePlanningEditRequest,
     ProposePlanningEditResponse,
+    ResolvePlanningDecisionRequest,
+    ResolvePlanningDecisionResponse,
     RestoreProjectSnapshotRequest,
     UndoPlanningMetadataRequest,
     UpdatePlanningStateRequest,
@@ -119,6 +121,33 @@ async def append_planning_decision(
             status=body.status,
         )
         return AppendPlanningDecisionResponse(
+            item=result["item"], revision=result["state"]["revision"]
+        )
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.patch(
+    "/projects/{project_id}/planning/decisions/{decision_id}",
+    name="resolve_planning_decision",
+)
+async def resolve_planning_decision(
+    project_id: UUID,
+    decision_id: UUID,
+    body: ResolvePlanningDecisionRequest,
+    user: CurrentUser,
+    planning: Planning,
+) -> ResolvePlanningDecisionResponse:
+    try:
+        result = await planning.resolve_decision(
+            actor_id=user.id,
+            project_id=project_id,
+            decision_id=decision_id,
+            expected_revision=body.expected_revision,
+            status=body.status,
+            rationale=body.rationale,
+        )
+        return ResolvePlanningDecisionResponse(
             item=result["item"], revision=result["state"]["revision"]
         )
     except (NotFound, AccessDenied, Conflict) as exc:

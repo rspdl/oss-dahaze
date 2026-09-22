@@ -607,6 +607,32 @@ class AppendPlanningDecisionResponse(BaseModel):
     revision: int
 
 
+class ResolvePlanningDecisionRequest(BaseModel):
+    expected_revision: int = Field(ge=0, description="현재 기획 상태 optimistic revision")
+    status: str = Field(pattern="^(decided|deferred)$", description="decided | deferred")
+    rationale: str | None = Field(default=None, max_length=8000, description="채택·보류 근거")
+
+
+class PlanningDecisionResolutionEventResponse(BaseModel):
+    from_status: str | None = Field(description="변경 전 결정 상태")
+    to_status: str = Field(description="변경 후 결정 상태")
+    previous_rationale: str | None = Field(description="변경 전 근거")
+    rationale: str | None = Field(description="새 근거")
+    resolved_at: datetime = Field(description="이 상태 변경이 기록된 시각")
+
+
+class ResolvedPlanningDecisionResponse(PlanningDecisionResponse):
+    resolved_at: datetime = Field(description="가장 최근 상태 변경 시각")
+    resolution_history: list[PlanningDecisionResolutionEventResponse] = Field(
+        description="이 결정 ID에 누적된 상태 변경 이력"
+    )
+
+
+class ResolvePlanningDecisionResponse(BaseModel):
+    item: ResolvedPlanningDecisionResponse
+    revision: int = Field(description="갱신된 기획 상태 revision")
+
+
 class PatchPlanningMetadataRequest(BaseModel):
     expected_revision: int = Field(ge=0)
     environments: list[dict[str, Any]] | None = None

@@ -21,6 +21,7 @@ from dahaze_api.domain.entities import (
     User,
 )
 from dahaze_api.domain.llm import EbnfGrammar
+from dahaze_api.domain.planning import DecisionResolutionOutcome
 from dahaze_api.domain.rspdl import (
     AnalysisOutcome,
     RspdlEditOutcome,
@@ -293,6 +294,15 @@ class PlanningRepositoryPort(Protocol):
         rationale: str | None,
         status: str,
     ) -> Mapping[str, Any] | None: ...
+    async def resolve_decision(
+        self,
+        project_id: UUID,
+        *,
+        decision_id: UUID,
+        expected_revision: int,
+        status: str,
+        rationale: str | None,
+    ) -> DecisionResolutionOutcome: ...
     async def patch_metadata(
         self,
         project_id: UUID,

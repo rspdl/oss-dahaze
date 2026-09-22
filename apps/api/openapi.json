@@ -1659,6 +1659,66 @@
         "title": "PlanningAnalysisResponse",
         "type": "object"
       },
+      "PlanningDecisionResolutionEventResponse": {
+        "properties": {
+          "from_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "변경 전 결정 상태",
+            "title": "From Status"
+          },
+          "previous_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "변경 전 근거",
+            "title": "Previous Rationale"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "새 근거",
+            "title": "Rationale"
+          },
+          "resolved_at": {
+            "description": "이 상태 변경이 기록된 시각",
+            "format": "date-time",
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "to_status": {
+            "description": "변경 후 결정 상태",
+            "title": "To Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_status",
+          "to_status",
+          "previous_rationale",
+          "rationale",
+          "resolved_at"
+        ],
+        "title": "PlanningDecisionResolutionEventResponse",
+        "type": "object"
+      },
       "PlanningDecisionResponse": {
         "properties": {
           "created_at": {
@@ -2648,6 +2708,117 @@
           "display_name"
         ],
         "title": "RegisterRequest",
+        "type": "object"
+      },
+      "ResolvePlanningDecisionRequest": {
+        "properties": {
+          "expected_revision": {
+            "description": "현재 기획 상태 optimistic revision",
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "채택·보류 근거",
+            "title": "Rationale"
+          },
+          "status": {
+            "description": "decided | deferred",
+            "pattern": "^(decided|deferred)$",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "status"
+        ],
+        "title": "ResolvePlanningDecisionRequest",
+        "type": "object"
+      },
+      "ResolvePlanningDecisionResponse": {
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/ResolvedPlanningDecisionResponse"
+          },
+          "revision": {
+            "description": "갱신된 기획 상태 revision",
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item",
+          "revision"
+        ],
+        "title": "ResolvePlanningDecisionResponse",
+        "type": "object"
+      },
+      "ResolvedPlanningDecisionResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "resolution_history": {
+            "description": "이 결정 ID에 누적된 상태 변경 이력",
+            "items": {
+              "$ref": "#/components/schemas/PlanningDecisionResolutionEventResponse"
+            },
+            "title": "Resolution History",
+            "type": "array"
+          },
+          "resolved_at": {
+            "description": "가장 최근 상태 변경 시각",
+            "format": "date-time",
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "rationale",
+          "status",
+          "created_at",
+          "resolved_at",
+          "resolution_history"
+        ],
+        "title": "ResolvedPlanningDecisionResponse",
         "type": "object"
       },
       "RestoreProjectSnapshotRequest": {
@@ -4656,6 +4827,85 @@
           }
         },
         "summary": "Append Planning Decision",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/decisions/{decision_id}": {
+      "patch": {
+        "operationId": "resolve_planning_decision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Decision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolvePlanningDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvePlanningDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Planning Decision",
         "tags": [
           "planning"
         ]

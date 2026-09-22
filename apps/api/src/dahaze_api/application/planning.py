@@ -9,15 +9,24 @@ from uuid import UUID
 from dahaze_api.application.analysis import AnalyzeWorkspace
 from dahaze_api.application.errors import AccessDenied, Conflict, NotFound
 from dahaze_api.application.workspace import WorkspaceService, validate_document_identity
+from dahaze_api.domain.planning import DecisionResolutionStatus
 from dahaze_api.domain.ports import PlanningRepositoryPort, RspdlCompilerPort
 from dahaze_api.domain.rspdl import RspdlSource, project_source_hash, source_fingerprint
 
 ALLOWED_MESSAGE_ROLES = frozenset({"user", "assistant"})
+ALLOWED_DECISION_STATUSES = frozenset({"open", "decided", "deferred"})
+RESOLVED_DECISION_STATUSES = frozenset({"decided", "deferred"})
 
 
 def _validate_message_roles(messages: Sequence[Mapping[str, Any]]) -> None:
     if any(message.get("role") not in ALLOWED_MESSAGE_ROLES for message in messages):
         raise Conflict("기획 메시지 role은 user 또는 assistant여야 한다")
+
+
+def _validate_decision_status(status: str, *, resolving: bool = False) -> None:
+    allowed = RESOLVED_DECISION_STATUSES if resolving else ALLOWED_DECISION_STATUSES
+    if status not in allowed:
+        raise Conflict(f"결정 status는 {', '.join(sorted(allowed))} 중 하나여야 한다")
 
 
 def _has_blocking_diagnostics(
@@ -131,6 +140,7 @@ class PlanningService:
         rationale: str | None,
         status: str,
     ) -> Mapping[str, Any]:
+        _validate_decision_status(status)
         membership = await self._workspace.require_membership(
             actor_id=actor_id, project_id=project_id
         )
@@ -146,6 +156,35 @@ class PlanningService:
         if updated is None:
             raise Conflict("기획 상태가 다른 곳에서 변경되었다")
         return updated
+
+    async def resolve_decision(
+        self,
+        *,
+        actor_id: UUID,
+        project_id: UUID,
+        decision_id: UUID,
+        expected_revision: int,
+        status: str,
+        rationale: str | None,
+    ) -> Mapping[str, Any]:
+        _validate_decision_status(status, resolving=True)
+        membership = await self._workspace.require_membership(
+            actor_id=actor_id, project_id=project_id
+        )
+        if not membership.role.can_write:
+            raise AccessDenied("이 프로젝트에 쓰기 권한이 없다")
+        outcome = await self._store.resolve_decision(
+            project_id,
+            decision_id=decision_id,
+            expected_revision=expected_revision,
+            status=status,
+            rationale=rationale,
+        )
+        if outcome.status is DecisionResolutionStatus.STALE:
+            raise Conflict("기획 상태가 다른 곳에서 변경되었다")
+        if outcome.status is DecisionResolutionStatus.NOT_FOUND or outcome.value is None:
+            raise NotFound("결정을 찾을 수 없다")
+        return outcome.value
 
     async def patch_metadata(
         self,

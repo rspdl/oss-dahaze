@@ -355,6 +355,29 @@ class McpTools:
             )
             return [_revision_payload(r) for r in revisions]
 
+    async def resolve_planning_decision(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        decision_id: str,
+        expected_revision: int,
+        status: str,
+        rationale: str | None = None,
+    ) -> dict[str, Any]:
+        if status not in {"decided", "deferred"}:
+            raise ValueError("status는 decided 또는 deferred여야 한다")
+        async with self._acting(headers) as actor:
+            result = await actor.planning.resolve_decision(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                decision_id=_uuid(decision_id, field="decision_id"),
+                expected_revision=expected_revision,
+                status=status,
+                rationale=rationale,
+            )
+            return dict(result)
+
     async def rspdl_runtime(self, headers: Mapping[str, str] | None) -> dict[str, Any]:
         """이 서버가 돌리는 컴파일러의 정체.
 
@@ -650,6 +673,31 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
     )
     async def list_document_revisions(document_id: str, ctx: Context) -> list[dict[str, Any]]:
         return await tools.list_document_revisions(ctx.headers, document_id=document_id)
+
+    @mcp.tool(
+        name="resolve_planning_decision",
+        description=(
+            "기존 결정의 안정적인 decision_id를 유지한 채 status를 decided 또는 deferred로 "
+            "바꾼다. title로 대상을 추측하지 않는다. expected_revision이 최신 기획 상태와 "
+            "다르면 충돌하고, 없는 ID는 실패한다. 이전 상태와 근거는 resolution_history에 남는다."
+        ),
+    )
+    async def resolve_planning_decision(
+        project_id: str,
+        decision_id: str,
+        expected_revision: int,
+        status: str,
+        ctx: Context,
+        rationale: str | None = None,
+    ) -> dict[str, Any]:
+        return await tools.resolve_planning_decision(
+            ctx.headers,
+            project_id=project_id,
+            decision_id=decision_id,
+            expected_revision=expected_revision,
+            status=status,
+            rationale=rationale,
+        )
 
     @mcp.tool(
         name="delete_document",

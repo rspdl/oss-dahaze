@@ -310,6 +310,62 @@ async def test_whole_state_update_rejects_privileged_message_role(
     assert response.status_code == 409
 
 
+async def test_decision_resolution_preserves_id_and_rejects_stale_or_unknown(
+    client: httpx.AsyncClient,
+) -> None:
+    project = await _project(client, "resolve-decision")
+    created = (
+        await client.post(
+            f"/api/projects/{project['id']}/planning/decisions",
+            json={
+                "expected_revision": 0,
+                "title": "결제 실패를 같은 화면에서 처리할까?",
+                "status": "open",
+                "rationale": None,
+            },
+        )
+    ).json()
+    decision_id = created["item"]["id"]
+
+    resolved = await client.patch(
+        f"/api/projects/{project['id']}/planning/decisions/{decision_id}",
+        json={
+            "expected_revision": created["revision"],
+            "status": "decided",
+            "rationale": "재시도 맥락을 유지한다.",
+        },
+    )
+
+    assert resolved.status_code == 200, resolved.text
+    body = resolved.json()
+    assert body["item"]["id"] == decision_id
+    assert body["item"]["status"] == "decided"
+    assert body["item"]["resolution_history"] == [
+        {
+            "from_status": "open",
+            "to_status": "decided",
+            "previous_rationale": None,
+            "rationale": "재시도 맥락을 유지한다.",
+            "resolved_at": body["item"]["resolved_at"],
+        }
+    ]
+    state = (await client.get(f"/api/projects/{project['id']}/planning")).json()
+    assert len(state["decisions"]) == 1
+    assert state["decisions"][0]["id"] == decision_id
+
+    stale = await client.patch(
+        f"/api/projects/{project['id']}/planning/decisions/{decision_id}",
+        json={"expected_revision": created["revision"], "status": "deferred"},
+    )
+    assert stale.status_code == 409
+
+    unknown = await client.patch(
+        f"/api/projects/{project['id']}/planning/decisions/{UUID(int=99)}",
+        json={"expected_revision": body["revision"], "status": "deferred"},
+    )
+    assert unknown.status_code == 404
+
+
 async def test_restore_roundtrip_preserves_snapshot_and_restores_design_and_document(
     client: httpx.AsyncClient,
 ) -> None:

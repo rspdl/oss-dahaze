@@ -33,6 +33,7 @@ from dahaze_api.infrastructure.auth.session import (
     MCP_AUDIENCE,
     SessionTokens,
 )
+from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
 from dahaze_api.infrastructure.db.repositories import (
     SqlDocumentRepository,
     SqlProjectRepository,
@@ -351,6 +352,37 @@ async def test_structured_edit_tool_never_auto_saves_document(
     assert result["supported"] is False
     assert result["draft"] is None
     assert (await tools.read_document(headers, document_id=document["id"]))["text"] == VALID_TEXT
+
+
+async def test_decision_resolution_tool_updates_existing_id(
+    tools: McpTools,
+    tokens: SessionTokens,
+    user: User,
+    project: Project,
+    session: AsyncSession,
+) -> None:
+    created = await SqlPlanningRepository(session).append_decision(
+        project.id,
+        expected_revision=0,
+        title="복구 경로",
+        rationale=None,
+        status="open",
+    )
+    assert created is not None
+    decision_id = created["item"]["id"]
+
+    result = await tools.resolve_planning_decision(
+        auth(tokens.issue_mcp(user.id)),
+        project_id=str(project.id),
+        decision_id=decision_id,
+        expected_revision=created["state"]["revision"],
+        status="deferred",
+        rationale="정책 확정 뒤 다시 본다.",
+    )
+
+    assert result["item"]["id"] == decision_id
+    assert result["item"]["status"] == "deferred"
+    assert len(result["state"]["decisions"]) == 1
 
 
 @pytest.mark.parametrize("bad_id", ["not-a-uuid", "", "123"])
@@ -754,6 +786,7 @@ async def test_tools_are_advertised_over_http(
         "check_rspdl",
         "find_bounded_model",
         "propose_planning_edit",
+        "resolve_planning_decision",
         "get_project_handoff",
     }
     # 설명이 LLM 에게는 유일한 인터페이스다. 비어 있으면 도구가 없는 것과 같다.
