@@ -273,6 +273,26 @@ class PlanningDraftRow(TimestampMixin, Base):
     applied_revision: Mapped[int | None] = mapped_column(Integer)
 
 
+class PlanningMetadataRevisionRow(Base):
+    __tablename__ = "planning_metadata_revisions"
+    __table_args__ = (
+        UniqueConstraint("project_id", "revision", name="uq_planning_metadata_revision"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    metadata_: Mapped[dict[str, object]] = mapped_column("metadata", JsonB, nullable=False)
+    author_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    summary: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class ProjectSnapshotRow(Base):
     __tablename__ = "project_snapshots"
     __table_args__ = (

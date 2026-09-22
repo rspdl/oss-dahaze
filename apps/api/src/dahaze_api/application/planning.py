@@ -13,17 +13,25 @@ from dahaze_api.domain.ports import PlanningRepositoryPort, RspdlCompilerPort
 from dahaze_api.domain.rspdl import RspdlSource, project_source_hash
 
 
-def _has_blocking_diagnostics(result: Mapping[str, Any] | None) -> bool:
+def _has_blocking_diagnostics(
+    result: Mapping[str, Any] | None, *, expected_paths: set[str]
+) -> bool:
     """알 수 없는 결과는 통과시키지 않는다. error 만 적용을 막는다."""
     if not isinstance(result, Mapping):
         return True
     files = result.get("files")
     if not isinstance(files, list) or not files:
         return True
+    actual_paths: list[str] = []
     for file in files:
         if not isinstance(file, Mapping) or not isinstance(file.get("diagnostics"), list):
             return True
-        if file.get("module") is None:
+        path = file.get("path")
+        if not isinstance(path, str):
+            return True
+        actual_paths.append(path)
+        module = file.get("module")
+        if not isinstance(module, Mapping) or not isinstance(module.get("id"), str):
             return True
         for diagnostic in file["diagnostics"]:
             if not isinstance(diagnostic, Mapping):
@@ -35,7 +43,7 @@ def _has_blocking_diagnostics(result: Mapping[str, Any] | None) -> bool:
                 return True
             if severity.lower() == "error":
                 return True
-    return False
+    return len(actual_paths) != len(set(actual_paths)) or set(actual_paths) != expected_paths
 
 
 class PlanningService:
@@ -89,6 +97,96 @@ class PlanningService:
         result.update(project_revision=project.revision, source_hash=project.source_hash)
         return result
 
+    async def append_message(
+        self, *, actor_id: UUID, project_id: UUID, expected_revision: int, role: str, content: str
+    ) -> Mapping[str, Any]:
+        membership = await self._workspace.require_membership(
+            actor_id=actor_id, project_id=project_id
+        )
+        if not membership.role.can_write:
+            raise AccessDenied("이 프로젝트에 쓰기 권한이 없다")
+        updated = await self._store.append_message(
+            project_id, expected_revision=expected_revision, role=role, content=content
+        )
+        if updated is None:
+            raise Conflict("기획 상태가 다른 곳에서 변경되었다")
+        return updated
+
+    async def append_decision(
+        self,
+        *,
+        actor_id: UUID,
+        project_id: UUID,
+        expected_revision: int,
+        title: str,
+        rationale: str | None,
+        status: str,
+    ) -> Mapping[str, Any]:
+        membership = await self._workspace.require_membership(
+            actor_id=actor_id, project_id=project_id
+        )
+        if not membership.role.can_write:
+            raise AccessDenied("이 프로젝트에 쓰기 권한이 없다")
+        updated = await self._store.append_decision(
+            project_id,
+            expected_revision=expected_revision,
+            title=title,
+            rationale=rationale,
+            status=status,
+        )
+        if updated is None:
+            raise Conflict("기획 상태가 다른 곳에서 변경되었다")
+        return updated
+
+    async def patch_metadata(
+        self,
+        *,
+        actor_id: UUID,
+        project_id: UUID,
+        expected_revision: int,
+        patch: Mapping[str, Any],
+        summary: str | None,
+    ) -> Mapping[str, Any]:
+        membership = await self._workspace.require_membership(
+            actor_id=actor_id, project_id=project_id
+        )
+        if not membership.role.can_write:
+            raise AccessDenied("이 프로젝트에 쓰기 권한이 없다")
+        updated = await self._store.patch_metadata(
+            project_id,
+            actor_id=actor_id,
+            expected_revision=expected_revision,
+            patch=patch,
+            summary=summary,
+        )
+        if updated is None:
+            raise Conflict("기획 상태가 다른 곳에서 변경되었거나 복원 대상이 없다")
+        return updated
+
+    async def metadata_history(
+        self, *, actor_id: UUID, project_id: UUID
+    ) -> list[Mapping[str, Any]]:
+        await self._workspace.get_project(actor_id=actor_id, project_id=project_id)
+        return await self._store.list_metadata_revisions(project_id)
+
+    async def undo_metadata(
+        self, *, actor_id: UUID, project_id: UUID, expected_revision: int, target_revision: int
+    ) -> Mapping[str, Any]:
+        membership = await self._workspace.require_membership(
+            actor_id=actor_id, project_id=project_id
+        )
+        if not membership.role.can_write:
+            raise AccessDenied("이 프로젝트에 쓰기 권한이 없다")
+        updated = await self._store.undo_metadata(
+            project_id,
+            actor_id=actor_id,
+            expected_revision=expected_revision,
+            target_revision=target_revision,
+        )
+        if updated is None:
+            raise Conflict("기획 상태가 다른 곳에서 변경되었거나 복원 대상이 없다")
+        return updated
+
     async def create_draft(
         self,
         *,
@@ -118,6 +216,7 @@ class PlanningService:
             }
             for d in documents
         }
+        enriched_changes: list[dict[str, Any]] = []
         seen_paths: set[str] = set()
         for change in changes:
             path, operation = change.get("path"), change.get("operation")
@@ -126,6 +225,15 @@ class PlanningService:
             if path in seen_paths:
                 raise Conflict(f"한 초안에서 같은 경로를 두 번 변경할 수 없다: {path}")
             seen_paths.add(path)
+            before = by_path.get(path)
+            enriched_changes.append(
+                {
+                    **dict(change),
+                    "before_exists": before is not None,
+                    "before_title": None if before is None else before["title"],
+                    "before_text": None if before is None else before["text"],
+                }
+            )
             if operation == "delete":
                 if path not in by_path:
                     raise Conflict(f"삭제할 문서가 없다: {path}")
@@ -154,7 +262,7 @@ class PlanningService:
             project_id=project_id,
             base_project_revision=base_project_revision,
             base_source_hash=base_source_hash,
-            changes=changes,
+            changes=enriched_changes,
             candidate_documents=list(by_path.values()),
             candidate_source_hash=project_source_hash(sources),
             summary=summary,
@@ -210,7 +318,17 @@ class PlanningService:
         )
         blocks = (
             not isinstance(candidate_documents, list)
-            or (bool(candidate_documents) and _has_blocking_diagnostics(draft.get("result")))
+            or (
+                bool(candidate_documents)
+                and _has_blocking_diagnostics(
+                    draft.get("result"),
+                    expected_paths={
+                        str(item.get("path"))
+                        for item in candidate_documents
+                        if isinstance(item, Mapping)
+                    },
+                )
+            )
             or (not candidate_documents and draft.get("result") is not None)
             or not runtime_matches
             or not candidate_hash_matches
@@ -268,6 +386,7 @@ class PlanningService:
             expected_project_revision=expected_project_revision,
             expected_source_hash=expected_source_hash,
             expected_planning_revision=expected_planning_revision,
+            compiled_source_hash=project_source_hash(sources),
             summary=summary,
             rspdl_version=runtime.rspdl_version,
             wire_schema_version=runtime.wire_schema_version,

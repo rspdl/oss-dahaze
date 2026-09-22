@@ -9,10 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dahaze_api.domain.rspdl import RspdlSource, project_source_hash
 from dahaze_api.infrastructure.db.models import (
     DocumentRevisionRow,
     DocumentRow,
     PlanningDraftRow,
+    PlanningMetadataRevisionRow,
     PlanningStateRow,
     ProjectRow,
     ProjectSnapshotRow,
@@ -127,6 +129,159 @@ class SqlPlanningRepository:
         await self._session.flush()
         await self._session.refresh(row)
         return _state(row)
+
+    async def append_message(
+        self, project_id: UUID, *, expected_revision: int, role: str, content: str
+    ) -> Mapping[str, Any] | None:
+        row = await self._lock_state(project_id)
+        if row.revision != expected_revision:
+            return None
+        item = {
+            "id": str(uuid4()),
+            "role": role,
+            "content": content,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        row.messages = [*row.messages, item]
+        row.revision += 1
+        await self._session.flush()
+        return {"item": item, "state": _state(row)}
+
+    async def append_decision(
+        self,
+        project_id: UUID,
+        *,
+        expected_revision: int,
+        title: str,
+        rationale: str | None,
+        status: str,
+    ) -> Mapping[str, Any] | None:
+        row = await self._lock_state(project_id)
+        if row.revision != expected_revision:
+            return None
+        item = {
+            "id": str(uuid4()),
+            "title": title,
+            "rationale": rationale,
+            "status": status,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        row.decisions = [*row.decisions, item]
+        row.revision += 1
+        await self._session.flush()
+        return {"item": item, "state": _state(row)}
+
+    async def _lock_state(self, project_id: UUID) -> PlanningStateRow:
+        await self._ensure_state(project_id)
+        return (
+            await self._session.execute(
+                select(PlanningStateRow)
+                .where(PlanningStateRow.project_id == project_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
+
+    async def patch_metadata(
+        self,
+        project_id: UUID,
+        *,
+        actor_id: UUID,
+        expected_revision: int,
+        patch: Mapping[str, Any],
+        summary: str | None,
+    ) -> Mapping[str, Any] | None:
+        row = await self._lock_state(project_id)
+        if row.revision != expected_revision:
+            return None
+        baseline = (
+            await self._session.execute(
+                select(PlanningMetadataRevisionRow).where(
+                    PlanningMetadataRevisionRow.project_id == project_id,
+                    PlanningMetadataRevisionRow.revision == row.revision,
+                )
+            )
+        ).scalar_one_or_none()
+        if baseline is None:
+            self._session.add(
+                PlanningMetadataRevisionRow(
+                    id=uuid4(),
+                    project_id=project_id,
+                    revision=row.revision,
+                    metadata_=dict(row.metadata_),
+                    author_id=actor_id,
+                    summary="메타데이터 변경 전 기준",
+                )
+            )
+        metadata = dict(row.metadata_)
+        metadata.update(dict(patch))
+        row.revision += 1
+        row.metadata_ = metadata
+        history = PlanningMetadataRevisionRow(
+            id=uuid4(),
+            project_id=project_id,
+            revision=row.revision,
+            metadata_=metadata,
+            author_id=actor_id,
+            summary=summary,
+        )
+        self._session.add(history)
+        await self._session.flush()
+        return {"revision": row.revision, "metadata": metadata}
+
+    async def list_metadata_revisions(self, project_id: UUID) -> list[Mapping[str, Any]]:
+        rows = (
+            (
+                await self._session.execute(
+                    select(PlanningMetadataRevisionRow)
+                    .where(PlanningMetadataRevisionRow.project_id == project_id)
+                    .order_by(PlanningMetadataRevisionRow.revision.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [
+            {
+                "revision": item.revision,
+                "metadata": item.metadata_,
+                "author_id": item.author_id,
+                "summary": item.summary,
+                "created_at": item.created_at,
+            }
+            for item in rows
+        ]
+
+    async def undo_metadata(
+        self, project_id: UUID, *, actor_id: UUID, expected_revision: int, target_revision: int
+    ) -> Mapping[str, Any] | None:
+        row = await self._lock_state(project_id)
+        if row.revision != expected_revision:
+            return None
+        target = (
+            await self._session.execute(
+                select(PlanningMetadataRevisionRow).where(
+                    PlanningMetadataRevisionRow.project_id == project_id,
+                    PlanningMetadataRevisionRow.revision == target_revision,
+                )
+            )
+        ).scalar_one_or_none()
+        if target is None:
+            return None
+        row.revision += 1
+        row.metadata_ = dict(target.metadata_)
+        self._session.add(
+            PlanningMetadataRevisionRow(
+                id=uuid4(),
+                project_id=project_id,
+                revision=row.revision,
+                metadata_=row.metadata_,
+                author_id=actor_id,
+                summary=f"메타데이터 리비전 {target_revision} 복원",
+            )
+        )
+        await self._session.flush()
+        return {"revision": row.revision, "metadata": row.metadata_}
 
     async def create_draft(
         self,
@@ -302,6 +457,7 @@ class SqlPlanningRepository:
         expected_project_revision: int,
         expected_source_hash: str,
         expected_planning_revision: int,
+        compiled_source_hash: str,
         summary: str | None,
         rspdl_version: str,
         wire_schema_version: int,
@@ -343,6 +499,11 @@ class SqlPlanningRepository:
             .scalars()
             .all()
         )
+        locked_hash = project_source_hash(
+            [RspdlSource(path=item.path, text=item.text) for item in documents]
+        )
+        if locked_hash != compiled_source_hash or locked_hash != expected_source_hash:
+            return None
         project.snapshot_version += 1
         await self._session.flush()
         row = await self._write_snapshot(

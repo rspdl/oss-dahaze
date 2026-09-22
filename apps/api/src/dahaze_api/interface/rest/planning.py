@@ -8,14 +8,24 @@ from fastapi import APIRouter, HTTPException, Query, status
 from dahaze_api.application.errors import AccessDenied, Conflict, NotFound
 from dahaze_api.interface.rest.dependencies import CurrentUser, Planning
 from dahaze_api.interface.rest.schemas import (
+    AppendPlanningDecisionRequest,
+    AppendPlanningDecisionResponse,
+    AppendPlanningMessageRequest,
+    AppendPlanningMessageResponse,
     ApplyPlanningDraftRequest,
     ApplyPlanningDraftResponse,
     CaptureProjectSnapshotRequest,
     CreatePlanningDraftRequest,
+    PatchPlanningMetadataRequest,
     PlanningDraftResponse,
+    PlanningDraftSummaryResponse,
+    PlanningMetadataMutationResponse,
+    PlanningMetadataRevisionResponse,
     PlanningStateResponse,
     ProjectSnapshotResponse,
+    ProjectSnapshotSummaryResponse,
     RestoreProjectSnapshotRequest,
+    UndoPlanningMetadataRequest,
     UpdatePlanningStateRequest,
 )
 
@@ -66,6 +76,104 @@ async def update_planning_state(
 
 
 @router.post(
+    "/projects/{project_id}/planning/messages",
+    name="append_planning_message",
+    status_code=status.HTTP_201_CREATED,
+)
+async def append_planning_message(
+    project_id: UUID, body: AppendPlanningMessageRequest, user: CurrentUser, planning: Planning
+) -> AppendPlanningMessageResponse:
+    try:
+        result = await planning.append_message(
+            actor_id=user.id,
+            project_id=project_id,
+            expected_revision=body.expected_revision,
+            role=body.role,
+            content=body.content,
+        )
+        return AppendPlanningMessageResponse(
+            item=result["item"], revision=result["state"]["revision"]
+        )
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.post(
+    "/projects/{project_id}/planning/decisions",
+    name="append_planning_decision",
+    status_code=status.HTTP_201_CREATED,
+)
+async def append_planning_decision(
+    project_id: UUID, body: AppendPlanningDecisionRequest, user: CurrentUser, planning: Planning
+) -> AppendPlanningDecisionResponse:
+    try:
+        result = await planning.append_decision(
+            actor_id=user.id,
+            project_id=project_id,
+            expected_revision=body.expected_revision,
+            title=body.title,
+            rationale=body.rationale,
+            status=body.status,
+        )
+        return AppendPlanningDecisionResponse(
+            item=result["item"], revision=result["state"]["revision"]
+        )
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.patch("/projects/{project_id}/planning/metadata", name="patch_planning_metadata")
+async def patch_planning_metadata(
+    project_id: UUID, body: PatchPlanningMetadataRequest, user: CurrentUser, planning: Planning
+) -> PlanningMetadataMutationResponse:
+    try:
+        patch = body.model_dump(exclude={"expected_revision", "summary"}, exclude_none=True)
+        return PlanningMetadataMutationResponse.model_validate(
+            await planning.patch_metadata(
+                actor_id=user.id,
+                project_id=project_id,
+                expected_revision=body.expected_revision,
+                patch=patch,
+                summary=body.summary,
+            )
+        )
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.get(
+    "/projects/{project_id}/planning/metadata/history", name="list_planning_metadata_history"
+)
+async def list_planning_metadata_history(
+    project_id: UUID, user: CurrentUser, planning: Planning
+) -> list[PlanningMetadataRevisionResponse]:
+    try:
+        return [
+            PlanningMetadataRevisionResponse.model_validate(item)
+            for item in await planning.metadata_history(actor_id=user.id, project_id=project_id)
+        ]
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.post("/projects/{project_id}/planning/metadata/undo", name="undo_planning_metadata")
+async def undo_planning_metadata(
+    project_id: UUID, body: UndoPlanningMetadataRequest, user: CurrentUser, planning: Planning
+) -> PlanningMetadataMutationResponse:
+    try:
+        return PlanningMetadataMutationResponse.model_validate(
+            await planning.undo_metadata(
+                actor_id=user.id,
+                project_id=project_id,
+                expected_revision=body.expected_revision,
+                target_revision=body.target_revision,
+            )
+        )
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.post(
     "/projects/{project_id}/planning/drafts",
     name="create_planning_draft",
     status_code=status.HTTP_201_CREATED,
@@ -89,12 +197,16 @@ async def create_planning_draft(
 
 @router.get("/projects/{project_id}/planning/drafts", name="list_planning_drafts")
 async def list_planning_drafts(
-    project_id: UUID, user: CurrentUser, planning: Planning
-) -> list[PlanningDraftResponse]:
+    project_id: UUID,
+    user: CurrentUser,
+    planning: Planning,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> list[PlanningDraftSummaryResponse]:
     try:
+        values = await planning.drafts(actor_id=user.id, project_id=project_id)
         return [
-            PlanningDraftResponse.model_validate(x)
-            for x in await planning.drafts(actor_id=user.id, project_id=project_id)
+            PlanningDraftSummaryResponse.model_validate(x) for x in values[offset : offset + limit]
         ]
     except (NotFound, AccessDenied, Conflict) as exc:
         _raise(exc)
@@ -131,13 +243,35 @@ async def apply_planning_draft(
 
 @router.get("/projects/{project_id}/planning/snapshots", name="list_project_snapshots")
 async def list_project_snapshots(
-    project_id: UUID, user: CurrentUser, planning: Planning
-) -> list[ProjectSnapshotResponse]:
+    project_id: UUID,
+    user: CurrentUser,
+    planning: Planning,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> list[ProjectSnapshotSummaryResponse]:
     try:
+        values = await planning.snapshots(actor_id=user.id, project_id=project_id)
         return [
-            ProjectSnapshotResponse.model_validate(x)
-            for x in await planning.snapshots(actor_id=user.id, project_id=project_id)
+            ProjectSnapshotSummaryResponse.model_validate(x)
+            for x in values[offset : offset + limit]
         ]
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.get(
+    "/projects/{project_id}/planning/snapshots/{snapshot_version}",
+    name="get_project_snapshot",
+)
+async def get_project_snapshot(
+    project_id: UUID, snapshot_version: int, user: CurrentUser, planning: Planning
+) -> ProjectSnapshotResponse:
+    try:
+        return ProjectSnapshotResponse.model_validate(
+            await planning.handoff(
+                actor_id=user.id, project_id=project_id, revision=snapshot_version
+            )
+        )
     except (NotFound, AccessDenied, Conflict) as exc:
         _raise(exc)
 

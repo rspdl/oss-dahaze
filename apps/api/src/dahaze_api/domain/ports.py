@@ -37,15 +37,13 @@ class RspdlCompilerPort(Protocol):
         """이 컴파일러의 정체. 산출물마다 함께 기록된다."""
         ...
 
-    async def compile(self, sources: Sequence[RspdlSource]) -> AnalysisOutcome:
-        ...
+    async def compile(self, sources: Sequence[RspdlSource]) -> AnalysisOutcome: ...
 
     async def check(
         self,
         sources: Sequence[RspdlSource],
         data: Mapping[str, Any],
-    ) -> AnalysisOutcome:
-        ...
+    ) -> AnalysisOutcome: ...
 
     async def find_model(
         self,
@@ -53,18 +51,15 @@ class RspdlCompilerPort(Protocol):
         *,
         scope_per_model: int | None = None,
         timeout_ms: int | None = None,
-    ) -> AnalysisOutcome:
-        ...
+    ) -> AnalysisOutcome: ...
 
 
 class AnalysisCachePort(Protocol):
     """컴파일 결과 캐시. 저장된 것은 전부 버리고 다시 만들 수 있다 (ADR-0003)."""
 
-    async def get(self, cache_key: str) -> AnalysisOutcome | None:
-        ...
+    async def get(self, cache_key: str) -> AnalysisOutcome | None: ...
 
-    async def put(self, cache_key: str, outcome: AnalysisOutcome) -> None:
-        ...
+    async def put(self, cache_key: str, outcome: AnalysisOutcome) -> None: ...
 
 
 class OAuthProviderPort(Protocol):
@@ -75,14 +70,11 @@ class OAuthProviderPort(Protocol):
     """
 
     @property
-    def provider(self) -> str:
-        ...
+    def provider(self) -> str: ...
 
-    def authorize_url(self, *, state: str, redirect_uri: str) -> str:
-        ...
+    def authorize_url(self, *, state: str, redirect_uri: str) -> str: ...
 
-    async def exchange_code(self, *, code: str, redirect_uri: str) -> ExternalIdentity:
-        ...
+    async def exchange_code(self, *, code: str, redirect_uri: str) -> ExternalIdentity: ...
 
 
 class LlmPort(Protocol):
@@ -124,15 +116,12 @@ class LlmPort(Protocol):
         ...
 
 
-
 class UserRepositoryPort(Protocol):
     """사용자와 외부 신원."""
 
-    async def get(self, user_id: UUID) -> User | None:
-        ...
+    async def get(self, user_id: UUID) -> User | None: ...
 
-    async def find_by_identity(self, *, provider: str, provider_user_id: str) -> User | None:
-        ...
+    async def find_by_identity(self, *, provider: str, provider_user_id: str) -> User | None: ...
 
     async def create_from_identity(self, identity: ExternalIdentity) -> User:
         """신원으로 사용자를 새로 만든다. 같은 사람이 다른 벤더로 로그인하면
@@ -176,8 +165,7 @@ class PasswordHasherPort(Protocol):
     전체를 그 시간만큼 멈춘다. port 를 async 로 두면 구현체가 그 사실을 잊기 어렵다.
     """
 
-    async def hash(self, password: str) -> str:
-        ...
+    async def hash(self, password: str) -> str: ...
 
     async def verify(self, *, password: str, hashed: str) -> bool:
         """맞으면 `True`. 저장된 해시를 읽을 수 없어도 예외가 아니라 `False`."""
@@ -199,19 +187,15 @@ class ProjectRepositoryPort(Protocol):
         name: str,
         description: str | None,
         default_rspdl_version: str,
-    ) -> Project:
-        ...
+    ) -> Project: ...
 
-    async def get(self, project_id: UUID) -> Project | None:
-        ...
+    async def get(self, project_id: UUID) -> Project | None: ...
 
-    async def get_by_slug(self, slug: str) -> Project | None:
-        ...
+    async def get_by_slug(self, slug: str) -> Project | None: ...
 
     async def list_for_user(
         self, user_id: UUID, *, include_archived: bool = False
-    ) -> list[Project]:
-        ...
+    ) -> list[Project]: ...
 
     async def membership_of(self, *, project_id: UUID, user_id: UUID) -> ProjectMembership | None:
         """접근 검사의 유일한 진입점. 없으면 그 사용자는 프로젝트를 볼 수 없다."""
@@ -219,14 +203,11 @@ class ProjectRepositoryPort(Protocol):
 
     async def add_member(
         self, *, project_id: UUID, user_id: UUID, role: ProjectRole
-    ) -> ProjectMembership:
-        ...
+    ) -> ProjectMembership: ...
 
-    async def list_members(self, project_id: UUID) -> list[ProjectMembership]:
-        ...
+    async def list_members(self, project_id: UUID) -> list[ProjectMembership]: ...
 
-    async def archive(self, project_id: UUID) -> Project | None:
-        ...
+    async def archive(self, project_id: UUID) -> Project | None: ...
 
 
 class DocumentRepositoryPort(Protocol):
@@ -244,14 +225,11 @@ class DocumentRepositoryPort(Protocol):
         text: str,
         target_rspdl_version: str,
         author_id: UUID | None,
-    ) -> Document:
-        ...
+    ) -> Document: ...
 
-    async def get(self, document_id: UUID) -> Document | None:
-        ...
+    async def get(self, document_id: UUID) -> Document | None: ...
 
-    async def list_for_project(self, project_id: UUID) -> list[Document]:
-        ...
+    async def list_for_project(self, project_id: UUID) -> list[Document]: ...
 
     async def update_text(
         self,
@@ -264,11 +242,9 @@ class DocumentRepositoryPort(Protocol):
         """본문을 바꾸고 리비전을 남긴다. 텍스트가 그대로면 리비전을 만들지 않는다."""
         ...
 
-    async def soft_delete(self, document_id: UUID) -> bool:
-        ...
+    async def soft_delete(self, document_id: UUID) -> bool: ...
 
-    async def list_revisions(self, document_id: UUID) -> list[DocumentRevision]:
-        ...
+    async def list_revisions(self, document_id: UUID) -> list[DocumentRevision]: ...
 
 
 class PlanningRepositoryPort(Protocol):
@@ -276,33 +252,100 @@ class PlanningRepositoryPort(Protocol):
 
     async def get_state(self, project_id: UUID) -> Mapping[str, Any]: ...
     async def update_state(
-        self, project_id: UUID, *, expected_revision: int,
-        messages: Sequence[Mapping[str, Any]], decisions: Sequence[Mapping[str, Any]],
-        proposals: Sequence[Mapping[str, Any]], metadata: Mapping[str, Any],
+        self,
+        project_id: UUID,
+        *,
+        expected_revision: int,
+        messages: Sequence[Mapping[str, Any]],
+        decisions: Sequence[Mapping[str, Any]],
+        proposals: Sequence[Mapping[str, Any]],
+        metadata: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None: ...
+    async def append_message(
+        self,
+        project_id: UUID,
+        *,
+        expected_revision: int,
+        role: str,
+        content: str,
+    ) -> Mapping[str, Any] | None: ...
+    async def append_decision(
+        self,
+        project_id: UUID,
+        *,
+        expected_revision: int,
+        title: str,
+        rationale: str | None,
+        status: str,
+    ) -> Mapping[str, Any] | None: ...
+    async def patch_metadata(
+        self,
+        project_id: UUID,
+        *,
+        actor_id: UUID,
+        expected_revision: int,
+        patch: Mapping[str, Any],
+        summary: str | None,
+    ) -> Mapping[str, Any] | None: ...
+    async def list_metadata_revisions(self, project_id: UUID) -> list[Mapping[str, Any]]: ...
+    async def undo_metadata(
+        self,
+        project_id: UUID,
+        *,
+        actor_id: UUID,
+        expected_revision: int,
+        target_revision: int,
     ) -> Mapping[str, Any] | None: ...
     async def create_draft(
-        self, *, project_id: UUID, base_project_revision: int, base_source_hash: str,
+        self,
+        *,
+        project_id: UUID,
+        base_project_revision: int,
+        base_source_hash: str,
         changes: Sequence[Mapping[str, Any]],
-        candidate_documents: Sequence[Mapping[str, Any]], candidate_source_hash: str,
-        summary: str | None, rspdl_version: str, wire_schema_version: int, locale: str,
-        result: Mapping[str, Any] | None, base_result: Mapping[str, Any] | None,
+        candidate_documents: Sequence[Mapping[str, Any]],
+        candidate_source_hash: str,
+        summary: str | None,
+        rspdl_version: str,
+        wire_schema_version: int,
+        locale: str,
+        result: Mapping[str, Any] | None,
+        base_result: Mapping[str, Any] | None,
     ) -> Mapping[str, Any]: ...
     async def get_draft(self, draft_id: UUID) -> Mapping[str, Any] | None: ...
     async def list_drafts(self, project_id: UUID) -> list[Mapping[str, Any]]: ...
     async def apply_draft(
-        self, *, draft_id: UUID, actor_id: UUID, expected_project_revision: int,
+        self,
+        *,
+        draft_id: UUID,
+        actor_id: UUID,
+        expected_project_revision: int,
         expected_source_hash: str,
     ) -> Mapping[str, Any] | None: ...
     async def list_snapshots(self, project_id: UUID) -> list[Mapping[str, Any]]: ...
     async def capture_snapshot(
-        self, *, project_id: UUID, actor_id: UUID, expected_project_revision: int,
-        expected_source_hash: str, expected_planning_revision: int, summary: str | None,
-        rspdl_version: str, wire_schema_version: int, locale: str,
+        self,
+        *,
+        project_id: UUID,
+        actor_id: UUID,
+        expected_project_revision: int,
+        expected_source_hash: str,
+        expected_planning_revision: int,
+        summary: str | None,
+        compiled_source_hash: str,
+        rspdl_version: str,
+        wire_schema_version: int,
+        locale: str,
         result: Mapping[str, Any] | None,
     ) -> Mapping[str, Any] | None: ...
     async def get_snapshot(self, project_id: UUID, revision: int) -> Mapping[str, Any] | None: ...
     async def restore_snapshot(
-        self, *, project_id: UUID, revision: int, actor_id: UUID,
-        expected_project_revision: int, expected_source_hash: str,
+        self,
+        *,
+        project_id: UUID,
+        revision: int,
+        actor_id: UUID,
+        expected_project_revision: int,
+        expected_source_hash: str,
         expected_planning_revision: int,
     ) -> Mapping[str, Any] | None: ...

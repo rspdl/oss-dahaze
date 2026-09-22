@@ -337,6 +337,21 @@ class PlanningDraftResponse(BaseModel):
     updated_at: datetime
 
 
+class PlanningDraftSummaryResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    base_project_revision: int
+    base_source_hash: str
+    candidate_source_hash: str
+    summary: str | None
+    rspdl_version: str
+    wire_schema_version: int
+    locale: str
+    applied_revision: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class ApplyPlanningDraftRequest(BaseModel):
     expected_project_revision: int = Field(ge=0)
     expected_source_hash: str = Field(min_length=64, max_length=64)
@@ -359,6 +374,84 @@ class ProjectSnapshotResponse(BaseModel):
     summary: str | None
     author_id: UUID | None
     created_at: datetime
+
+
+class ProjectSnapshotSummaryResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    snapshot_version: int
+    project_revision: int
+    planning_revision: int
+    source_hash: str
+    rspdl_version: str
+    wire_schema_version: int
+    locale: str
+    change_kind: str
+    summary: str | None
+    author_id: UUID | None
+    created_at: datetime
+
+
+class AppendPlanningMessageRequest(BaseModel):
+    expected_revision: int = Field(ge=0)
+    role: str = Field(pattern="^(user|assistant)$", description="user | assistant")
+    content: str = Field(min_length=1, max_length=32000)
+
+
+class PlanningMessageResponse(BaseModel):
+    id: UUID
+    role: str = Field(description="user | assistant")
+    content: str
+    created_at: datetime
+
+
+class AppendPlanningMessageResponse(BaseModel):
+    item: PlanningMessageResponse
+    revision: int
+
+
+class AppendPlanningDecisionRequest(BaseModel):
+    expected_revision: int = Field(ge=0)
+    title: str = Field(min_length=1, max_length=500)
+    rationale: str | None = Field(default=None, max_length=8000)
+    status: str = Field(default="decided", pattern="^(decided|deferred|open)$")
+
+
+class PlanningDecisionResponse(BaseModel):
+    id: UUID
+    title: str
+    rationale: str | None
+    status: str
+    created_at: datetime
+
+
+class AppendPlanningDecisionResponse(BaseModel):
+    item: PlanningDecisionResponse
+    revision: int
+
+
+class PatchPlanningMetadataRequest(BaseModel):
+    expected_revision: int = Field(ge=0)
+    environments: list[dict[str, Any]] | None = None
+    design: dict[str, Any] | None = None
+    sample_data: dict[str, Any] | None = None
+    summary: str | None = Field(default=None, max_length=500)
+
+
+class PlanningMetadataMutationResponse(BaseModel):
+    revision: int
+    metadata: PlanningMetadata
+
+
+class PlanningMetadataRevisionResponse(PlanningMetadataMutationResponse):
+    author_id: UUID | None
+    summary: str | None
+    created_at: datetime
+
+
+class UndoPlanningMetadataRequest(BaseModel):
+    expected_revision: int = Field(ge=0)
+    target_revision: int = Field(ge=0)
 
 
 class ApplyPlanningDraftResponse(BaseModel):

@@ -108,6 +108,27 @@ def upgrade() -> None:
     )
     op.create_index("ix_planning_drafts_project_id", "planning_drafts", ["project_id"])
     op.create_table(
+        "planning_metadata_revisions",
+        sa.Column("id", uuid, primary_key=True),
+        sa.Column(
+            "project_id", uuid, sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column("revision", sa.Integer(), nullable=False),
+        sa.Column("metadata", jsonb, nullable=False),
+        sa.Column("author_id", uuid, sa.ForeignKey("users.id", ondelete="SET NULL")),
+        sa.Column("summary", sa.Text()),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.UniqueConstraint("project_id", "revision", name="uq_planning_metadata_revision"),
+    )
+    op.create_index(
+        "ix_planning_metadata_revisions_project_id", "planning_metadata_revisions", ["project_id"]
+    )
+    op.create_table(
         "project_snapshots",
         sa.Column("id", uuid, primary_key=True),
         sa.Column(
@@ -139,6 +160,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("project_snapshots")
+    op.drop_table("planning_metadata_revisions")
     op.drop_table("planning_drafts")
     op.drop_table("planning_states")
     op.drop_column("projects", "source_hash")

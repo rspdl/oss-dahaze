@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import os
 from typing import cast
+from uuid import UUID
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from dahaze_api.domain.entities import User
+from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
 from dahaze_api.infrastructure.db.repositories import SqlDocumentRepository, SqlProjectRepository
 from dahaze_api.infrastructure.db.session import to_asyncpg_url
 
@@ -206,4 +208,145 @@ async def test_concurrent_document_writes_serialize_project_revision(
         final = await SqlProjectRepository(second).get(created["project_id"])
         assert final is not None
         assert final.revision == 3
+    await engine.dispose()
+
+
+async def test_atomic_message_append_rejects_system_and_stale_revision(
+    client: httpx.AsyncClient,
+) -> None:
+    project = await _project(client, "atomic-messages")
+    system = await client.post(
+        f"/api/projects/{project['id']}/planning/messages",
+        json={"expected_revision": 0, "role": "system", "content": "elevate"},
+    )
+    assert system.status_code == 422
+    first = await client.post(
+        f"/api/projects/{project['id']}/planning/messages",
+        json={"expected_revision": 0, "role": "user", "content": "첫 질문"},
+    )
+    assert first.status_code == 201
+    assert first.json()["revision"] == 1
+    stale = await client.post(
+        f"/api/projects/{project['id']}/planning/messages",
+        json={"expected_revision": 0, "role": "assistant", "content": "늦은 답"},
+    )
+    assert stale.status_code == 409
+
+
+async def test_restore_roundtrip_preserves_snapshot_and_restores_design_and_document(
+    client: httpx.AsyncClient,
+) -> None:
+    project = await _project(client, "restore-roundtrip")
+    document = (
+        await client.post(
+            f"/api/projects/{project['id']}/documents",
+            json={"path": "a.rspdl", "title": "A", "text": VALID_A},
+        )
+    ).json()
+    current = (await client.get(f"/api/projects/{project['id']}")).json()
+    state = (
+        await client.put(
+            f"/api/projects/{project['id']}/planning",
+            json={
+                "expected_revision": 0,
+                "messages": [],
+                "decisions": [],
+                "proposals": [],
+                "metadata": {"design": {"a": {"x": 10}}, "environments": [], "sample_data": {}},
+            },
+        )
+    ).json()
+    captured = (
+        await client.post(
+            f"/api/projects/{project['id']}/planning/snapshots",
+            json={
+                "expected_project_revision": current["revision"],
+                "expected_source_hash": current["source_hash"],
+                "expected_planning_revision": state["revision"],
+                "summary": "baseline",
+            },
+        )
+    ).json()
+    assert captured["snapshot_version"] == 1
+    await client.delete(f"/api/documents/{document['id']}")
+    changed_project = (await client.get(f"/api/projects/{project['id']}")).json()
+    changed_state = (
+        await client.put(
+            f"/api/projects/{project['id']}/planning",
+            json={
+                "expected_revision": state["revision"],
+                "messages": [],
+                "decisions": [],
+                "proposals": [],
+                "metadata": {"design": {"a": {"x": 99}}, "environments": [], "sample_data": {}},
+            },
+        )
+    ).json()
+    restored = await client.post(
+        f"/api/projects/{project['id']}/planning/snapshots/1/restore",
+        json={
+            "expected_project_revision": changed_project["revision"],
+            "expected_source_hash": changed_project["source_hash"],
+            "expected_planning_revision": changed_state["revision"],
+        },
+    )
+    assert restored.status_code == 200, restored.text
+    restored_body = restored.json()
+    assert restored_body["snapshot_version"] == 3
+    restored_doc = (await client.get(f"/api/projects/{project['id']}/documents")).json()[0]
+    assert restored_doc["id"] != document["id"]
+    assert restored_doc["target_rspdl_version"] == document["target_rspdl_version"]
+    restored_state = (await client.get(f"/api/projects/{project['id']}/planning")).json()
+    assert restored_state["metadata"]["design"]["a"]["x"] == 10
+    original = (await client.get(f"/api/projects/{project['id']}/planning/snapshots/1")).json()
+    assert original["documents"][0]["id"] == document["id"]
+
+
+async def test_mid_batch_failure_rolls_back_documents_snapshot_and_revision(
+    client: httpx.AsyncClient,
+    session: AsyncSession,
+    user: User,
+) -> None:
+    project = await _project(client, "rollback-batch")
+    draft = (
+        await _draft(
+            client,
+            project,
+            [
+                {"operation": "upsert", "path": "a.rspdl", "title": "A", "text": VALID_A},
+                {"operation": "upsert", "path": "b.rspdl", "title": "B", "text": VALID_B},
+            ],
+        )
+    ).json()
+    await session.commit()
+    engine = create_async_engine(to_asyncpg_url(os.environ["TEST_DATABASE_URL"]))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as failing:
+        store = SqlPlanningRepository(failing)
+        original = store._replace_documents
+
+        async def fail_after_writes(*args: object, **kwargs: object) -> None:
+            await original(*args, **kwargs)  # type: ignore[arg-type]
+            raise RuntimeError("injected second-write failure")
+
+        store._replace_documents = fail_after_writes  # type: ignore[method-assign]
+        try:
+            await store.apply_draft(
+                draft_id=UUID(draft["id"]),
+                actor_id=user.id,
+                expected_project_revision=0,
+                expected_source_hash=cast(str, project["source_hash"]),
+            )
+        except RuntimeError:
+            await failing.rollback()
+        else:
+            raise AssertionError("injected failure was not raised")
+    async with factory() as verify:
+        project_id = UUID(cast(str, project["id"]))
+        documents = await SqlDocumentRepository(verify).list_for_project(project_id)
+        unchanged = await SqlProjectRepository(verify).get(project_id)
+        snapshots = await SqlPlanningRepository(verify).list_snapshots(project_id)
+        assert documents == []
+        assert unchanged is not None and unchanged.revision == 0
+        assert snapshots == []
     await engine.dispose()
