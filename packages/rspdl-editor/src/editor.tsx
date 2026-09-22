@@ -13,8 +13,15 @@
 import { useEffect, useRef } from 'react'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { setDiagnostics } from '@codemirror/lint'
-import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import {
+  Compartment,
+  EditorState,
+  StateEffect,
+  StateField,
+  type Extension,
+} from '@codemirror/state'
+import {
+  Decoration,
   EditorView,
   drawSelection,
   highlightActiveLine,
@@ -22,6 +29,7 @@ import {
   keymap,
   lineNumbers,
   placeholder as placeholderExtension,
+  type DecorationSet,
 } from '@codemirror/view'
 
 import {
@@ -30,6 +38,7 @@ import {
   type ToCodeMirrorOptions,
 } from './diagnostics'
 import { rspdl } from './language'
+import { spanToRange, type ByteSpan, type TextRange } from './offsets'
 
 export interface RspdlEditorProps {
   /** 편집기에 보일 텍스트. 이 값이 진실이고 CodeMirror 는 그것을 비출 뿐이다. */
@@ -41,6 +50,13 @@ export interface RspdlEditorProps {
    * 오프셋이라 다른 텍스트의 진단을 얹으면 엉뚱한 곳에 밑줄이 그어진다.
    */
   diagnostics?: readonly RspdlDiagnostic[]
+  /**
+   * 바깥의 문제 목록 등에서 선택한 컴파일러 span. 값이 바뀌면 해당 범위를 화면 가운데로
+   * 옮기고 하이라이트한다. 하이라이트는 사용자가 문서를 편집하거나 다른 span 이 오거나
+   * `null` 이 될 때까지 남는다. 포커스는 옮기지 않는다 — `revealByteSpan` 주석 참고.
+   * span 은 UTF-16 인덱스가 아니라 UTF-8 바이트다.
+   */
+  revealSpan?: ByteSpan | null
   /** 읽기 전용. 리비전 열람처럼 편집이 의미 없는 화면에서 쓴다. */
   readOnly?: boolean
   /** 빈 문서에 보일 안내. */
@@ -50,6 +66,83 @@ export interface RspdlEditorProps {
   /** `message_key` 를 사람 말로 바꾸는 함수. 번역표는 이 패키지가 갖지 않는다. */
   renderMessage?: ToCodeMirrorOptions['renderMessage']
   className?: string
+}
+
+/**
+ * 드러낼 범위를 바꾼다. `null` 이면 지운다. 단위는 이미 변환된 UTF-16 범위다 —
+ * 바이트 변환은 `revealByteSpan` 한 곳에서만 한다.
+ */
+export const setRevealRange = StateEffect.define<TextRange | null>()
+
+const revealMark = Decoration.mark({ class: 'cm-rspdlRevealRange' })
+
+/**
+ * "문제 위치로 이동" 이 가리킨 범위를 **지속되는 데코레이션**으로 표시한다.
+ *
+ * 선택(selection)으로 표시하지 않는 이유: 선택은 사용자가 어디든 클릭하는 순간 사라진다.
+ * 문제 지점은 사용자가 그 문장을 고치는 동안 계속 보여야 한다.
+ */
+export const revealRangeField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none
+  },
+  update(value, tr) {
+    /*
+     * 문서가 바뀌면 하이라이트를 지운다. 진단과 같은 원칙이다 — span 은 컴파일 당시 텍스트의
+     * 바이트 오프셋이라, 한 글자만 쳐도 이 범위가 가리키는 곳은 더 이상 그 문제가 아니다.
+     * 어긋난 강조는 없느니만 못하다. 그래서 위치를 map 하지 않고 버린다.
+     */
+    let next = tr.docChanged ? Decoration.none : value
+    for (const effect of tr.effects) {
+      if (!effect.is(setRevealRange)) continue
+      const range = effect.value
+      // 새 범위가 오면 이전 것을 갈아 끼운다. 두 곳이 동시에 빛나면 어디를 보라는 건지 알 수 없다.
+      next = toRevealDecorations(tr.state.doc.length, range)
+    }
+    return next
+  },
+  provide: (field) => EditorView.decorations.from(field),
+})
+
+/**
+ * 범위 → 데코레이션. 문서 밖으로 나간 범위는 잘라내고, 남은 것이 빈 범위면 표시하지 않는다.
+ * `Decoration.mark` 는 빈 범위를 거부한다 — 어차피 칠할 글자가 없으니 스크롤만 하고 만다.
+ */
+function toRevealDecorations(docLength: number, range: TextRange | null): DecorationSet {
+  if (range === null) return Decoration.none
+  const from = Math.max(0, Math.min(range.from, docLength))
+  const to = Math.max(from, Math.min(range.to, docLength))
+  if (from === to) return Decoration.none
+  return Decoration.set([revealMark.range(from, to)])
+}
+
+/**
+ * 외부에서 고른 컴파일러 span 을 현재 CodeMirror 문서에 드러낸다.
+ *
+ * props 의 `value` 대신 view 의 문서를 읽어야 controlled 값 동기화와 같은 트랜잭션 순서를
+ * 따른다. 이 함수는 DOM 없이 트랜잭션을 검증할 수 있도록 분리해 둔다.
+ *
+ * 선택은 그대로 남긴다. 지속 표시는 데코레이션이 맡지만, 캐럿까지 그 자리에 두면 사용자가
+ * 나중에 편집기를 클릭했을 때 바로 그 문장에서 이어 칠 수 있다.
+ *
+ * 다만 **포커스는 빼앗지 않는다.** 이 함수를 부르는 사람은 대개 오른쪽 AI 패널의 버튼을 누른
+ * 참이고, 거기서 커서를 낚아채면 하던 흐름이 끊긴다. 보여 주는 것과 조작 권한을 넘겨받는
+ * 것은 다른 일이다 — 편집하고 싶으면 사용자가 편집기를 누른다.
+ */
+export function revealByteSpan(view: EditorView, span: ByteSpan): void {
+  const range = spanToRange(view.state.doc.toString(), span)
+  view.dispatch({
+    selection: { anchor: range.from, head: range.to },
+    effects: [
+      setRevealRange.of(range),
+      EditorView.scrollIntoView(range.from, { y: 'center' }),
+    ],
+  })
+}
+
+/** 드러낸 범위를 지운다. 바깥에서 선택이 풀렸을 때 쓴다. */
+export function clearRevealHighlight(view: EditorView): void {
+  view.dispatch({ effects: setRevealRange.of(null) })
 }
 
 /**
@@ -121,6 +214,39 @@ const editorTheme = EditorView.theme({
     textDecorationThickness: '1px',
     textUnderlineOffset: '3px',
   },
+  /*
+   * "문제 위치로 이동" 이 가리킨 범위. 진단 밑줄과 겹쳐 그려지므로 밑줄을 덮지 않는
+   * 배경과 왼쪽 테두리로만 표시한다. 배경은 `-subtle` 토큰이라 글자 대비를 해치지 않는다.
+   */
+  '.cm-rspdlRevealRange': {
+    backgroundColor: 'var(--color-accent-subtle)',
+    boxShadow: 'inset 2px 0 0 0 var(--color-accent)',
+    borderRadius: 'var(--radius-control)',
+    // 한 번 번쩍인 뒤 은은하게 남는다. 스크롤이 끝난 자리가 어디였는지 눈이 따라가야 한다.
+    animation: 'cm-rspdlRevealPulse 900ms ease-out 1',
+  },
+  /*
+   * 펄스는 글자 뒤가 아니라 **범위 바깥으로 퍼지는 링**으로 준다. 배경색을 진한 accent 로
+   * 번쩍이면 그 순간 글자를 읽을 수 없다 — 보여 주려고 켠 표시가 내용을 가리면 안 된다.
+   */
+  '@keyframes cm-rspdlRevealPulse': {
+    '0%': {
+      boxShadow:
+        'inset 2px 0 0 0 var(--color-accent), 0 0 0 4px var(--color-accent-subtle)',
+    },
+    '100%': {
+      boxShadow: 'inset 2px 0 0 0 var(--color-accent), 0 0 0 0 transparent',
+    },
+  },
+  /*
+   * 움직임을 줄여 달라고 한 사용자에게는 펄스를 주지 않는다. 표시 자체는 배경과 테두리로
+   * 남으므로 정보를 잃지 않는다.
+   */
+  '@media (prefers-reduced-motion: reduce)': {
+    '.cm-rspdlRevealRange': {
+      animation: 'none',
+    },
+  },
   '.cm-tooltip': {
     backgroundColor: 'var(--color-surface-raised)',
     border: '1px solid var(--color-border)',
@@ -141,6 +267,7 @@ export function RspdlEditor({
   value,
   onChange,
   diagnostics,
+  revealSpan,
   readOnly = false,
   placeholder,
   ariaLabel,
@@ -172,6 +299,7 @@ export function RspdlEditor({
       keymap.of([...defaultKeymap, ...historyKeymap]),
       EditorView.lineWrapping,
       rspdl(),
+      revealRangeField,
       editorTheme,
       readOnlyCompartment.current.of(EditorState.readOnly.of(readOnly)),
       EditorView.updateListener.of((update) => {
@@ -237,6 +365,23 @@ export function RspdlEditor({
       ),
     )
   }, [diagnostics, renderMessage, value])
+
+  /*
+   * 문서 교체 effect 뒤에 둔다. `value` 와 `revealSpan` 이 한 렌더에서 함께 바뀌어도 앞의
+   * effect 가 새 문서를 먼저 넣는다. `value` 는 의존성에 넣지 않는다. 사용자가 문제 위치로
+   * 이동한 뒤 타자를 칠 때마다 같은 범위를 다시 선택하면 편집할 수 없기 때문이다.
+   */
+  useEffect(() => {
+    const view = viewRef.current
+    if (view === null) return
+    // 바깥에서 선택이 풀리면(`null`) 하이라이트도 함께 걷는다. 남겨 두면 이미 닫힌 문제를
+    // 계속 가리키게 된다.
+    if (revealSpan == null) {
+      clearRevealHighlight(view)
+      return
+    }
+    revealByteSpan(view, revealSpan)
+  }, [revealSpan])
 
   return <div ref={hostRef} className={className} />
 }

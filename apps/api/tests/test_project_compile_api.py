@@ -95,6 +95,46 @@ async def test_every_document_lands_in_one_response(client: httpx.AsyncClient) -
     assert all(f["diagnostics"] == [] for f in files), files
 
 
+async def test_models_and_fields_are_passed_through_unchanged(
+    client: httpx.AsyncClient,
+) -> None:
+    """데이터 모델 화면은 프로젝트 컴파일 결과를 그대로 읽는다.
+
+    모델·필드의 표시용 DTO를 새로 만들면 RSPDL IR의 사본이 생기고 wire schema 변화에 쉽게
+    어긋난다. 이 경로는 컴파일러가 준 id·이름·필드·value_type을 재작성하지 않는다.
+    """
+    project_id = await _project(client, "data-model")
+    await _document(client, project_id, "inventory.rspdl", INVENTORY_TEXT)
+
+    body = (await client.get(f"/api/projects/{project_id}/compile")).json()
+
+    models = body["result"]["files"][0]["module"]["models"]
+
+    # 컴파일러가 **준 것을 그대로 주는지**만 본다. 모양 전체를 정확일치로 묶으면 IR 에
+    # 필드가 하나 붙을 때마다 여기가 깨지는데, 그건 dahaze 가 IR 을 소유한다는 뜻이 되어
+    # ADR-0003 과 정면으로 어긋난다. 실제로 0.1.1 이 `span` 을 더했을 때 그렇게 깨졌다.
+    # 우리가 지켜야 할 것은 "빠뜨리거나 이름을 바꾸지 않는다" 이고, 그건 부분집합으로 검사된다.
+    def only(entry: dict[str, object], keys: tuple[str, ...]) -> dict[str, object]:
+        return {key: entry[key] for key in keys if key in entry}
+
+    assert [only(model, ("id", "name")) for model in models] == [
+        {"id": "inventory.item", "name": "재고 항목"}
+    ]
+    assert [
+        only(field, ("id", "local_id", "name", "required", "value_type"))
+        for model in models
+        for field in model["fields"]
+    ] == [
+        {
+            "id": "inventory.item.name",
+            "local_id": "name",
+            "name": "이름",
+            "required": True,
+            "value_type": {"kind": "string"},
+        }
+    ]
+
+
 async def test_policies_carry_the_four_axes_untouched(
     client: httpx.AsyncClient,
 ) -> None:

@@ -7,7 +7,7 @@ from importlib import resources
 
 from dahaze_api.domain.llm import EbnfGrammar
 
-GRAMMAR_RSPDL_VERSION = "0.1.0"
+GRAMMAR_RSPDL_VERSION = "0.1.2"
 
 
 @lru_cache

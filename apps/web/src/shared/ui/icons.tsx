@@ -155,3 +155,28 @@ export function TableIcon(props: SVGProps<SVGSVGElement>) {
     </Base>
   )
 }
+
+/** 계층. 화면 구조 뷰가 쓴다 — 한 뿌리에서 갈라져 나오는 모양. */
+export function HierarchyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <path d="M4 4.5h6v4H4Z" />
+      <path d="M14 10.5h6v4h-6Z" />
+      <path d="M14 17h6v3.5h-6Z" />
+      <path d="M7 8.5v8.75a1.75 1.75 0 0 0 1.75 1.5H14" />
+      <path d="M7 12.5h7" />
+    </Base>
+  )
+}
+
+/** 흐름. 화면 흐름 뷰가 쓴다 — 상자에서 상자로 건너가는 모양. */
+export function FlowIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <path d="M3 5.5h6v5H3Z" />
+      <path d="M15 13.5h6v5h-6Z" />
+      <path d="M9 8h2.5A2.5 2.5 0 0 1 14 10.5V16" />
+      <path d="M12 14l2 2 2-2" />
+    </Base>
+  )
+}
