@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildReadableSpecification, findReadableElement, findReadableScreen, sourceExcerpt } from './readable-specification'
+import { buildReadableSpecification, findReadableElement, findReadableScreen, findReadableWorkflowRelations, sourceExcerpt } from './readable-specification'
 import fieldProducerCliFixture from './__field-producer-cli-fixture.json'
 
 const span = { start: 0, end: 4 }
@@ -99,6 +99,35 @@ function moduleFixture(): Record<string, unknown> {
   }
 }
 
+function workflowModuleFixture(): Record<string, unknown> {
+  const moduleIr = moduleFixture()
+  ;(moduleIr.screens as Record<string, unknown>[]).push({
+    id: 'booking.done',
+    name: '예약 완료 화면',
+    span: { start: 40, end: 60 },
+    operations: [{ kind: 'read', model_id: 'booking.reservation', field_ids: ['booking.reservation.status'], span }],
+  })
+  moduleIr.workflows = [{
+    id: 'booking.complete',
+    name: '예약 완료',
+    start_screen_id: 'booking.payment',
+    initial_data: [{ model_id: 'booking.reservation', field_id: 'booking.reservation.status', span: { start: 4, end: 8 } }],
+    acquisitions: [{
+      source_screen_id: 'booking.payment',
+      source_element_id: 'submit',
+      data: [{ model_id: 'booking.reservation', field_id: 'booking.reservation.status', span: { start: 8, end: 12 } }],
+      span: { start: 4, end: 12 },
+    }],
+    completions: [{
+      screen_id: 'booking.done',
+      required_data: [{ model_id: 'booking.reservation', field_id: 'booking.reservation.status', span: { start: 16, end: 20 } }],
+      span: { start: 12, end: 20 },
+    }],
+    span: { start: 0, end: 20 },
+  }]
+  return moduleIr
+}
+
 describe('buildReadableSpecification', () => {
   it('keeps conditional permission evidence separate from data constraints', () => {
     const specification = buildReadableSpecification(response(moduleFixture()))
@@ -131,7 +160,7 @@ describe('buildReadableSpecification', () => {
   })
 
   it('distinguishes uncompiled, unsupported, absent, and unrecognized facts', () => {
-    expect(buildReadableSpecification(undefined).state).toBe('uncompiled')
+    expect(buildReadableSpecification(undefined)).toMatchObject({ state: 'uncompiled', workflowsState: 'uncompiled' })
     expect(buildReadableSpecification({ wire_schema_version: 1, result: null }).state).toBe('uncompiled')
     expect(buildReadableSpecification({ wire_schema_version: 1, result: { files: 'new-shape' } } as never).state).toBe('unsupported')
     expect(buildReadableSpecification({ wire_schema_version: 99, result: { files: [] } }).state).toBe('unsupported')
@@ -140,6 +169,7 @@ describe('buildReadableSpecification', () => {
     expect(empty.modelsState).toBe('absent')
     expect(empty.screensState).toBe('absent')
     expect(empty.outcomesState).toBe('absent')
+    expect(empty.workflowsState).toBe('absent')
 
     const raw = moduleFixture()
     ;(raw.screen_layouts as Record<string, unknown>[])[0]!.elements = [{ kind: 'future_widget', id: 'future', span }]
@@ -174,5 +204,67 @@ describe('buildReadableSpecification', () => {
       kind: 'constant',
       sourceLabel: '0',
     })
+  })
+
+  it('adapts compiler workflow contracts without treating initial assumptions as field provenance', () => {
+    const specification = buildReadableSpecification(response(workflowModuleFixture()))
+    const workflow = specification.workflows[0]
+    const payment = findReadableScreen(specification, 'booking.payment')
+    const done = findReadableScreen(specification, 'booking.done')
+
+    expect(specification.workflowsState).toBe('present')
+    expect(workflow).toMatchObject({
+      id: 'booking.complete',
+      name: '예약 완료',
+      startScreen: { id: 'booking.payment', name: '결제 화면', resolved: true },
+      initialData: [{ model: { id: 'booking.reservation', name: '예약' }, field: { id: 'booking.reservation.status', name: '상태' } }],
+      acquisitions: [{
+        sourceScreen: { id: 'booking.payment', name: '결제 화면' },
+        sourceElement: { id: 'submit', name: '결제', resolved: true },
+        data: [{ model: { name: '예약' }, field: { name: '상태' } }],
+      }],
+      completions: [{ screen: { id: 'booking.done', name: '예약 완료 화면' }, requiredData: [{ model: { name: '예약' }, field: { name: '상태' } }] }],
+    })
+    expect(specification.models[0]?.fields[0]?.provenance.some((item) => item.id.includes('workflow'))).toBe(false)
+    expect(findReadableWorkflowRelations(specification, payment)).toEqual([expect.objectContaining({ starts: true, acquisitions: [expect.anything()], completions: [] })])
+    expect(findReadableWorkflowRelations(specification, done)).toEqual([expect.objectContaining({ starts: false, acquisitions: [], completions: [expect.anything()] })])
+  })
+
+  it('distinguishes absent and unsupported workflows while preserving unresolved literal references', () => {
+    const withoutWorkflows = buildReadableSpecification(response(moduleFixture()))
+    expect(withoutWorkflows.workflowsState).toBe('absent')
+
+    const unsupported = moduleFixture()
+    unsupported.workflows = { future: true }
+    expect(buildReadableSpecification(response(unsupported)).workflowsState).toBe('unsupported')
+
+    const unknownReferences = moduleFixture()
+    unknownReferences.workflows = [{
+      id: 'booking.unknown',
+      name: '알 수 없는 연결',
+      start_screen_id: 'external.start',
+      acquisitions: [{ source_screen_id: 'external.input', source_element_id: 'send', data: [], span }],
+      completions: [{ screen_id: 'external.done', required_data: [{ model_id: 'external.model', field_id: 'external.field', span }], span }],
+      span,
+    }]
+    const specification = buildReadableSpecification(response(unknownReferences))
+
+    expect(specification.workflowsState).toBe('present')
+    expect(specification.workflows[0]).toMatchObject({
+      startScreen: { id: 'external.start', name: 'external.start', resolved: false },
+      acquisitions: [{ sourceElement: { id: 'send', name: 'send', resolved: false } }],
+      completions: [{ requiredData: [{ model: { id: 'external.model', resolved: false }, field: { id: 'external.field', resolved: false } }] }],
+    })
+  })
+
+  it('keeps workflow source excerpts bound to the immutable document snapshot', () => {
+    const document = { path: 'booking.rspdl', text: '0123456789abcdefghij현재 원문' }
+    const specification = buildReadableSpecification(response(workflowModuleFixture()), { documents: [document] })
+    document.text = '바뀐 원문'
+
+    expect(sourceExcerpt(specification.workflows[0]!.source)).toBe('0123456789abcdefghij')
+    expect(sourceExcerpt(specification.workflows[0]!.initialData[0]!.source)).toBe('4567')
+    expect(specification.workflows[0]!.source.path).toBe('booking.rspdl')
+    expect(specification.workflows[0]!.source.span).toEqual({ start: 0, end: 20 })
   })
 })

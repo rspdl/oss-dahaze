@@ -9,6 +9,7 @@ import { renderDiagnosticMessage, renderDiagnosticTitle } from '../../shared/rsp
 import {
   findReadableElement,
   findReadableScreen,
+  findReadableWorkflowRelations,
   sourceExcerpt,
   type NamedSpecificationRef,
   type ReadableElement,
@@ -19,6 +20,11 @@ import {
   type ReadablePermission,
   type ReadableScreen,
   type ReadableSpecification,
+  type ReadableWorkflow,
+  type ReadableWorkflowAcquisition,
+  type ReadableWorkflowCompletion,
+  type ReadableWorkflowDataRequirement,
+  type ReadableWorkflowScreenRelation,
   type SourceReference,
   type SpecificationState,
 } from './readable-specification'
@@ -58,7 +64,7 @@ export function ReadableSpecificationPanel({
           <p className="font-mono text-[11px] text-text-subtle">source {specification.identity.sourceHash}</p>
         </div>
       )}
-      {screen === null ? <AllSpecification specification={specification} /> : <ScreenSpecification screen={screen} selectedElement={element} />}
+      {screen === null ? <AllSpecification specification={specification} /> : <ScreenSpecification specification={specification} screen={screen} selectedElement={element} />}
       <ProjectStatus specification={specification} />
     </section>
   )
@@ -95,10 +101,15 @@ function AllSpecification({ specification }: { specification: ReadableSpecificat
     <FactSection title="데이터 모델" state={specification.modelsState} empty="선언된 데이터 모델이 없습니다.">
       {specification.models.map((model) => <article key={model.key} className="rounded-control border px-3 py-2"><p className="text-sm font-medium">{model.name}</p><p className="font-mono text-[11px] text-text-subtle">{model.id}</p><div className="mt-2 space-y-2">{model.fields.map((field) => <FieldFacts key={field.id} field={field} />)}</div><SourceDetails source={model.source} /></article>)}
     </FactSection>
+    <WorkflowSection state={specification.workflowsState} workflows={specification.workflows} />
   </>
 }
 
-function ScreenSpecification({ screen, selectedElement }: { screen: ReadableScreen; selectedElement: ReadableElement | null }) {
+function ScreenSpecification({ specification, screen, selectedElement }: { specification: ReadableSpecification; screen: ReadableScreen; selectedElement: ReadableElement | null }) {
+  const workflowRelations = findReadableWorkflowRelations(specification, screen)
+  const workflowState = specification.workflowsState === 'present'
+    ? workflowRelations.length === 0 ? 'absent' : 'present'
+    : specification.workflowsState
   return <>
     <section>
       <p className="text-[11px] font-medium tracking-[0.12em] text-text-subtle">화면 기능명세</p>
@@ -121,7 +132,80 @@ function ScreenSpecification({ screen, selectedElement }: { screen: ReadableScre
     <FactSection title="화면 권한 검증" state={screen.permissions.length === 0 ? 'absent' : 'present'} empty="이 화면에 연결된 권한 검증이 선언되지 않았습니다.">
       {screen.permissions.map((permission, index) => <PermissionFacts key={index} permission={permission} />)}
     </FactSection>
+
+    <FactSection title="이 화면과 관련된 업무 계약" state={workflowState} empty="이 화면에서 시작·획득·완료하는 업무 계약이 없습니다.">
+      <p className="text-[11px] text-text-subtle">컴파일러가 저장한 관계만 표시합니다. 진단이 없다는 사실만으로 업무 전체가 검증되었다고 판단하지 않습니다.</p>
+      {workflowRelations.map((relation) => <WorkflowRelationFacts key={relation.workflow.key} relation={relation} />)}
+    </FactSection>
   </>
+}
+
+function WorkflowSection({ state, workflows }: { state: SpecificationState; workflows: ReadableWorkflow[] }) {
+  return <FactSection title="업무 계약" state={state} empty="선언된 업무 계약이 없습니다.">
+    <p className="text-[11px] text-text-subtle">컴파일러가 저장한 계약을 그대로 표시합니다. 진단이 없다는 사실만으로 업무 전체가 검증되었다고 판단하지 않습니다.</p>
+    {workflows.map((workflow) => <WorkflowFacts key={workflow.key} workflow={workflow} />)}
+  </FactSection>
+}
+
+function WorkflowFacts({ workflow }: { workflow: ReadableWorkflow }) {
+  return <article className="rounded-control border px-3 py-3">
+    <p className="text-sm font-semibold text-text">{workflow.name}</p>
+    <p className="font-mono text-[11px] text-text-subtle">{workflow.id}</p>
+    <div className="mt-3"><p className="text-xs font-medium">시작 화면</p><ReferenceFacts value={workflow.startScreen} /></div>
+    <InitialDataFacts data={workflow.initialData} />
+    <div className="mt-3"><p className="text-xs font-medium">데이터 획득</p>{workflow.acquisitions.length === 0 ? <p className="mt-1 text-xs text-text-subtle">선언된 획득 지점이 없습니다.</p> : <div className="mt-2 space-y-2">{workflow.acquisitions.map((item, index) => <AcquisitionFacts key={`${item.sourceScreen.id}:${item.sourceElement.id}:${index}`} acquisition={item} />)}</div>}</div>
+    <div className="mt-3"><p className="text-xs font-medium">완료 조건</p>{workflow.completions.length === 0 ? <p className="mt-1 text-xs text-text-subtle">선언된 완료 화면이 없습니다.</p> : <div className="mt-2 space-y-2">{workflow.completions.map((item, index) => <CompletionFacts key={`${item.screen.id}:${index}`} completion={item} />)}</div>}</div>
+    <SourceDetails source={workflow.source} />
+  </article>
+}
+
+function WorkflowRelationFacts({ relation }: { relation: ReadableWorkflowScreenRelation }) {
+  const { workflow } = relation
+  return <article className="rounded-control border px-3 py-3">
+    <p className="text-sm font-semibold text-text">{workflow.name}</p>
+    <p className="font-mono text-[11px] text-text-subtle">{workflow.id}</p>
+    {relation.starts ? <><div className="mt-3"><p className="text-xs font-medium">이 화면에서 시작</p><ReferenceFacts value={workflow.startScreen} /></div><InitialDataFacts data={workflow.initialData} /></> : null}
+    {relation.acquisitions.length === 0 ? null : <div className="mt-3"><p className="text-xs font-medium">이 화면의 데이터 획득</p><div className="mt-2 space-y-2">{relation.acquisitions.map((item, index) => <AcquisitionFacts key={`${item.sourceElement.id}:${index}`} acquisition={item} />)}</div></div>}
+    {relation.completions.length === 0 ? null : <div className="mt-3"><p className="text-xs font-medium">이 화면에서 완료</p><div className="mt-2 space-y-2">{relation.completions.map((item, index) => <CompletionFacts key={`${item.screen.id}:${index}`} completion={item} />)}</div></div>}
+    <SourceDetails source={workflow.source} />
+  </article>
+}
+
+function InitialDataFacts({ data }: { data: ReadableWorkflowDataRequirement[] }) {
+  return <div className="mt-3"><p className="text-xs font-medium">외부 시작 전제</p>{data.length === 0 ? <p className="mt-1 text-xs text-text-subtle">명시된 외부 시작 전제가 없습니다.</p> : <><p className="mt-1 text-[11px] text-text-subtle">업무가 시작되기 전에 외부에서 주어진다고 명시한 데이터입니다. 조회나 화면 입력으로 획득되었음을 뜻하지 않습니다.</p><div className="mt-2 space-y-2">{data.map((item, index) => <WorkflowDataFacts key={`${item.model.id}:${item.field.id}:${index}`} data={item} />)}</div></>}</div>
+}
+
+function AcquisitionFacts({ acquisition }: { acquisition: ReadableWorkflowAcquisition }) {
+  return <div className="border-l-2 pl-3 text-xs text-text-muted">
+    <p className="font-medium text-text">버튼</p>
+    <ReferenceFacts value={acquisition.sourceScreen} suffix={`.${acquisition.sourceElement.name}`} />
+    <p className="mt-1 font-mono text-[10px] text-text-subtle">{acquisition.sourceScreen.id}.{acquisition.sourceElement.id}</p>
+    {!acquisition.sourceElement.resolved ? <p className="mt-1 text-diagnostic-warning">요소 선언을 찾지 못해 원문 참조를 표시합니다: {acquisition.sourceElement.id}</p> : null}
+    <div className="mt-2 space-y-2">{acquisition.data.map((item, index) => <WorkflowDataFacts key={`${item.model.id}:${item.field.id}:${index}`} data={item} />)}</div>
+    <SourceDetails source={acquisition.source} />
+  </div>
+}
+
+function CompletionFacts({ completion }: { completion: ReadableWorkflowCompletion }) {
+  return <div className="border-l-2 pl-3 text-xs text-text-muted">
+    <p className="font-medium text-text">완료 화면</p>
+    <ReferenceFacts value={completion.screen} />
+    <p className="mt-2 font-medium text-text">필수 데이터</p>
+    {completion.requiredData.length === 0 ? <p className="mt-1 text-text-subtle">필수 데이터 선언이 없습니다.</p> : <div className="mt-2 space-y-2">{completion.requiredData.map((item, index) => <WorkflowDataFacts key={`${item.model.id}:${item.field.id}:${index}`} data={item} />)}</div>}
+    <SourceDetails source={completion.source} />
+  </div>
+}
+
+function WorkflowDataFacts({ data }: { data: ReadableWorkflowDataRequirement }) {
+  return <div className="rounded-control border px-2 py-1.5 text-xs text-text-muted">
+    <p>{named(data.model)} · {named(data.field)}</p>
+    <p className="font-mono text-[10px] text-text-subtle">{data.model.id} · {data.field.id}</p>
+    <SourceDetails source={data.source} />
+  </div>
+}
+
+function ReferenceFacts({ value, suffix = '' }: { value: NamedSpecificationRef; suffix?: string }) {
+  return <div className="mt-1 text-xs text-text-muted"><p>{named(value)}{suffix}</p><p className="font-mono text-[10px] text-text-subtle">{value.id}</p></div>
 }
 
 function ScreenSummary({ screen }: { screen: ReadableScreen }) {
@@ -218,7 +302,8 @@ function StateNotice({ state, subject, className }: { state: SpecificationState;
 
 function SourceDetails({ source }: { source: SourceReference }) {
   const excerpt = sourceExcerpt(source)
-  return <details className="mt-2"><summary className="cursor-pointer text-[11px] text-text-subtle">원문 · {source.path || '경로 없음'}</summary>{excerpt === null ? <p className="mt-1 text-[11px] text-diagnostic-warning">이 명세와 같은 버전의 원문을 찾지 못했습니다.</p> : <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-control border bg-surface px-2 py-1.5 text-[11px] text-text-muted">{excerpt}</pre>}</details>
+  const span = source.span === null ? '' : ` · 바이트 ${source.span.start}–${source.span.end}`
+  return <details className="mt-2"><summary className="cursor-pointer text-[11px] text-text-subtle">원문 · {source.path || '경로 없음'}{span}</summary>{excerpt === null ? <p className="mt-1 text-[11px] text-diagnostic-warning">이 명세와 같은 버전의 원문을 찾지 못했습니다.</p> : <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-control border bg-surface px-2 py-1.5 text-[11px] text-text-muted">{excerpt}</pre>}</details>
 }
 
 function DefinitionList({ rows }: { rows: [string, string][] }) {

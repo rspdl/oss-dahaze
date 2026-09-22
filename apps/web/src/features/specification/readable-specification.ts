@@ -108,6 +108,41 @@ export interface ReadableOutcome {
   source: SourceReference
 }
 
+export interface ReadableWorkflowDataRequirement {
+  model: NamedSpecificationRef
+  field: NamedSpecificationRef
+  source: SourceReference
+}
+
+export interface ReadableWorkflowAcquisition {
+  sourceScreen: NamedSpecificationRef
+  sourceElement: NamedSpecificationRef
+  data: ReadableWorkflowDataRequirement[]
+  source: SourceReference
+}
+
+export interface ReadableWorkflowCompletion {
+  screen: NamedSpecificationRef
+  requiredData: ReadableWorkflowDataRequirement[]
+  source: SourceReference
+}
+
+export interface ReadableWorkflow extends NamedSpecificationRef {
+  key: string
+  startScreen: NamedSpecificationRef
+  initialData: ReadableWorkflowDataRequirement[]
+  acquisitions: ReadableWorkflowAcquisition[]
+  completions: ReadableWorkflowCompletion[]
+  source: SourceReference
+}
+
+export interface ReadableWorkflowScreenRelation {
+  workflow: ReadableWorkflow
+  starts: boolean
+  acquisitions: ReadableWorkflowAcquisition[]
+  completions: ReadableWorkflowCompletion[]
+}
+
 export interface ReadablePath {
   id: string | null
   sourceScreenId: string
@@ -182,10 +217,12 @@ export interface ReadableSpecification {
   modelsState: SpecificationState
   screensState: SpecificationState
   outcomesState: SpecificationState
+  workflowsState: SpecificationState
   diagnosticsState: SpecificationState
   models: ReadableModel[]
   screens: ReadableScreen[]
   categories: ReadableCategory[]
+  workflows: ReadableWorkflow[]
   diagnostics: ReadableDiagnostic[]
   context: ReadableContextItem[]
 }
@@ -207,6 +244,7 @@ interface ModuleIndex {
   models: Map<string, ReadableModel>
   fields: Map<string, ReadableField>
   screens: Map<string, NamedSpecificationRef>
+  elementsByScreen: Map<string, Map<string, NamedSpecificationRef>>
   outcomes: Map<string, ReadableOutcome>
   lookups: Map<string, Record<string, unknown>>
   producers: Map<string, Record<string, unknown>>
@@ -226,10 +264,12 @@ const EMPTY: Omit<ReadableSpecification, 'state' | 'identity' | 'documents' | 'c
   modelsState: 'uncompiled',
   screensState: 'uncompiled',
   outcomesState: 'uncompiled',
+  workflowsState: 'uncompiled',
   diagnosticsState: 'uncompiled',
   models: [],
   screens: [],
   categories: [],
+  workflows: [],
   diagnostics: [],
 }
 
@@ -253,6 +293,7 @@ export function buildReadableSpecification(
       modelsState: 'unsupported',
       screensState: 'unsupported',
       outcomesState: 'unsupported',
+      workflowsState: 'unsupported',
       diagnosticsState: 'unsupported',
     }
   }
@@ -267,6 +308,7 @@ export function buildReadableSpecification(
       modelsState: 'unsupported',
       screensState: 'unsupported',
       outcomesState: 'unsupported',
+      workflowsState: 'unsupported',
       diagnosticsState: 'unsupported',
     }
   }
@@ -275,10 +317,12 @@ export function buildReadableSpecification(
   const models: ReadableModel[] = []
   const screens: ReadableScreen[] = []
   const categories: ReadableCategory[] = []
+  const workflows: ReadableWorkflow[] = []
   const diagnostics: ReadableDiagnostic[] = []
   let modelsUnsupported = false
   let screensUnsupported = false
   let outcomesUnsupported = false
+  let workflowsUnsupported = false
   let outcomeCount = 0
 
   for (const rawFile of records(result.files)) {
@@ -292,12 +336,16 @@ export function buildReadableSpecification(
     if (hasUnsupportedArray(moduleIr, 'models')) modelsUnsupported = true
     if (hasUnsupportedArray(moduleIr, 'screens') || hasUnsupportedArray(moduleIr, 'screen_layouts')) screensUnsupported = true
     if (hasUnsupportedArray(moduleIr, 'action_outcomes')) outcomesUnsupported = true
+    if (hasUnsupportedArray(moduleIr, 'workflows')) workflowsUnsupported = true
 
     attachConstraints(moduleIr, index, documentByPath)
     attachProducerProvenance(moduleIr, index, documentByPath)
     collectOutcomeProvenance(index)
     categories.push(...collectCategories(moduleIr, index, documentByPath))
     screens.push(...collectScreens(moduleIr, index, documentByPath))
+    const parsedWorkflows = collectWorkflows(moduleIr, index, documentByPath)
+    workflows.push(...parsedWorkflows.workflows)
+    if (parsedWorkflows.unsupported) workflowsUnsupported = true
   }
 
   return {
@@ -311,10 +359,12 @@ export function buildReadableSpecification(
       : outcomeCount > 0
         ? 'present'
         : 'absent',
+    workflowsState: workflowsUnsupported ? 'unsupported' : workflows.length === 0 ? 'absent' : 'present',
     diagnosticsState: diagnostics.length === 0 ? 'absent' : 'present',
     models,
     screens,
     categories,
+    workflows,
     diagnostics,
     context,
   }
@@ -343,6 +393,21 @@ export function findReadableElement(
   return null
 }
 
+export function findReadableWorkflowRelations(
+  specification: ReadableSpecification,
+  screen: ReadableScreen | null,
+): ReadableWorkflowScreenRelation[] {
+  if (screen === null) return []
+  return specification.workflows.flatMap((workflow) => {
+    const acquisitions = workflow.acquisitions.filter((item) => item.sourceScreen.id === screen.id)
+    const completions = workflow.completions.filter((item) => item.screen.id === screen.id)
+    const starts = workflow.startScreen.id === screen.id
+    return starts || acquisitions.length > 0 || completions.length > 0
+      ? [{ workflow, starts, acquisitions, completions }]
+      : []
+  })
+}
+
 export function sourceExcerpt(source: SourceReference): string | null {
   if (source.document === null) return null
   if (source.span === null) return source.document.text
@@ -368,6 +433,14 @@ function buildIndex(
   const roles = named(moduleIr.roles)
   const actions = named(moduleIr.actions)
   const screenRefs = named(moduleIr.screens)
+  const elementsByScreen = new Map<string, Map<string, NamedSpecificationRef>>()
+  for (const layout of records(moduleIr.screen_layouts)) {
+    const screenId = str(layout.screen_id)
+    if (screenId === null) continue
+    const elements = new Map<string, NamedSpecificationRef>()
+    indexElementRefs(layout.elements, elements)
+    elementsByScreen.set(screenId, elements)
+  }
   const enumNames = new Map<string, string[]>()
   for (const rawEnum of records(moduleIr.enums)) {
     const id = str(rawEnum.id)
@@ -417,7 +490,7 @@ function buildIndex(
     const target = str(raw.target_field_id)
     if (target !== null) derivations.set(target, raw)
   }
-  const index: ModuleIndex = { path, roles, actions, models, fields, screens: screenRefs, outcomes: new Map(), lookups, producers, derivations }
+  const index: ModuleIndex = { path, roles, actions, models, fields, screens: screenRefs, elementsByScreen, outcomes: new Map(), lookups, producers, derivations }
   for (const rawOutcome of records(moduleIr.action_outcomes)) {
     const id = str(rawOutcome.id)
     const actionId = str(rawOutcome.action_id)
@@ -449,6 +522,18 @@ function buildIndex(
     index.outcomes.set(id, outcome)
   }
   return index
+}
+
+function indexElementRefs(
+  value: unknown,
+  target: Map<string, NamedSpecificationRef>,
+): void {
+  for (const raw of records(value)) {
+    const id = str(raw.id)
+    if (id !== null) target.set(id, { id, name: str(raw.name) ?? str(raw.text) ?? id, resolved: true })
+    indexElementRefs(raw.children, target)
+    indexElementRefs(raw.inputs, target)
+  }
 }
 
 function collectScreens(
@@ -483,6 +568,124 @@ function collectScreens(
     })
   }
   return result
+}
+
+function collectWorkflows(
+  moduleIr: Record<string, unknown>,
+  index: ModuleIndex,
+  documents: ReadonlyMap<string, SpecificationDocument>,
+): { workflows: ReadableWorkflow[]; unsupported: boolean } {
+  const rawWorkflows = moduleIr.workflows
+  if (rawWorkflows === null || rawWorkflows === undefined) return { workflows: [], unsupported: false }
+  if (!Array.isArray(rawWorkflows)) return { workflows: [], unsupported: true }
+
+  const workflows: ReadableWorkflow[] = []
+  let unsupported = rawWorkflows.some((value) => record(value) === null)
+  for (const raw of records(rawWorkflows)) {
+    const id = str(raw.id)
+    const name = str(raw.name)
+    const startScreenId = str(raw.start_screen_id)
+    if (id === null || name === null || startScreenId === null || !Array.isArray(raw.completions)) {
+      unsupported = true
+      continue
+    }
+    if (hasUnsupportedArray(raw, 'initial_data') || hasUnsupportedArray(raw, 'acquisitions')) unsupported = true
+
+    const initial = parseWorkflowData(raw.initial_data, index, documents)
+    const acquisitions = parseWorkflowAcquisitions(raw.acquisitions, index, documents)
+    const completions = parseWorkflowCompletions(raw.completions, index, documents)
+    if (initial.unsupported || acquisitions.unsupported || completions.unsupported) unsupported = true
+    workflows.push({
+      id,
+      name,
+      resolved: true,
+      key: `${index.path}:${id}`,
+      startScreen: resolve(index.screens, startScreenId),
+      initialData: initial.data,
+      acquisitions: acquisitions.items,
+      completions: completions.items,
+      source: source(index.path, raw.span, documents),
+    })
+  }
+  return { workflows, unsupported }
+}
+
+function parseWorkflowData(
+  value: unknown,
+  index: ModuleIndex,
+  documents: ReadonlyMap<string, SpecificationDocument>,
+): { data: ReadableWorkflowDataRequirement[]; unsupported: boolean } {
+  if (value === null || value === undefined) return { data: [], unsupported: false }
+  if (!Array.isArray(value)) return { data: [], unsupported: true }
+  const data: ReadableWorkflowDataRequirement[] = []
+  let unsupported = value.some((item) => record(item) === null)
+  for (const raw of records(value)) {
+    const modelId = str(raw.model_id)
+    const fieldId = str(raw.field_id)
+    if (modelId === null || fieldId === null) {
+      unsupported = true
+      continue
+    }
+    data.push({
+      model: resolveModels(index, modelId),
+      field: resolveFields(index, fieldId),
+      source: source(index.path, raw.span, documents),
+    })
+  }
+  return { data, unsupported }
+}
+
+function parseWorkflowAcquisitions(
+  value: unknown,
+  index: ModuleIndex,
+  documents: ReadonlyMap<string, SpecificationDocument>,
+): { items: ReadableWorkflowAcquisition[]; unsupported: boolean } {
+  if (value === null || value === undefined) return { items: [], unsupported: false }
+  if (!Array.isArray(value)) return { items: [], unsupported: true }
+  const items: ReadableWorkflowAcquisition[] = []
+  let unsupported = value.some((item) => record(item) === null)
+  for (const raw of records(value)) {
+    const screenId = str(raw.source_screen_id)
+    const elementId = str(raw.source_element_id)
+    if (screenId === null || elementId === null || !Array.isArray(raw.data)) {
+      unsupported = true
+      continue
+    }
+    const parsed = parseWorkflowData(raw.data, index, documents)
+    if (parsed.unsupported) unsupported = true
+    items.push({
+      sourceScreen: resolve(index.screens, screenId),
+      sourceElement: index.elementsByScreen.get(screenId)?.get(elementId) ?? unresolved(elementId),
+      data: parsed.data,
+      source: source(index.path, raw.span, documents),
+    })
+  }
+  return { items, unsupported }
+}
+
+function parseWorkflowCompletions(
+  value: unknown,
+  index: ModuleIndex,
+  documents: ReadonlyMap<string, SpecificationDocument>,
+): { items: ReadableWorkflowCompletion[]; unsupported: boolean } {
+  if (!Array.isArray(value)) return { items: [], unsupported: true }
+  const items: ReadableWorkflowCompletion[] = []
+  let unsupported = value.some((item) => record(item) === null)
+  for (const raw of records(value)) {
+    const screenId = str(raw.screen_id)
+    if (screenId === null || !Array.isArray(raw.required_data)) {
+      unsupported = true
+      continue
+    }
+    const parsed = parseWorkflowData(raw.required_data, index, documents)
+    if (parsed.unsupported) unsupported = true
+    items.push({
+      screen: resolve(index.screens, screenId),
+      requiredData: parsed.data,
+      source: source(index.path, raw.span, documents),
+    })
+  }
+  return { items, unsupported }
 }
 
 function parseElement(
