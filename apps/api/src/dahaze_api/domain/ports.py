@@ -269,3 +269,40 @@ class DocumentRepositoryPort(Protocol):
 
     async def list_revisions(self, document_id: UUID) -> list[DocumentRevision]:
         ...
+
+
+class PlanningRepositoryPort(Protocol):
+    """프로젝트 기획 상태와 원자적 변경 묶음 저장소."""
+
+    async def get_state(self, project_id: UUID) -> Mapping[str, Any]: ...
+    async def update_state(
+        self, project_id: UUID, *, expected_revision: int,
+        messages: Sequence[Mapping[str, Any]], decisions: Sequence[Mapping[str, Any]],
+        proposals: Sequence[Mapping[str, Any]], metadata: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None: ...
+    async def create_draft(
+        self, *, project_id: UUID, base_project_revision: int, base_source_hash: str,
+        changes: Sequence[Mapping[str, Any]],
+        candidate_documents: Sequence[Mapping[str, Any]], candidate_source_hash: str,
+        summary: str | None, rspdl_version: str, wire_schema_version: int, locale: str,
+        result: Mapping[str, Any] | None, base_result: Mapping[str, Any] | None,
+    ) -> Mapping[str, Any]: ...
+    async def get_draft(self, draft_id: UUID) -> Mapping[str, Any] | None: ...
+    async def list_drafts(self, project_id: UUID) -> list[Mapping[str, Any]]: ...
+    async def apply_draft(
+        self, *, draft_id: UUID, actor_id: UUID, expected_project_revision: int,
+        expected_source_hash: str,
+    ) -> Mapping[str, Any] | None: ...
+    async def list_snapshots(self, project_id: UUID) -> list[Mapping[str, Any]]: ...
+    async def capture_snapshot(
+        self, *, project_id: UUID, actor_id: UUID, expected_project_revision: int,
+        expected_source_hash: str, expected_planning_revision: int, summary: str | None,
+        rspdl_version: str, wire_schema_version: int, locale: str,
+        result: Mapping[str, Any] | None,
+    ) -> Mapping[str, Any] | None: ...
+    async def get_snapshot(self, project_id: UUID, revision: int) -> Mapping[str, Any] | None: ...
+    async def restore_snapshot(
+        self, *, project_id: UUID, revision: int, actor_id: UUID,
+        expected_project_revision: int, expected_source_hash: str,
+        expected_planning_revision: int,
+    ) -> Mapping[str, Any] | None: ...

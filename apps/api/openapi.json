@@ -59,6 +59,79 @@
         "title": "AnalysisResponse",
         "type": "object"
       },
+      "ApplyPlanningDraftRequest": {
+        "properties": {
+          "expected_project_revision": {
+            "minimum": 0.0,
+            "title": "Expected Project Revision",
+            "type": "integer"
+          },
+          "expected_source_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Expected Source Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_project_revision",
+          "expected_source_hash"
+        ],
+        "title": "ApplyPlanningDraftRequest",
+        "type": "object"
+      },
+      "ApplyPlanningDraftResponse": {
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/PlanningAnalysisResponse"
+          },
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "project_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Revision"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectSnapshotResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hash"
+          }
+        },
+        "required": [
+          "applied",
+          "project_revision",
+          "source_hash",
+          "analysis",
+          "snapshot"
+        ],
+        "title": "ApplyPlanningDraftResponse",
+        "type": "object"
+      },
       "AuthProvidersResponse": {
         "description": "설정된 OAuth 제공자. 프론트가 버튼을 하드코딩하지 않게 한다.\n\n아이디·비밀번호 로그인은 여기 없다. 설정과 무관하게 항상 열려 있으므로, 늘 참인 값을\n실어 보내면 프론트가 \"혹시 꺼져 있을 수도 있다\" 는 분기를 영원히 들고 있게 된다.",
         "properties": {
@@ -136,6 +209,44 @@
           "analysis"
         ],
         "title": "AuthoringDraftResponse",
+        "type": "object"
+      },
+      "CaptureProjectSnapshotRequest": {
+        "properties": {
+          "expected_planning_revision": {
+            "minimum": 0.0,
+            "title": "Expected Planning Revision",
+            "type": "integer"
+          },
+          "expected_project_revision": {
+            "minimum": 0.0,
+            "title": "Expected Project Revision",
+            "type": "integer"
+          },
+          "expected_source_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Expected Source Hash",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "expected_project_revision",
+          "expected_source_hash",
+          "expected_planning_revision"
+        ],
+        "title": "CaptureProjectSnapshotRequest",
         "type": "object"
       },
       "CheckRequest": {
@@ -248,6 +359,47 @@
           "title"
         ],
         "title": "CreateDocumentRequest",
+        "type": "object"
+      },
+      "CreatePlanningDraftRequest": {
+        "properties": {
+          "base_project_revision": {
+            "minimum": 0.0,
+            "title": "Base Project Revision",
+            "type": "integer"
+          },
+          "base_source_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Base Source Hash",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/DraftDocumentChange"
+            },
+            "minItems": 1,
+            "title": "Changes",
+            "type": "array"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "base_project_revision",
+          "base_source_hash",
+          "changes"
+        ],
+        "title": "CreatePlanningDraftRequest",
         "type": "object"
       },
       "CreateProjectRequest": {
@@ -499,6 +651,50 @@
         "title": "DocumentSummaryResponse",
         "type": "object"
       },
+      "DraftDocumentChange": {
+        "properties": {
+          "operation": {
+            "description": "upsert | delete",
+            "title": "Operation",
+            "type": "string"
+          },
+          "path": {
+            "description": "프로젝트 안의 .rspdl 경로",
+            "title": "Path",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "upsert 때 필요한 RSPDL 전문",
+            "title": "Text"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "upsert 때 필요한 표시 이름",
+            "title": "Title"
+          }
+        },
+        "required": [
+          "operation",
+          "path"
+        ],
+        "title": "DraftDocumentChange",
+        "type": "object"
+      },
       "DraftDocumentRequest": {
         "properties": {
           "instruction": {
@@ -646,6 +842,241 @@
         "title": "PasswordLoginRequest",
         "type": "object"
       },
+      "PlanningAnalysisResponse": {
+        "properties": {
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RSPDL SDK 결과 원본",
+            "title": "Result"
+          },
+          "rspdl_version": {
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "wire_schema_version": {
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "result"
+        ],
+        "title": "PlanningAnalysisResponse",
+        "type": "object"
+      },
+      "PlanningDraftResponse": {
+        "properties": {
+          "applied_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Revision"
+          },
+          "base_project_revision": {
+            "title": "Base Project Revision",
+            "type": "integer"
+          },
+          "base_source_hash": {
+            "title": "Base Source Hash",
+            "type": "string"
+          },
+          "candidate_documents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Candidate Documents",
+            "type": "array"
+          },
+          "candidate_source_hash": {
+            "title": "Candidate Source Hash",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "rspdl_version": {
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "wire_schema_version": {
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "base_project_revision",
+          "base_source_hash",
+          "candidate_source_hash",
+          "changes",
+          "candidate_documents",
+          "summary",
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "result",
+          "applied_revision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PlanningDraftResponse",
+        "type": "object"
+      },
+      "PlanningMetadata": {
+        "properties": {
+          "design": {
+            "additionalProperties": true,
+            "title": "Design",
+            "type": "object"
+          },
+          "environments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Environments",
+            "type": "array"
+          },
+          "sample_data": {
+            "additionalProperties": true,
+            "title": "Sample Data",
+            "type": "object"
+          }
+        },
+        "title": "PlanningMetadata",
+        "type": "object"
+      },
+      "PlanningStateResponse": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PlanningMetadata"
+          },
+          "project_revision": {
+            "description": "확정 RSPDL 원문 변경 묶음 버전",
+            "title": "Project Revision",
+            "type": "integer"
+          },
+          "proposals": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Proposals",
+            "type": "array"
+          },
+          "revision": {
+            "description": "대화·결정·메타데이터의 독립 optimistic revision",
+            "title": "Revision",
+            "type": "integer"
+          },
+          "source_hash": {
+            "description": "현재 확정 원문의 canonical workspace hash",
+            "title": "Source Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "project_revision",
+          "source_hash",
+          "messages",
+          "decisions",
+          "proposals",
+          "metadata"
+        ],
+        "title": "PlanningStateResponse",
+        "type": "object"
+      },
       "ProjectCompileResponse": {
         "description": "프로젝트의 문서 전부를 한 워크스페이스로 컴파일한 결과.\n\n`result` 는 `AnalysisResponse` 와 같은 값이다 — RSPDL SDK 가 준 그대로이며 dahaze 가\n재작성하지 않는다 (ADR-0003). 진단도 그 안에 담겨 온다.\n\n문서가 하나도 없으면 컴파일러를 부르지 않으므로 `result` 는 `None` 이다. 파일 0개짜리\n결과를 지어내면 \"컴파일했는데 아무 문제 없었다\" 와 \"컴파일한 적이 없다\" 가 화면에서\n같아 보인다.",
         "properties": {
@@ -764,8 +1195,23 @@
             "title": "Name",
             "type": "string"
           },
+          "revision": {
+            "description": "원문 변경 묶음 버전",
+            "title": "Revision",
+            "type": "integer"
+          },
           "slug": {
             "title": "Slug",
+            "type": "string"
+          },
+          "snapshot_version": {
+            "description": "원문과 기획 상태를 함께 고정한 최신 버전",
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
+          "source_hash": {
+            "description": "canonical 문서 목록의 내용 해시",
+            "title": "Source Hash",
             "type": "string"
           },
           "updated_at": {
@@ -780,11 +1226,135 @@
           "name",
           "description",
           "default_rspdl_version",
+          "revision",
+          "source_hash",
+          "snapshot_version",
           "created_at",
           "updated_at",
           "archived_at"
         ],
         "title": "ProjectResponse",
+        "type": "object"
+      },
+      "ProjectSnapshotResponse": {
+        "properties": {
+          "author_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Id"
+          },
+          "change_kind": {
+            "description": "baseline | apply | restore",
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "documents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "planning_revision": {
+            "title": "Planning Revision",
+            "type": "integer"
+          },
+          "planning_state": {
+            "additionalProperties": true,
+            "title": "Planning State",
+            "type": "object"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_revision": {
+            "title": "Project Revision",
+            "type": "integer"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "해당 버전에서 저장한 RSPDL SDK 결과 원본",
+            "title": "Result"
+          },
+          "rspdl_version": {
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "snapshot_version": {
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
+          "source_hash": {
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "wire_schema_version": {
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "snapshot_version",
+          "project_revision",
+          "planning_revision",
+          "source_hash",
+          "documents",
+          "planning_state",
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "result",
+          "change_kind",
+          "summary",
+          "author_id",
+          "created_at"
+        ],
+        "title": "ProjectSnapshotResponse",
         "type": "object"
       },
       "RegisterRequest": {
@@ -825,6 +1395,33 @@
           "display_name"
         ],
         "title": "RegisterRequest",
+        "type": "object"
+      },
+      "RestoreProjectSnapshotRequest": {
+        "properties": {
+          "expected_planning_revision": {
+            "minimum": 0.0,
+            "title": "Expected Planning Revision",
+            "type": "integer"
+          },
+          "expected_project_revision": {
+            "minimum": 0.0,
+            "title": "Expected Project Revision",
+            "type": "integer"
+          },
+          "expected_source_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Expected Source Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_project_revision",
+          "expected_source_hash",
+          "expected_planning_revision"
+        ],
+        "title": "RestoreProjectSnapshotRequest",
         "type": "object"
       },
       "ReviseDocumentRequest": {
@@ -918,6 +1515,47 @@
           "text"
         ],
         "title": "UpdateDocumentRequest",
+        "type": "object"
+      },
+      "UpdatePlanningStateRequest": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PlanningMetadata"
+          },
+          "proposals": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Proposals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "UpdatePlanningStateRequest",
         "type": "object"
       },
       "ValidationError": {
@@ -1833,6 +2471,134 @@
         ]
       }
     },
+    "/api/planning/drafts/{draft_id}": {
+      "get": {
+        "operationId": "get_planning_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Planning Draft",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/planning/drafts/{draft_id}/apply": {
+      "post": {
+        "operationId": "apply_planning_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyPlanningDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyPlanningDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Planning Draft",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
     "/api/projects": {
       "get": {
         "description": "내가 멤버인 프로젝트 목록. 한 사용자가 여러 프로젝트를 가질 수 있다.",
@@ -2389,6 +3155,539 @@
         "summary": "Add Project Member",
         "tags": [
           "workspace"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning": {
+      "get": {
+        "operationId": "get_planning_state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningStateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Planning State",
+        "tags": [
+          "planning"
+        ]
+      },
+      "put": {
+        "operationId": "update_planning_state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePlanningStateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningStateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Planning State",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/drafts": {
+      "get": {
+        "operationId": "list_planning_drafts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlanningDraftResponse"
+                  },
+                  "title": "Response List Planning Drafts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Planning Drafts",
+        "tags": [
+          "planning"
+        ]
+      },
+      "post": {
+        "operationId": "create_planning_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlanningDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Planning Draft",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/handoff": {
+      "get": {
+        "operationId": "get_project_handoff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Handoff",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/snapshots": {
+      "get": {
+        "operationId": "list_project_snapshots",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectSnapshotResponse"
+                  },
+                  "title": "Response List Project Snapshots",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Project Snapshots",
+        "tags": [
+          "planning"
+        ]
+      },
+      "post": {
+        "operationId": "capture_project_snapshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureProjectSnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Capture Project Snapshot",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/snapshots/{revision}/restore": {
+      "post": {
+        "operationId": "restore_project_snapshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreProjectSnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Project Snapshot",
+        "tags": [
+          "planning"
         ]
       }
     },

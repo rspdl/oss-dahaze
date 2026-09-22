@@ -228,6 +228,12 @@ class WorkspaceService:
             raise NotFound("프로젝트를 찾을 수 없다")
         return membership
 
+    async def require_membership(
+        self, *, actor_id: UUID, project_id: UUID
+    ) -> ProjectMembership:
+        """다른 프로젝트 단위 유스케이스가 같은 접근 검사를 재사용한다."""
+        return await self._require_membership(actor_id=actor_id, project_id=project_id)
+
     @staticmethod
     def _require_write(membership: ProjectMembership) -> None:
         if not membership.role.can_write:

@@ -159,6 +159,9 @@ class ProjectResponse(BaseModel):
     name: str
     description: str | None
     default_rspdl_version: str
+    revision: int = Field(description="원문 변경 묶음 버전")
+    source_hash: str = Field(description="canonical 문서 목록의 내용 해시")
+    snapshot_version: int = Field(description="원문과 기획 상태를 함께 고정한 최신 버전")
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None
@@ -266,6 +269,114 @@ class DocumentRevisionResponse(BaseModel):
     author_id: UUID | None
     summary: str | None
     created_at: datetime
+
+
+# ---------------------------------------------------------- 프로젝트 기획 작업공간
+
+
+class PlanningMetadata(BaseModel):
+    environments: list[dict[str, Any]] = Field(default_factory=list)
+    design: dict[str, Any] = Field(default_factory=dict)
+    sample_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class PlanningStateResponse(BaseModel):
+    revision: int = Field(description="대화·결정·메타데이터의 독립 optimistic revision")
+    project_revision: int = Field(description="확정 RSPDL 원문 변경 묶음 버전")
+    source_hash: str = Field(description="현재 확정 원문의 canonical workspace hash")
+    messages: list[dict[str, Any]]
+    decisions: list[dict[str, Any]]
+    proposals: list[dict[str, Any]]
+    metadata: PlanningMetadata
+
+
+class UpdatePlanningStateRequest(BaseModel):
+    expected_revision: int = Field(ge=0)
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+    decisions: list[dict[str, Any]] = Field(default_factory=list)
+    proposals: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: PlanningMetadata = Field(default_factory=PlanningMetadata)
+
+
+class DraftDocumentChange(BaseModel):
+    operation: str = Field(description="upsert | delete")
+    path: str = Field(description="프로젝트 안의 .rspdl 경로")
+    title: str | None = Field(default=None, description="upsert 때 필요한 표시 이름")
+    text: str | None = Field(default=None, description="upsert 때 필요한 RSPDL 전문")
+
+
+class CreatePlanningDraftRequest(BaseModel):
+    base_project_revision: int = Field(ge=0)
+    base_source_hash: str = Field(min_length=64, max_length=64)
+    changes: list[DraftDocumentChange] = Field(min_length=1)
+    summary: str | None = None
+
+
+class PlanningAnalysisResponse(BaseModel):
+    rspdl_version: str
+    wire_schema_version: int
+    locale: str
+    result: dict[str, Any] | None = Field(description="RSPDL SDK 결과 원본")
+
+
+class PlanningDraftResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    base_project_revision: int
+    base_source_hash: str
+    candidate_source_hash: str
+    changes: list[dict[str, Any]]
+    candidate_documents: list[dict[str, Any]]
+    summary: str | None
+    rspdl_version: str
+    wire_schema_version: int
+    locale: str
+    result: dict[str, Any] | None
+    applied_revision: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ApplyPlanningDraftRequest(BaseModel):
+    expected_project_revision: int = Field(ge=0)
+    expected_source_hash: str = Field(min_length=64, max_length=64)
+
+
+class ProjectSnapshotResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    snapshot_version: int
+    project_revision: int
+    planning_revision: int
+    source_hash: str
+    documents: list[dict[str, Any]]
+    planning_state: dict[str, Any]
+    rspdl_version: str
+    wire_schema_version: int
+    locale: str
+    result: dict[str, Any] | None = Field(description="해당 버전에서 저장한 RSPDL SDK 결과 원본")
+    change_kind: str = Field(description="baseline | apply | restore")
+    summary: str | None
+    author_id: UUID | None
+    created_at: datetime
+
+
+class ApplyPlanningDraftResponse(BaseModel):
+    applied: bool
+    project_revision: int | None
+    source_hash: str | None
+    analysis: PlanningAnalysisResponse
+    snapshot: ProjectSnapshotResponse | None
+
+
+class RestoreProjectSnapshotRequest(BaseModel):
+    expected_project_revision: int = Field(ge=0)
+    expected_source_hash: str = Field(min_length=64, max_length=64)
+    expected_planning_revision: int = Field(ge=0)
+
+
+class CaptureProjectSnapshotRequest(RestoreProjectSnapshotRequest):
+    summary: str | None = None
 
 
 # ----------------------------------------------------------------------- MCP

@@ -24,6 +24,7 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 
 from dahaze_api.application.analysis import AnalyzeWorkspace
+from dahaze_api.application.planning import PlanningService
 from dahaze_api.application.workspace import WorkspaceService
 from dahaze_api.domain.entities import (
     Document,
@@ -37,6 +38,7 @@ from dahaze_api.domain.ports import RspdlCompilerPort
 from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlSource
 from dahaze_api.infrastructure.auth.session import SessionTokens
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
+from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
 from dahaze_api.infrastructure.db.repositories import (
     SqlDocumentRepository,
     SqlProjectRepository,
@@ -92,6 +94,7 @@ class _Actor:
     user: User
     workspace: WorkspaceService
     analyzer: AnalyzeWorkspace
+    planning: PlanningService
 
 
 def _project_payload(project: Project) -> dict[str, Any]:
@@ -397,6 +400,18 @@ class McpTools:
             )
             return _analysis_payload(outcome)
 
+    async def get_project_handoff(
+        self, headers: Mapping[str, str] | None, *, project_id: str, snapshot_version: int
+    ) -> dict[str, Any]:
+        """저장된 전체 프로젝트 버전을 재컴파일 없이 그대로 읽는다."""
+        async with self._acting(headers) as actor:
+            snapshot = await actor.planning.handoff(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                revision=snapshot_version,
+            )
+            return dict(snapshot)
+
     # ------------------------------------------------------------------- 내부
 
     @asynccontextmanager
@@ -412,15 +427,21 @@ class McpTools:
             if user is None:
                 # 서명은 맞는데 사용자가 사라진 경우. 만료된 토큰과 같게 취급한다.
                 raise McpAuthError("MCP 토큰이 유효하지 않다")
+            workspace = WorkspaceService(
+                projects=SqlProjectRepository(session),
+                documents=SqlDocumentRepository(session),
+                compiler=self._compiler,
+            )
+            analyzer = AnalyzeWorkspace(compiler=self._compiler, cache=SqlAnalysisCache(session))
             yield _Actor(
                 user=user,
-                workspace=WorkspaceService(
-                    projects=SqlProjectRepository(session),
-                    documents=SqlDocumentRepository(session),
+                workspace=workspace,
+                analyzer=analyzer,
+                planning=PlanningService(
+                    workspace=workspace,
+                    store=SqlPlanningRepository(session),
+                    analyzer=analyzer,
                     compiler=self._compiler,
-                ),
-                analyzer=AnalyzeWorkspace(
-                    compiler=self._compiler, cache=SqlAnalysisCache(session)
                 ),
             )
 
@@ -627,14 +648,12 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         name="compile_rspdl",
         description=(
             "RSPDL 소스를 컴파일해 Canonical IR 과 진단을 얻는다. `sources` 는 "
-            "`{\"path\": ..., \"text\": ...}` 목록이며, 서로를 참조하는 문서는 한 번에 "
+            '`{"path": ..., "text": ...}` 목록이며, 서로를 참조하는 문서는 한 번에 '
             "넘겨야 한다. 문법·의미 오류는 실패가 아니라 `result` 안의 진단으로 돌아온다. "
             "진단은 컴파일러가 준 그대로 사람에게 보여라 — 요약하거나 원인을 지어내지 마라."
         ),
     )
-    async def compile_rspdl(
-        sources: list[dict[str, str]], ctx: Context
-    ) -> dict[str, Any]:
+    async def compile_rspdl(sources: list[dict[str, str]], ctx: Context) -> dict[str, Any]:
         return await tools.compile_rspdl(ctx.headers, sources=sources)
 
     @mcp.tool(
@@ -675,6 +694,21 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
             timeout_ms=timeout_ms,
         )
 
+    @mcp.tool(
+        name="get_project_handoff",
+        description=(
+            "프로젝트의 immutable 전체 스냅샷을 snapshot_version 에 고정해 읽는다. "
+            "저장 당시 원문·기획 메타데이터·컴파일러 버전·결과를 그대로 돌려주며 "
+            "현재 컴파일러로 조용히 재검증하지 않는다."
+        ),
+    )
+    async def get_project_handoff(
+        project_id: str, snapshot_version: int, ctx: Context
+    ) -> dict[str, Any]:
+        return await tools.get_project_handoff(
+            ctx.headers, project_id=project_id, snapshot_version=snapshot_version
+        )
+
     return mcp
 
 
@@ -696,9 +730,7 @@ def create_mcp_app(tools: McpTools | None = None, *, path: str = MCP_PATH) -> St
         streamable_http_path=path,
         json_response=True,
         stateless_http=True,
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=False
-        ),
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     )
     # 인증 게이트는 개별 라우트가 아니라 앱 전체를 감싼다. 나중에 경로가 늘어도 무인증
     # 구멍이 생기지 않는다.
@@ -706,9 +738,7 @@ def create_mcp_app(tools: McpTools | None = None, *, path: str = MCP_PATH) -> St
     return app
 
 
-def mount_mcp(
-    app: FastAPI, *, path: str = MCP_PATH, tools: McpTools | None = None
-) -> Starlette:
+def mount_mcp(app: FastAPI, *, path: str = MCP_PATH, tools: McpTools | None = None) -> Starlette:
     """FastAPI 앱에 MCP 를 붙인다. `main.py` 가 부르는 유일한 함수다.
 
     `app.mount()` 를 쓰지 않는 이유가 둘 있다.

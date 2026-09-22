@@ -22,6 +22,7 @@ from dahaze_api.domain.entities import (
     ProjectRole,
     User,
 )
+from dahaze_api.domain.rspdl import RspdlSource, project_source_hash
 from dahaze_api.infrastructure.db.models import (
     DocumentRevisionRow,
     DocumentRow,
@@ -44,9 +45,7 @@ def _to_user(row: UserRow) -> User:
 
 
 def _to_password_credential(row: PasswordCredentialRow) -> PasswordCredential:
-    return PasswordCredential(
-        user_id=row.user_id, login=row.login, password_hash=row.password_hash
-    )
+    return PasswordCredential(user_id=row.user_id, login=row.login, password_hash=row.password_hash)
 
 
 def _to_project(row: ProjectRow) -> Project:
@@ -56,6 +55,9 @@ def _to_project(row: ProjectRow) -> Project:
         name=row.name,
         description=row.description,
         default_rspdl_version=row.default_rspdl_version,
+        revision=row.revision,
+        source_hash=row.source_hash,
+        snapshot_version=row.snapshot_version,
         created_at=row.created_at,
         updated_at=row.updated_at,
         archived_at=row.archived_at,
@@ -163,9 +165,7 @@ class SqlPasswordCredentialRepository:
         """
         stmt = (
             insert(PasswordCredentialRow)
-            .values(
-                id=uuid4(), user_id=user_id, login=login, password_hash=password_hash
-            )
+            .values(id=uuid4(), user_id=user_id, login=login, password_hash=password_hash)
             .on_conflict_do_nothing()
             .returning(PasswordCredentialRow)
         )
@@ -192,6 +192,9 @@ class SqlProjectRepository:
             name=name,
             description=description,
             default_rspdl_version=default_rspdl_version,
+            revision=0,
+            source_hash=project_source_hash([]),
+            snapshot_version=0,
         )
         # 소유자도 멤버로 넣는다. 접근 검사 경로를 하나로 유지하기 위해서다.
         project.members.append(
@@ -224,9 +227,7 @@ class SqlProjectRepository:
         rows = (await self._session.execute(stmt)).scalars().all()
         return [_to_project(r) for r in rows]
 
-    async def membership_of(
-        self, *, project_id: UUID, user_id: UUID
-    ) -> ProjectMembership | None:
+    async def membership_of(self, *, project_id: UUID, user_id: UUID) -> ProjectMembership | None:
         stmt = select(ProjectMemberRow).where(
             ProjectMemberRow.project_id == project_id,
             ProjectMemberRow.user_id == user_id,
@@ -237,9 +238,7 @@ class SqlProjectRepository:
     async def add_member(
         self, *, project_id: UUID, user_id: UUID, role: ProjectRole
     ) -> ProjectMembership:
-        row = ProjectMemberRow(
-            id=uuid4(), project_id=project_id, user_id=user_id, role=role.value
-        )
+        row = ProjectMemberRow(id=uuid4(), project_id=project_id, user_id=user_id, role=role.value)
         self._session.add(row)
         await self._session.flush()
         return _to_membership(row)
@@ -276,6 +275,7 @@ class SqlDocumentRepository:
         target_rspdl_version: str,
         author_id: UUID | None,
     ) -> Document:
+        await self._lock_project(project_id)
         document = DocumentRow(
             id=uuid4(),
             project_id=project_id,
@@ -298,6 +298,7 @@ class SqlDocumentRepository:
         )
         self._session.add(document)
         await self._session.flush()
+        await self._bump_locked_project(project_id)
         return _to_document(document)
 
     async def get(self, document_id: UUID) -> Document | None:
@@ -326,7 +327,18 @@ class SqlDocumentRepository:
         author_id: UUID | None,
         summary: str | None,
     ) -> Document | None:
-        row = await self._session.get(DocumentRow, document_id)
+        probe = await self._session.get(DocumentRow, document_id)
+        if probe is None:
+            return None
+        await self._lock_project(probe.project_id)
+        row = (
+            await self._session.execute(
+                select(DocumentRow)
+                .where(DocumentRow.id == document_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
         if row is None or row.deleted_at is not None:
             return None
 
@@ -349,6 +361,7 @@ class SqlDocumentRepository:
             )
         )
         await self._session.flush()
+        await self._bump_locked_project(row.project_id)
         await self._session.refresh(row)
         return _to_document(row)
 
@@ -356,11 +369,23 @@ class SqlDocumentRepository:
         # 벌크 UPDATE 를 쓰지 않는다. 같은 세션에 이미 로드된 객체가 있으면 in-memory
         # 상태가 어긋나고, 뒤이은 속성 접근이 동기 lazy IO 를 일으켜 async 컨텍스트에서
         # MissingGreenlet 으로 터진다. ORM 객체를 직접 고치면 identity map 이 일관된다.
-        row = await self._session.get(DocumentRow, document_id)
+        probe = await self._session.get(DocumentRow, document_id)
+        if probe is None:
+            return False
+        await self._lock_project(probe.project_id)
+        row = (
+            await self._session.execute(
+                select(DocumentRow)
+                .where(DocumentRow.id == document_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
         if row is None or row.deleted_at is not None:
             return False
         row.deleted_at = datetime.now(UTC)
         await self._session.flush()
+        await self._bump_locked_project(row.project_id)
         return True
 
     async def list_revisions(self, document_id: UUID) -> list[DocumentRevision]:
@@ -378,3 +403,33 @@ class SqlDocumentRepository:
         )
         current = (await self._session.execute(stmt)).scalar_one_or_none()
         return (current or 0) + 1
+
+    async def _lock_project(self, project_id: UUID) -> ProjectRow:
+        return (
+            await self._session.execute(
+                select(ProjectRow)
+                .where(ProjectRow.id == project_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
+
+    async def _bump_locked_project(self, project_id: UUID) -> None:
+        project = await self._session.get(ProjectRow, project_id)
+        assert project is not None
+        rows = (
+            (
+                await self._session.execute(
+                    select(DocumentRow)
+                    .where(DocumentRow.project_id == project_id, DocumentRow.deleted_at.is_(None))
+                    .order_by(DocumentRow.path)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        project.revision += 1
+        project.source_hash = project_source_hash(
+            [RspdlSource(path=row.path, text=row.text) for row in rows]
+        )
+        await self._session.flush()

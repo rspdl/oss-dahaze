@@ -74,10 +74,18 @@ def workspace_hash(
     payload = {
         "locale": locale,
         "sources": [
-            {"path": s.path, "text": s.text}
-            for s in sorted(sources, key=lambda s: s.path)
+            {"path": s.path, "text": s.text} for s in sorted(sources, key=lambda s: s.path)
         ],
         "extra": dict(sorted((extra or {}).items())),
     }
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def project_source_hash(sources: Sequence[RspdlSource]) -> str:
+    """프로젝트 원문 집합의 canonical hash.
+
+    컴파일 캐시와 같은 직렬화 규칙을 재사용하되 locale 은 원문 정체의 일부가 아니므로
+    빈 값으로 고정한다. 적용 경쟁 검사가 별도의 해시 구현과 어긋나지 않게 한다.
+    """
+    return workspace_hash(sources, locale="")
