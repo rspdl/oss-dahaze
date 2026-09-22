@@ -42,11 +42,6 @@ import { designBindingKey } from './prototype-contract'
 /** 목업을 그릴 폭. 실제 기기 폭이라야 배치가 진짜 화면처럼 읽힌다. */
 export type MockupViewport = 'desktop' | 'mobile'
 
-const VIEWPORT_WIDTH: Record<MockupViewport, number> = {
-  desktop: 1024,
-  mobile: 390,
-}
-
 export const DEFAULT_VIEWPORT_DIMENSIONS: Record<MockupViewport, MockupDimensions> = {
   desktop: { width: 1024, height: 768 },
   mobile: { width: 390, height: 844 },
@@ -335,7 +330,8 @@ function Element({ element, path, context }: { element: MockupElement; path: str
       const elementId = element.id
       const outcomes = context.outcomesByElementId?.[elementId] ?? []
       if (outcomes.length === 0) return <button type="button" disabled title="선언된 결과가 없어 체험할 수 없습니다" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text opacity-50">{element.name}</button>
-      return <button type="button" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text" onClick={(event) => { event.stopPropagation(); dispatchPreviewAction(context.onAction, context.screenKey, elementId, outcomes, context.selectedOutcomeIdByElementId?.[elementId]) }}>{element.name}</button>
+      const selectedOutcome = outcomeForPreviewAction(outcomes, context.selectedOutcomeIdByElementId?.[elementId])
+      return <button type="button" disabled={selectedOutcome === undefined} title={selectedOutcome === undefined ? '결과 시나리오를 먼저 선택하세요' : undefined} className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text disabled:opacity-50" onClick={(event) => { event.stopPropagation(); dispatchPreviewAction(context.onAction, context.screenKey, elementId, outcomes, context.selectedOutcomeIdByElementId?.[elementId]) }}>{element.name}</button>
     }
     case 'placeholder':
       return <Placeholder text={element.text} />
@@ -348,7 +344,8 @@ function Element({ element, path, context }: { element: MockupElement; path: str
 
 /** 시나리오를 고르는 것만으로는 실행하지 않는다. 선언된 버튼을 누를 때 선택 결과를 해석한다. */
 export function outcomeForPreviewAction(outcomes: readonly ActionOutcome[], selectedOutcomeId?: string): ActionOutcome | undefined {
-  return outcomes.find((outcome) => outcome.id === selectedOutcomeId) ?? outcomes[0]
+  if (outcomes.length === 1) return outcomes[0]
+  return outcomes.find((outcome) => outcome.id === selectedOutcomeId)
 }
 
 export function dispatchPreviewAction(onAction: ScreenMockupFrameProps['onAction'], screenKey: string, elementId: string, outcomes: readonly ActionOutcome[], selectedOutcomeId?: string): void {
@@ -369,6 +366,7 @@ function scenarioControls(elements: readonly MockupElement[], outcomesByElementI
 }
 
 const HANDLER_LABEL = { state: '상태', message: '메시지', popup: '팝업', loading: '로딩' } as const
+const FRAME_HORIZONTAL_BORDER = 2
 
 function OutcomePreview({ outcome, onDismiss }: { outcome: ActionOutcome | null | undefined; onDismiss?: () => void }) {
   const handler = outcome?.handler
@@ -416,13 +414,14 @@ export function ScreenMockupFrame({
 }: ScreenMockupFrameProps) {
   const context: ElementContext = { screenKey: screen.key, mode, sampleVariant, samples, outcomesByElementId, selectedOutcomeIdByElementId, activeOutcome, selectedElementPath, selectedElementScreenKey, designByElementPath, sourceHash, onElementSelect, onDesignChange, onAction, onOutcomeSelect, onOutcomeDismiss, onProposeSemanticEdit, selectedSampleIdByModel, onSampleSelect, values, onValueChange }
   const controls = mode === 'experience' ? scenarioControls(screen.elements, outcomesByElementId ?? {}) : []
+  const viewportDimensions = dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
   return (
     <figure
       className={cn(
-        'flex flex-col overflow-hidden rounded-lg border border-border bg-canvas',
+        'flex shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-canvas',
         className,
       )}
-      style={{ width: dimensions?.width ?? VIEWPORT_WIDTH[viewport], height: dimensions?.height }}
+      style={{ width: viewportDimensions.width + FRAME_HORIZONTAL_BORDER }}
     >
       <figcaption className="flex items-baseline gap-2 border-b border-border bg-surface px-4 py-2">
         <span className="text-xs font-semibold text-text">
@@ -433,9 +432,9 @@ export function ScreenMockupFrame({
         )}
       </figcaption>
 
-      {controls.length === 0 ? null : <div aria-label="결과 시나리오 선택" className="flex flex-wrap gap-2 border-b border-border bg-surface-raised px-4 py-2 text-[11px] text-text-muted">{controls.map((control) => <label key={control.elementId} className="flex items-center gap-2"><span>{control.name} 결과 시나리오</span><select aria-label={`${control.name} 결과 시나리오`} value={outcomeForPreviewAction(control.outcomes, selectedOutcomeIdByElementId?.[control.elementId])?.id ?? ''} onChange={(event) => onOutcomeSelect?.(control.elementId, event.target.value)} className="max-w-64 rounded border border-border-strong bg-surface px-2 py-1 text-text"><option value="" disabled>결과 선택</option>{control.outcomes.map((outcome) => <option key={outcome.id} value={outcome.id}>{outcome.label}</option>)}</select></label>)}</div>}
+      {controls.length === 0 ? null : <div aria-label="결과 시나리오 선택" className="flex min-w-0 flex-wrap gap-2 border-b border-border bg-surface-raised px-4 py-2 text-[11px] text-text-muted">{controls.map((control) => <label key={control.elementId} className="flex min-w-0 flex-1 flex-wrap items-center gap-2"><span className="min-w-0 break-words">{control.name} 결과 시나리오</span><select aria-label={`${control.name} 결과 시나리오`} value={outcomeForPreviewAction(control.outcomes, selectedOutcomeIdByElementId?.[control.elementId])?.id ?? ''} onChange={(event) => onOutcomeSelect?.(control.elementId, event.target.value)} className="min-w-0 max-w-full flex-[1_1_12rem] rounded border border-border-strong bg-surface px-2 py-1 text-text"><option value="" disabled>결과 선택</option>{control.outcomes.map((outcome) => <option key={outcome.id} value={outcome.id}>{outcome.label}</option>)}</select></label>)}</div>}
 
-      <div data-mockup-viewport className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div data-mockup-viewport className="relative flex shrink-0 flex-col overflow-hidden" style={viewportDimensions}>
       {screen.elements.length === 0 ? (
         <div className="px-4 py-6 text-[11px] text-text-subtle">
           레이아웃에 요소가 없다

@@ -82,10 +82,10 @@ describe('ScreenMockupFrame', () => {
     const desktop = render('reservation.facility_list', 'desktop')
     const mobile = render('reservation.facility_list', 'mobile')
 
-    expect(desktop).toContain('width:1024px')
-    expect(mobile).toContain('width:390px')
+    expect(desktop).toContain('data-mockup-viewport="true" class="relative flex shrink-0 flex-col overflow-hidden" style="width:1024px;height:768px"')
+    expect(mobile).toContain('data-mockup-viewport="true" class="relative flex shrink-0 flex-col overflow-hidden" style="width:390px;height:844px"')
     // 같은 레이아웃이다. 폭만 다르고 요소가 빠지거나 더해지지 않는다.
-    const strip = (markup: string) => markup.replace(/width:\d+px/, '')
+    const strip = (markup: string) => markup.replace(/width:\d+px/g, '').replace(/height:\d+px/g, '')
     expect(strip(desktop)).toBe(strip(mobile))
   })
 })
@@ -126,7 +126,9 @@ describe('프로토타입 체험', () => {
     const screen = findScreenMockup(collected, 'reservation.facility_list')!
     const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} mode="experience" outcomesByElementId={{ open: [{ id: 'success', label: '성공', targetScreenKey: 'detail' }, { id: 'failure', label: '실패', targetScreenKey: 'error' }] }} />)
     expect(markup).toMatch(/<button[^>]*>상세 보기<\/button>/)
+    expect(markup).toContain('title="결과 시나리오를 먼저 선택하세요"')
     expect(markup).toContain('aria-label="상세 보기 결과 시나리오"')
+    expect(markup).toContain('<option value="" disabled="" selected="">결과 선택</option>')
     expect(markup).toContain('성공')
     expect(markup).toContain('실패')
   })
@@ -136,9 +138,32 @@ describe('프로토타입 체험', () => {
     const onAction = vi.fn()
     dispatchPreviewAction(onAction, 'input.rspdl:reservation.facility_list', 'open', outcomes, 'failure')
     expect(outcomeForPreviewAction(outcomes, 'failure')).toBe(outcomes[1])
-    expect(outcomeForPreviewAction(outcomes, 'missing')).toBe(outcomes[0])
+    expect(outcomeForPreviewAction(outcomes, 'missing')).toBeUndefined()
     expect(onAction).toHaveBeenCalledOnce()
     expect(onAction).toHaveBeenCalledWith({ screenKey: 'input.rspdl:reservation.facility_list', elementId: 'open', outcome: outcomes[1] })
+  })
+
+  it('여러 결과를 고르기 전에는 행동을 실행하지 않고 단일 결과는 바로 실행한다', () => {
+    const onAction = vi.fn()
+    const paid = { id: 'paid', label: '결제 완료' }
+    const multiple = [{ id: 'cancelled', label: '취소' }, paid]
+    dispatchPreviewAction(onAction, 'input.rspdl:payment', 'pay', multiple)
+    expect(onAction).not.toHaveBeenCalled()
+
+    dispatchPreviewAction(onAction, 'input.rspdl:payment', 'pay', [paid])
+    expect(onAction).toHaveBeenCalledOnce()
+    expect(onAction).toHaveBeenCalledWith({ screenKey: 'input.rspdl:payment', elementId: 'pay', outcome: paid })
+  })
+
+  it('미리보기 chrome이 모바일 화면 해상도를 줄이지 않는다', () => {
+    const screen = findScreenMockup(collected, 'reservation.facility_list')!
+    const outcomes = { open: [{ id: 'cancelled', label: '취소' }, { id: 'paid', label: '결제 완료 결과의 매우 긴 표시 이름' }] }
+    const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} viewport="mobile" mode="experience" outcomesByElementId={outcomes} />)
+    const frame = markup.match(/^<figure[^>]+>/)?.[0] ?? ''
+    expect(frame).toContain('style="width:392px"')
+    expect(frame).not.toContain('height:')
+    expect(markup).toContain('data-mockup-viewport="true" class="relative flex shrink-0 flex-col overflow-hidden" style="width:390px;height:844px"')
+    expect(markup).toContain('min-w-0 max-w-full flex-[1_1_12rem]')
   })
 
   it('popup handler를 회색 오버레이로 목업 뷰포트 안에 표시한다', () => {
@@ -182,7 +207,7 @@ describe('프로토타입 체험', () => {
   it('사용자 지정 너비와 높이를 적용한다', () => {
     const screen = findScreenMockup(collected, 'reservation.facility_list')!
     const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} dimensions={{ width: 720, height: 900 }} />)
-    expect(markup).toContain('width:720px')
-    expect(markup).toContain('height:900px')
+    expect(markup).toContain('style="width:722px"')
+    expect(markup).toContain('data-mockup-viewport="true" class="relative flex shrink-0 flex-col overflow-hidden" style="width:720px;height:900px"')
   })
 })

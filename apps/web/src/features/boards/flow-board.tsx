@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react'
 import { cn } from '@dahaze/ui'
 
-import { ScreenMockupFrame, type MockupViewport, type ScreenMockupFrameProps } from '@/features/mockup/screen-mockup'
+import { DEFAULT_VIEWPORT_DIMENSIONS, ScreenMockupFrame, type MockupViewport, type ScreenMockupFrameProps } from '@/features/mockup/screen-mockup'
 import type { FlowGraph, FlowNode } from './flow-graph'
 
 /**
@@ -71,15 +71,16 @@ function EmptyScreenBox({
   viewport: MockupViewport
   dimensions?: { width: number; height: number }
 }) {
+  const viewportDimensions = dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
   return (
     <figure
-      className="flex flex-col overflow-hidden rounded-lg border border-dashed border-border bg-canvas"
-      style={{ width: dimensions?.width ?? (viewport === 'mobile' ? 390 : 1024), height: dimensions?.height }}
+      className="flex shrink-0 flex-col overflow-hidden rounded-lg border border-dashed border-border bg-canvas"
+      style={{ width: viewportDimensions.width + 2 }}
     >
       <figcaption className="border-b border-border bg-surface px-4 py-2">
         <span className="text-xs font-semibold text-text">{name}</span>
       </figcaption>
-      <div className="flex flex-col items-center gap-1 px-4 py-14">
+      <div data-mockup-viewport className="flex shrink-0 flex-col items-center justify-center gap-1 overflow-hidden px-4 py-14" style={viewportDimensions}>
         <p className="text-sm text-text-muted">레이아웃이 선언되지 않았습니다</p>
         <p className="font-mono text-[11px] text-text-subtle">{id}</p>
       </div>

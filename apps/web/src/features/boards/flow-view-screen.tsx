@@ -262,7 +262,7 @@ function FlowView({ projectId }: { projectId: string }) {
                 <button
                   key={entry.id}
                   type="button"
-                  aria-pressed={viewport === entry.id}
+                  aria-pressed={dimensions.width === DEFAULT_VIEWPORT_DIMENSIONS[entry.id].width && dimensions.height === DEFAULT_VIEWPORT_DIMENSIONS[entry.id].height}
                   onClick={() => { setViewport(entry.id); setDimensions(DEFAULT_VIEWPORT_DIMENSIONS[entry.id]) }}
                   className={cn(
                     'rounded-control px-2.5 py-1 text-xs font-medium transition-colors duration-200 ease-out-expo',
