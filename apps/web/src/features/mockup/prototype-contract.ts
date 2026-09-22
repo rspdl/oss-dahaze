@@ -26,6 +26,16 @@ export interface DesignBinding {
   sourceHash?: string
 }
 
+export interface ElementSelection extends DesignBinding {
+  elementKind: 'header' | 'section' | 'heading' | 'form' | 'input' | 'list' | 'button' | 'placeholder' | 'unrecognized'
+  name?: string
+  text?: string
+  actionId?: string | null
+  fieldId?: string
+  modelId?: string
+  fieldIds?: string[]
+}
+
 export interface ElementDesign {
   width?: number
   height?: number
@@ -55,5 +65,7 @@ export interface PrototypeAction {
 
 export type SemanticProposal =
   | { kind: 'add-element'; screenKey: string }
-  | { kind: 'delete-element'; binding: DesignBinding }
+  | { kind: 'delete-element'; binding: ElementSelection }
+  | { kind: 'move-element'; binding: ElementSelection }
+  | { kind: 'update-element'; binding: ElementSelection }
   | { kind: 'connect'; sourceScreenKey: string; sourceElementId: string; targetScreenKey: string }

@@ -139,6 +139,15 @@ describe('프로토타입 체험', () => {
     expect(empty).toContain('샘플이 비어 있습니다')
   })
 
+  it('선택한 샘플의 필드값을 입력에 채우고 직접 입력값을 우선한다', () => {
+    const screen = findScreenMockup(collected, 'reservation.create_facility')!
+    const samples = [{ modelId: 'reservation.facility', variants: { normal: [{ id: 'chosen', values: { 'reservation.facility.capacity': 42 } }], empty: [], long: [], many: [] } }]
+    const sampled = renderToStaticMarkup(<ScreenMockupFrame screen={screen} mode="experience" samples={samples} selectedSampleIdByModel={{ 'reservation.facility': 'chosen' }} />)
+    const entered = renderToStaticMarkup(<ScreenMockupFrame screen={screen} mode="experience" samples={samples} selectedSampleIdByModel={{ 'reservation.facility': 'chosen' }} values={{ 'reservation.facility.capacity': '55' }} />)
+    expect(sampled).toContain('value="42"')
+    expect(entered).toContain('value="55"')
+  })
+
   it('사용자 지정 너비와 높이를 적용한다', () => {
     const screen = findScreenMockup(collected, 'reservation.facility_list')!
     const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} dimensions={{ width: 720, height: 900 }} />)

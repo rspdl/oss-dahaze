@@ -13,6 +13,7 @@ import type {
   ActionOutcome,
   DesignBinding,
   DesignChange,
+  ElementSelection,
   ElementDesign,
   MockupDimensions,
   ModelSampleSet,
@@ -63,7 +64,7 @@ export interface ScreenMockupFrameProps {
   selectedElementScreenKey?: string | null
   designByElementPath?: Readonly<Record<string, ElementDesign>>
   sourceHash?: string
-  onElementSelect?: (binding: DesignBinding) => void
+  onElementSelect?: (binding: ElementSelection) => void
   onDesignChange?: (change: DesignChange) => void
   onAction?: (action: PrototypeAction) => void
   selectedSampleIdByModel?: Readonly<Record<string, string>>
@@ -116,14 +117,14 @@ function FieldLabel({ field }: { field: MockupField }) {
  * `select` 는 선언된 값들을 그대로 보여준다. 그것은 지어낸 내용이 아니라 문서가 말한 사실이라
  * 화면에 드러나는 편이 낫다.
  */
-function Control({ field, experience, value, onChange }: { field: MockupField; experience: boolean; value?: string | boolean; onChange?: (value: string | boolean) => void }) {
+function Control({ field, experience, value, onChange }: { field: MockupField; experience: boolean; value?: string | number | boolean | null; onChange?: (value: string | boolean) => void }) {
   if (experience) {
     if (field.control === 'checkbox') return <input aria-label={field.name} type="checkbox" checked={value === true} onChange={(event) => onChange?.(event.target.checked)} />
     if (field.control === 'select') {
       return <select aria-label={field.name} value={typeof value === 'string' ? value : ''} onChange={(event) => onChange?.(event.target.value)} className="h-8 rounded-md border bg-surface px-2 text-xs"><option value="">선택</option>{field.options?.map((option) => <option key={option}>{option}</option>)}</select>
     }
     const type = field.control === 'datetime' ? 'datetime-local' : field.control
-    return <input aria-label={field.name} type={type} value={typeof value === 'string' ? value : ''} onChange={(event) => onChange?.(event.target.value)} className="h-8 rounded-md border bg-surface px-2 text-xs" />
+    return <input aria-label={field.name} type={type} value={typeof value === 'string' || typeof value === 'number' ? value : ''} onChange={(event) => onChange?.(event.target.value)} className="h-8 rounded-md border bg-surface px-2 text-xs" />
   }
   if (field.control === 'checkbox') {
     return (
@@ -163,7 +164,7 @@ function Control({ field, experience, value, onChange }: { field: MockupField; e
   )
 }
 
-function Input({ field, experience, value, onChange }: { field: MockupField; experience: boolean; value?: string | boolean; onChange?: (value: string | boolean) => void }) {
+function Input({ field, experience, value, onChange }: { field: MockupField; experience: boolean; value?: string | number | boolean | null; onChange?: (value: string | boolean) => void }) {
   return (
     <div className="flex flex-col gap-1">
       <FieldLabel field={field} />
@@ -275,6 +276,14 @@ function Unrecognized({
 function Element({ element, path, context }: { element: MockupElement; path: string; context: ElementContext }) {
   const stableId = element.id ?? undefined
   const binding: DesignBinding = { screenKey: context.screenKey, elementId: stableId, elementPath: path, sourceHash: context.sourceHash }
+  const selection: ElementSelection = {
+    ...binding,
+    elementKind: element.kind,
+    ...(element.kind === 'button' ? { name: element.name, actionId: element.actionId } : {}),
+    ...(element.kind === 'heading' || element.kind === 'placeholder' ? { text: element.text } : {}),
+    ...(element.kind === 'input' ? { fieldId: element.field.id } : {}),
+    ...(element.kind === 'list' ? { modelId: element.modelId, fieldIds: element.fields.map((field) => field.id) } : {}),
+  }
   const design = context.designByElementPath?.[designBindingKey(binding)]
   const selected = context.selectedElementPath === path && context.selectedElementScreenKey === context.screenKey
   const child = (() => {
@@ -308,7 +317,7 @@ function Element({ element, path, context }: { element: MockupElement; path: str
         </div>
       )
     case 'input':
-      return <Input field={element.field} experience={context.mode === 'experience'} value={context.values?.[element.field.id]} onChange={(value) => context.onValueChange?.(element.field.id, value)} />
+      return <Input field={element.field} experience={context.mode === 'experience'} value={context.values?.[element.field.id] ?? selectedSampleValue(context, element.field.id)} onChange={(value) => context.onValueChange?.(element.field.id, value)} />
     case 'list': {
       const supplied = context.samples?.find((set) => set.modelId === element.modelId)
       const variant = context.sampleVariant ?? 'normal'
@@ -331,7 +340,17 @@ function Element({ element, path, context }: { element: MockupElement; path: str
       return <Unrecognized rawKind={element.rawKind} reason={element.reason} />
   }
   })()
-  return <div data-element-path={path} className={cn('relative', selected && 'ring-2 ring-accent')} style={{ width: design?.width, minHeight: design?.height }} onClick={(event) => { if (context.mode !== 'edit') return; event.stopPropagation(); context.onElementSelect?.(binding) }}>{child}{selected && context.mode === 'edit' ? <div className="nodrag absolute top-1 right-1 flex gap-1 rounded bg-surface p-1 shadow"><label className="text-[10px]">W <input aria-label="요소 너비" type="number" className="w-14 border" value={design?.width ?? ''} onChange={(event) => context.onDesignChange?.({ binding, patch: { width: Number(event.target.value) || undefined } })} /></label><label className="text-[10px]">H <input aria-label="요소 높이" type="number" className="w-14 border" value={design?.height ?? ''} onChange={(event) => context.onDesignChange?.({ binding, patch: { height: Number(event.target.value) || undefined } })} /></label><button type="button" className="text-[10px] text-diagnostic-error" onClick={() => context.onProposeSemanticEdit?.({ kind: 'delete-element', binding })}>삭제 제안</button></div> : null}</div>
+  return <div data-element-path={path} className={cn('relative', selected && 'ring-2 ring-accent')} style={{ width: design?.width, minHeight: design?.height }} onClick={(event) => { if (context.mode !== 'edit') return; event.stopPropagation(); context.onElementSelect?.(selection) }}>{child}{selected && context.mode === 'edit' ? <div className="nodrag absolute top-1 right-1 flex gap-1 rounded bg-surface p-1 shadow"><label className="text-[10px]">W <input aria-label="요소 너비" type="number" className="w-14 border" value={design?.width ?? ''} onChange={(event) => context.onDesignChange?.({ binding, patch: { width: Number(event.target.value) || undefined } })} /></label><label className="text-[10px]">H <input aria-label="요소 높이" type="number" className="w-14 border" value={design?.height ?? ''} onChange={(event) => context.onDesignChange?.({ binding, patch: { height: Number(event.target.value) || undefined } })} /></label><button type="button" className="text-[10px] text-diagnostic-error" onClick={() => context.onProposeSemanticEdit?.({ kind: 'delete-element', binding: selection })}>삭제 제안</button></div> : null}</div>
+}
+
+function selectedSampleValue(context: ElementContext, fieldId: string): string | number | boolean | null | undefined {
+  for (const sample of context.samples ?? []) {
+    const selectedId = context.selectedSampleIdByModel?.[sample.modelId]
+    if (selectedId === undefined) continue
+    const row = sample.variants[context.sampleVariant ?? 'normal'].find((entry) => entry.id === selectedId)
+    if (row !== undefined && fieldId in row.values) return row.values[fieldId]
+  }
+  return undefined
 }
 
 /**
