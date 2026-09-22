@@ -398,7 +398,7 @@ export function findReadableWorkflowRelations(
   screen: ReadableScreen | null,
 ): ReadableWorkflowScreenRelation[] {
   if (screen === null) return []
-  return specification.workflows.flatMap((workflow) => {
+  return specification.workflows.filter((workflow) => workflow.source.path === screen.source.path).flatMap((workflow) => {
     const acquisitions = workflow.acquisitions.filter((item) => item.sourceScreen.id === screen.id)
     const completions = workflow.completions.filter((item) => item.screen.id === screen.id)
     const starts = workflow.startScreen.id === screen.id

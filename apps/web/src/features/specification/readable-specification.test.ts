@@ -267,4 +267,20 @@ describe('buildReadableSpecification', () => {
     expect(specification.workflows[0]!.source.path).toBe('booking.rspdl')
     expect(specification.workflows[0]!.source.span).toEqual({ start: 0, end: 20 })
   })
+
+  it('does not cross-relate duplicate canonical screen ids from different documents', () => {
+    const first = workflowModuleFixture()
+    const second = workflowModuleFixture()
+    ;(second.workflows as Record<string, unknown>[])[0]!.id = 'booking.second_complete'
+    const result = { files: [
+      { path: 'first.rspdl', module: first, diagnostics: [] },
+      { path: 'second.rspdl', module: second, diagnostics: [] },
+    ] }
+    const specification = buildReadableSpecification({ wire_schema_version: 1, result })
+    const firstScreen = findReadableScreen(specification, 'first.rspdl:booking.payment')
+
+    expect(findReadableWorkflowRelations(specification, firstScreen).map((relation) => relation.workflow.key)).toEqual([
+      'first.rspdl:booking.complete',
+    ])
+  })
 })
