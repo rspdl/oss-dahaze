@@ -432,6 +432,137 @@
         "title": "CompiledDocumentRef",
         "type": "object"
       },
+      "CompilerEditPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "button의 RSPDL action ID 변경",
+            "title": "Action Id"
+          },
+          "field_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "input의 RSPDL 필드 ID 변경",
+            "title": "Field Id"
+          },
+          "field_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "list의 표시 필드 ID 변경",
+            "title": "Field Ids"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "list의 RSPDL 모델 ID 변경",
+            "title": "Model Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "button 표시 이름 변경",
+            "title": "Name"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "heading/placeholder 문구 변경",
+            "title": "Text"
+          }
+        },
+        "title": "CompilerEditPatch",
+        "type": "object"
+      },
+      "ConnectCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "선택적인 경로 표시 이름",
+            "title": "Label"
+          },
+          "operation": {
+            "const": "connect",
+            "description": "화면 경로 연결 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "source_element_id": {
+            "description": "경로를 시작할 요소 ID",
+            "minLength": 1,
+            "title": "Source Element Id",
+            "type": "string"
+          },
+          "source_screen_id": {
+            "description": "출발 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Source Screen Id",
+            "type": "string"
+          },
+          "target_screen_id": {
+            "description": "도착 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Target Screen Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "source_screen_id",
+          "source_element_id",
+          "target_screen_id"
+        ],
+        "title": "ConnectCompilerEdit",
+        "type": "object"
+      },
       "CreateDocumentRequest": {
         "properties": {
           "path": {
@@ -593,6 +724,85 @@
           "avatar_url"
         ],
         "title": "CurrentUserResponse",
+        "type": "object"
+      },
+      "DeleteCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "element_id": {
+            "description": "삭제할 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Element Id",
+            "type": "string"
+          },
+          "operation": {
+            "const": "delete",
+            "description": "요소 삭제 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "screen_id": {
+            "description": "편집할 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Screen Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "screen_id",
+          "element_id"
+        ],
+        "title": "DeleteCompilerEdit",
+        "type": "object"
+      },
+      "DisconnectCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "연결할 때 사용한 경로 표시 이름",
+            "title": "Label"
+          },
+          "operation": {
+            "const": "disconnect",
+            "description": "화면 경로 연결 해제 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "source_element_id": {
+            "description": "경로를 시작한 요소 ID",
+            "minLength": 1,
+            "title": "Source Element Id",
+            "type": "string"
+          },
+          "source_screen_id": {
+            "description": "출발 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Source Screen Id",
+            "type": "string"
+          },
+          "target_screen_id": {
+            "description": "도착 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Target Screen Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "source_screen_id",
+          "source_element_id",
+          "target_screen_id"
+        ],
+        "title": "DisconnectCompilerEdit",
         "type": "object"
       },
       "DocumentResponse": {
@@ -824,6 +1034,243 @@
         "title": "DraftDocumentRequest",
         "type": "object"
       },
+      "EditButtonElement": {
+        "additionalProperties": false,
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "버튼이 참조할 RSPDL action ID",
+            "title": "Action Id"
+          },
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "button",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "description": "버튼에 표시할 이름",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name"
+        ],
+        "title": "EditButtonElement",
+        "type": "object"
+      },
+      "EditFormElement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "form",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "EditFormElement",
+        "type": "object"
+      },
+      "EditHeaderElement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "header",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "EditHeaderElement",
+        "type": "object"
+      },
+      "EditHeadingElement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "heading",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "description": "제목에 표시할 문구",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "text"
+        ],
+        "title": "EditHeadingElement",
+        "type": "object"
+      },
+      "EditInputElement": {
+        "additionalProperties": false,
+        "properties": {
+          "field_id": {
+            "description": "입력이 참조할 RSPDL 필드 ID",
+            "minLength": 1,
+            "title": "Field Id",
+            "type": "string"
+          },
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "input",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "field_id"
+        ],
+        "title": "EditInputElement",
+        "type": "object"
+      },
+      "EditListElement": {
+        "additionalProperties": false,
+        "properties": {
+          "field_ids": {
+            "description": "목록에서 표시할 RSPDL 필드 ID",
+            "items": {
+              "type": "string"
+            },
+            "title": "Field Ids",
+            "type": "array"
+          },
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "list",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          },
+          "model_id": {
+            "description": "목록이 참조할 RSPDL 모델 ID",
+            "minLength": 1,
+            "title": "Model Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "model_id",
+          "field_ids"
+        ],
+        "title": "EditListElement",
+        "type": "object"
+      },
+      "EditPlaceholderElement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "placeholder",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "description": "자리표시 요소에 표시할 문구",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "text"
+        ],
+        "title": "EditPlaceholderElement",
+        "type": "object"
+      },
+      "EditSectionElement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "section",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "EditSectionElement",
+        "type": "object"
+      },
       "FindModelRequest": {
         "properties": {
           "scope_per_model": {
@@ -892,6 +1339,108 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "InsertCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "before_element_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이 요소 앞에 삽입. 생략하면 slot 마지막에 추가",
+            "title": "Before Element Id"
+          },
+          "element": {
+            "description": "추가할 구조화 화면 요소",
+            "discriminator": {
+              "mapping": {
+                "button": "#/components/schemas/EditButtonElement",
+                "form": "#/components/schemas/EditFormElement",
+                "header": "#/components/schemas/EditHeaderElement",
+                "heading": "#/components/schemas/EditHeadingElement",
+                "input": "#/components/schemas/EditInputElement",
+                "list": "#/components/schemas/EditListElement",
+                "placeholder": "#/components/schemas/EditPlaceholderElement",
+                "section": "#/components/schemas/EditSectionElement"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EditHeaderElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditSectionElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditFormElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditHeadingElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditInputElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditListElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditButtonElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditPlaceholderElement"
+              }
+            ],
+            "title": "Element"
+          },
+          "operation": {
+            "const": "insert",
+            "description": "요소 추가 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "parent_element_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "추가 위치의 부모 요소 ID. root slot이면 생략",
+            "title": "Parent Element Id"
+          },
+          "screen_id": {
+            "description": "편집할 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Screen Id",
+            "type": "string"
+          },
+          "slot": {
+            "description": "컴파일러가 검증할 부모 안의 삽입 영역",
+            "enum": [
+              "root",
+              "children",
+              "inputs"
+            ],
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "screen_id",
+          "slot",
+          "element"
+        ],
+        "title": "InsertCompilerEdit",
+        "type": "object"
+      },
       "McpTokenResponse": {
         "description": "MCP 클라이언트가 쓸 Bearer 토큰.\n\n발급된 뒤에는 **폐기할 수 없다.** 토큰 저장소가 없으므로 `expires_at` 까지는 유효하다\n(ADR-0005). 화면이 이 사실과 만료 시각을 사용자에게 보여줄 수 있도록 함께 돌려준다.",
         "properties": {
@@ -918,6 +1467,71 @@
           "expires_at"
         ],
         "title": "McpTokenResponse",
+        "type": "object"
+      },
+      "MoveCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "before_element_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이 요소 앞으로 이동. 생략하면 slot 마지막으로 이동",
+            "title": "Before Element Id"
+          },
+          "element_id": {
+            "description": "이동할 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Element Id",
+            "type": "string"
+          },
+          "operation": {
+            "const": "move",
+            "description": "요소 이동 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "parent_element_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "새 부모 요소 ID. root slot이면 생략",
+            "title": "Parent Element Id"
+          },
+          "screen_id": {
+            "description": "편집할 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Screen Id",
+            "type": "string"
+          },
+          "slot": {
+            "description": "컴파일러가 검증할 새 부모 안의 영역",
+            "enum": [
+              "root",
+              "children",
+              "inputs"
+            ],
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "screen_id",
+          "element_id",
+          "slot"
+        ],
+        "title": "MoveCompilerEdit",
         "type": "object"
       },
       "PasswordLoginRequest": {
@@ -1838,6 +2452,164 @@
         "title": "ProjectSnapshotSummaryResponse",
         "type": "object"
       },
+      "ProposePlanningEditRequest": {
+        "properties": {
+          "base_project_revision": {
+            "description": "후보가 기준으로 삼은 프로젝트 리비전",
+            "minimum": 0.0,
+            "title": "Base Project Revision",
+            "type": "integer"
+          },
+          "base_source_hash": {
+            "description": "후보가 기준으로 삼은 프로젝트 원문 해시",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Base Source Hash",
+            "type": "string"
+          },
+          "document_id": {
+            "description": "현재 확정 원문을 읽을 저장 문서 ID",
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "edit": {
+            "description": "컴파일러가 적용·검증할 구조화 편집",
+            "discriminator": {
+              "mapping": {
+                "connect": "#/components/schemas/ConnectCompilerEdit",
+                "delete": "#/components/schemas/DeleteCompilerEdit",
+                "disconnect": "#/components/schemas/DisconnectCompilerEdit",
+                "insert": "#/components/schemas/InsertCompilerEdit",
+                "move": "#/components/schemas/MoveCompilerEdit",
+                "update": "#/components/schemas/UpdateCompilerEdit"
+              },
+              "propertyName": "operation"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InsertCompilerEdit"
+              },
+              {
+                "$ref": "#/components/schemas/DeleteCompilerEdit"
+              },
+              {
+                "$ref": "#/components/schemas/MoveCompilerEdit"
+              },
+              {
+                "$ref": "#/components/schemas/UpdateCompilerEdit"
+              },
+              {
+                "$ref": "#/components/schemas/ConnectCompilerEdit"
+              },
+              {
+                "$ref": "#/components/schemas/DisconnectCompilerEdit"
+              }
+            ],
+            "title": "Edit"
+          },
+          "expected_source_hash": {
+            "description": "문서 원문 UTF-8 바이트의 소문자 SHA-256",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Expected Source Hash",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "초안 변경 요약",
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "document_id",
+          "base_project_revision",
+          "base_source_hash",
+          "expected_source_hash",
+          "edit"
+        ],
+        "title": "ProposePlanningEditRequest",
+        "type": "object"
+      },
+      "ProposePlanningEditResponse": {
+        "properties": {
+          "compiler_response": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RSPDL edit SDK 응답 원본. applied/rejected와 candidate, compilation, tombstones, id_remap을 재작성하지 않는다",
+            "title": "Compiler Response"
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanningDraftResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "applied 후보를 프로젝트 전체로 다시 컴파일해 보관한 초안"
+          },
+          "locale": {
+            "description": "구조화 편집 locale",
+            "title": "Locale",
+            "type": "string"
+          },
+          "rspdl_version": {
+            "description": "구조화 편집을 시도한 RSPDL 버전",
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "supported": {
+            "description": "활성 RSPDL 런타임이 구조화 편집을 지원하는지",
+            "title": "Supported",
+            "type": "boolean"
+          },
+          "unsupported_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "지원하지 않을 때의 명시적 사유. 지원되면 null",
+            "title": "Unsupported Reason"
+          },
+          "wire_schema_version": {
+            "description": "활성 RSPDL 결과 wire schema 버전",
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "supported",
+          "unsupported_reason",
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "compiler_response",
+          "draft"
+        ],
+        "title": "ProposePlanningEditResponse",
+        "type": "object"
+      },
       "RegisterRequest": {
         "description": "회원가입 입력.",
         "properties": {
@@ -1990,6 +2762,41 @@
           "target_revision"
         ],
         "title": "UndoPlanningMetadataRequest",
+        "type": "object"
+      },
+      "UpdateCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "element_id": {
+            "description": "변경할 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Element Id",
+            "type": "string"
+          },
+          "operation": {
+            "const": "update",
+            "description": "요소 속성 변경 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/CompilerEditPatch",
+            "description": "요소 종류에 허용된 속성 변경"
+          },
+          "screen_id": {
+            "description": "편집할 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Screen Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "screen_id",
+          "element_id",
+          "patch"
+        ],
+        "title": "UpdateCompilerEdit",
         "type": "object"
       },
       "UpdateDocumentRequest": {
@@ -4002,6 +4809,76 @@
           }
         },
         "summary": "Create Planning Draft",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/edit-proposals": {
+      "post": {
+        "description": "구조화 편집을 컴파일하고 검토 가능한 초안으로 만든다. 확정 원문은 바꾸지 않는다.",
+        "operationId": "propose_planning_edit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposePlanningEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposePlanningEditResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Propose Planning Edit",
         "tags": [
           "planning"
         ]

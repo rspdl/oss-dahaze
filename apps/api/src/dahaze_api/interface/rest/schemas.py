@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SourceIn(BaseModel):
@@ -312,6 +312,164 @@ class CreatePlanningDraftRequest(BaseModel):
     summary: str | None = None
 
 
+class CompilerEditModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class EditHeaderElement(CompilerEditModel):
+    kind: Literal["header"] = Field(description="추가할 요소 종류")
+    id: str = Field(min_length=1, description="프로젝트 화면 안에서 안정적인 요소 ID")
+
+
+class EditSectionElement(CompilerEditModel):
+    kind: Literal["section"] = Field(description="추가할 요소 종류")
+    id: str = Field(min_length=1, description="프로젝트 화면 안에서 안정적인 요소 ID")
+
+
+class EditFormElement(CompilerEditModel):
+    kind: Literal["form"] = Field(description="추가할 요소 종류")
+    id: str = Field(min_length=1, description="프로젝트 화면 안에서 안정적인 요소 ID")
+
+
+class EditHeadingElement(CompilerEditModel):
+    kind: Literal["heading"] = Field(description="추가할 요소 종류")
+    id: str = Field(min_length=1, description="프로젝트 화면 안에서 안정적인 요소 ID")
+    text: str = Field(description="제목에 표시할 문구")
+
+
+class EditInputElement(CompilerEditModel):
+    kind: Literal["input"] = Field(description="추가할 요소 종류")
+    id: str = Field(min_length=1, description="프로젝트 화면 안에서 안정적인 요소 ID")
+    field_id: str = Field(min_length=1, description="입력이 참조할 RSPDL 필드 ID")
+
+
+class EditListElement(CompilerEditModel):
+    kind: Literal["list"] = Field(description="추가할 요소 종류")
+    id: str = Field(min_length=1, description="프로젝트 화면 안에서 안정적인 요소 ID")
+    model_id: str = Field(min_length=1, description="목록이 참조할 RSPDL 모델 ID")
+    field_ids: list[str] = Field(description="목록에서 표시할 RSPDL 필드 ID")
+
+
+class EditButtonElement(CompilerEditModel):
+    kind: Literal["button"] = Field(description="추가할 요소 종류")
+    id: str = Field(min_length=1, description="프로젝트 화면 안에서 안정적인 요소 ID")
+    name: str = Field(description="버튼에 표시할 이름")
+    action_id: str | None = Field(default=None, description="버튼이 참조할 RSPDL action ID")
+
+
+class EditPlaceholderElement(CompilerEditModel):
+    kind: Literal["placeholder"] = Field(description="추가할 요소 종류")
+    id: str = Field(min_length=1, description="프로젝트 화면 안에서 안정적인 요소 ID")
+    text: str = Field(description="자리표시 요소에 표시할 문구")
+
+
+CompilerEditElement = Annotated[
+    EditHeaderElement
+    | EditSectionElement
+    | EditFormElement
+    | EditHeadingElement
+    | EditInputElement
+    | EditListElement
+    | EditButtonElement
+    | EditPlaceholderElement,
+    Field(discriminator="kind"),
+]
+
+
+class InsertCompilerEdit(CompilerEditModel):
+    operation: Literal["insert"] = Field(description="요소 추가 편집")
+    screen_id: str = Field(min_length=1, description="편집할 RSPDL 화면 ID")
+    parent_element_id: str | None = Field(
+        default=None, description="추가 위치의 부모 요소 ID. root slot이면 생략"
+    )
+    slot: Literal["root", "children", "inputs"] = Field(
+        description="컴파일러가 검증할 부모 안의 삽입 영역"
+    )
+    before_element_id: str | None = Field(
+        default=None, description="이 요소 앞에 삽입. 생략하면 slot 마지막에 추가"
+    )
+    element: CompilerEditElement = Field(description="추가할 구조화 화면 요소")
+
+
+class DeleteCompilerEdit(CompilerEditModel):
+    operation: Literal["delete"] = Field(description="요소 삭제 편집")
+    screen_id: str = Field(min_length=1, description="편집할 RSPDL 화면 ID")
+    element_id: str = Field(min_length=1, description="삭제할 안정적인 요소 ID")
+
+
+class MoveCompilerEdit(CompilerEditModel):
+    operation: Literal["move"] = Field(description="요소 이동 편집")
+    screen_id: str = Field(min_length=1, description="편집할 RSPDL 화면 ID")
+    element_id: str = Field(min_length=1, description="이동할 안정적인 요소 ID")
+    parent_element_id: str | None = Field(
+        default=None, description="새 부모 요소 ID. root slot이면 생략"
+    )
+    slot: Literal["root", "children", "inputs"] = Field(
+        description="컴파일러가 검증할 새 부모 안의 영역"
+    )
+    before_element_id: str | None = Field(
+        default=None, description="이 요소 앞으로 이동. 생략하면 slot 마지막으로 이동"
+    )
+
+
+class CompilerEditPatch(CompilerEditModel):
+    text: str | None = Field(default=None, description="heading/placeholder 문구 변경")
+    field_id: str | None = Field(default=None, description="input의 RSPDL 필드 ID 변경")
+    model_id: str | None = Field(default=None, description="list의 RSPDL 모델 ID 변경")
+    field_ids: list[str] | None = Field(default=None, description="list의 표시 필드 ID 변경")
+    name: str | None = Field(default=None, description="button 표시 이름 변경")
+    action_id: str | None = Field(default=None, description="button의 RSPDL action ID 변경")
+
+
+class UpdateCompilerEdit(CompilerEditModel):
+    operation: Literal["update"] = Field(description="요소 속성 변경 편집")
+    screen_id: str = Field(min_length=1, description="편집할 RSPDL 화면 ID")
+    element_id: str = Field(min_length=1, description="변경할 안정적인 요소 ID")
+    patch: CompilerEditPatch = Field(description="요소 종류에 허용된 속성 변경")
+
+
+class ConnectCompilerEdit(CompilerEditModel):
+    operation: Literal["connect"] = Field(description="화면 경로 연결 편집")
+    source_screen_id: str = Field(min_length=1, description="출발 RSPDL 화면 ID")
+    source_element_id: str = Field(min_length=1, description="경로를 시작할 요소 ID")
+    target_screen_id: str = Field(min_length=1, description="도착 RSPDL 화면 ID")
+    label: str | None = Field(default=None, description="선택적인 경로 표시 이름")
+
+
+class DisconnectCompilerEdit(CompilerEditModel):
+    operation: Literal["disconnect"] = Field(description="화면 경로 연결 해제 편집")
+    source_screen_id: str = Field(min_length=1, description="출발 RSPDL 화면 ID")
+    source_element_id: str = Field(min_length=1, description="경로를 시작한 요소 ID")
+    target_screen_id: str = Field(min_length=1, description="도착 RSPDL 화면 ID")
+    label: str | None = Field(default=None, description="연결할 때 사용한 경로 표시 이름")
+
+
+CompilerEditOperation = Annotated[
+    InsertCompilerEdit
+    | DeleteCompilerEdit
+    | MoveCompilerEdit
+    | UpdateCompilerEdit
+    | ConnectCompilerEdit
+    | DisconnectCompilerEdit,
+    Field(discriminator="operation"),
+]
+
+
+class ProposePlanningEditRequest(BaseModel):
+    document_id: UUID = Field(description="현재 확정 원문을 읽을 저장 문서 ID")
+    base_project_revision: int = Field(ge=0, description="후보가 기준으로 삼은 프로젝트 리비전")
+    base_source_hash: str = Field(
+        min_length=64, max_length=64, description="후보가 기준으로 삼은 프로젝트 원문 해시"
+    )
+    expected_source_hash: str = Field(
+        min_length=64,
+        max_length=64,
+        description="문서 원문 UTF-8 바이트의 소문자 SHA-256",
+    )
+    edit: CompilerEditOperation = Field(description="컴파일러가 적용·검증할 구조화 편집")
+    summary: str | None = Field(default=None, max_length=500, description="초안 변경 요약")
+
+
 class PlanningAnalysisResponse(BaseModel):
     rspdl_version: str
     wire_schema_version: int
@@ -335,6 +493,25 @@ class PlanningDraftResponse(BaseModel):
     applied_revision: int | None
     created_at: datetime
     updated_at: datetime
+
+
+class ProposePlanningEditResponse(BaseModel):
+    supported: bool = Field(description="활성 RSPDL 런타임이 구조화 편집을 지원하는지")
+    unsupported_reason: str | None = Field(
+        description="지원하지 않을 때의 명시적 사유. 지원되면 null"
+    )
+    rspdl_version: str = Field(description="구조화 편집을 시도한 RSPDL 버전")
+    wire_schema_version: int = Field(description="활성 RSPDL 결과 wire schema 버전")
+    locale: str = Field(description="구조화 편집 locale")
+    compiler_response: dict[str, Any] | None = Field(
+        description=(
+            "RSPDL edit SDK 응답 원본. applied/rejected와 candidate, compilation, "
+            "tombstones, id_remap을 재작성하지 않는다"
+        )
+    )
+    draft: PlanningDraftResponse | None = Field(
+        description="applied 후보를 프로젝트 전체로 다시 컴파일해 보관한 초안"
+    )
 
 
 class PlanningDraftSummaryResponse(BaseModel):

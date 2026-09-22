@@ -15,8 +15,11 @@ import rspdl
 from dahaze_api.domain.rspdl import (
     AnalysisKind,
     AnalysisOutcome,
+    InvalidRspdlEditRequest,
+    RspdlEditOutcome,
     RspdlRuntime,
     RspdlSource,
+    source_fingerprint,
 )
 
 # 컴파일러가 실제로 결과를 만들 때까지 기다릴 기본 한도.
@@ -91,6 +94,81 @@ class LocalRspdlCompiler:
             timeout_ms=timeout_ms or DEFAULT_TIMEOUT_MS,
         )
         return self._wrap(AnalysisKind.FIND_MODEL, response)
+
+    async def edit(
+        self,
+        source: RspdlSource,
+        *,
+        expected_source_hash: str,
+        edit: Mapping[str, Any],
+    ) -> RspdlEditOutcome:
+        """컴파일러가 지원할 때만 구조화 편집을 호출한다.
+
+        rspdl 0.1.2 같은 이전 핀에서는 기능이 없음을 명시적으로 돌려준다. dahaze 쪽에서
+        YAML 을 파싱하거나 문자열 치환으로 후보를 추측하지 않는다.
+        """
+        sdk_edit = getattr(rspdl, "edit", None)
+        if not callable(sdk_edit):
+            return RspdlEditOutcome(
+                runtime=self._runtime,
+                supported=False,
+                response=None,
+                unsupported_reason=(
+                    f"rspdl {self._runtime.rspdl_version} does not provide structured editing"
+                ),
+            )
+        edit_schema_version = getattr(rspdl, "EDIT_SCHEMA_VERSION", None)
+        if not isinstance(edit_schema_version, int):
+            raise RuntimeError("rspdl structured editing is missing EDIT_SCHEMA_VERSION")
+        try:
+            response = await asyncio.to_thread(
+                sdk_edit,
+                {
+                    "schema_version": edit_schema_version,
+                    "locale": self._runtime.locale,
+                    "source": {"path": source.path, "text": source.text},
+                    "expected_source_hash": expected_source_hash,
+                    "edit": dict(edit),
+                },
+            )
+        except ValueError as exc:
+            # 최신 binding은 request decode 오류를 내부 RuntimeError와 구분한다.
+            raise InvalidRspdlEditRequest(str(exc)) from exc
+        except RuntimeError as exc:
+            # Native boundary가 schema decode 오류를 RuntimeError 로 노출한다. 이는 서버 장애가
+            # 아니라 호출자가 고칠 수 있는 구조 오류이므로 인터페이스가 422/tool error로 옮긴다.
+            # 응답 직렬화 같은 내부 실패도 같은 Python 타입을 쓰므로 안정적인 SDK 오류 코드만
+            # 좁게 분류하고 나머지는 그대로 서버 실패로 올린다.
+            if str(exc).startswith("RSPDL-SDK-001:"):
+                raise InvalidRspdlEditRequest(str(exc)) from exc
+            raise
+        if not isinstance(response, Mapping):
+            raise RuntimeError("rspdl edit response is not an object")
+        if response.get("schema_version") != edit_schema_version:
+            raise RuntimeError(
+                "unexpected rspdl edit schema "
+                f"{response.get('schema_version')!r} (expected: {edit_schema_version})"
+            )
+        if response.get("wire_schema_version") != self._runtime.wire_schema_version:
+            raise RuntimeError("rspdl edit response wire schema does not match the active runtime")
+        if (
+            response.get("rspdl_version") != self._runtime.rspdl_version
+            or response.get("locale") != self._runtime.locale
+        ):
+            raise RuntimeError("rspdl edit response runtime identity does not match")
+        if response.get("source_hash") != source_fingerprint(source.text):
+            raise RuntimeError("rspdl edit response source hash does not match the input")
+        outcome = response.get("outcome")
+        if not isinstance(outcome, Mapping) or outcome.get("status") not in {
+            "applied",
+            "rejected",
+        }:
+            raise RuntimeError("rspdl edit response has an invalid outcome")
+        return RspdlEditOutcome(
+            runtime=self._runtime,
+            supported=True,
+            response=response,
+        )
 
     def _wrap(self, kind: AnalysisKind, response: rspdl.SdkResponse) -> AnalysisOutcome:
         """SDK 응답을 도메인 결과로 감싼다. `result` 는 손대지 않는다.

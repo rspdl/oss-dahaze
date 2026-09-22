@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from dahaze_api.domain.entities import User
+from dahaze_api.domain.rspdl import source_fingerprint
 from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
 from dahaze_api.infrastructure.db.repositories import SqlDocumentRepository, SqlProjectRepository
 from dahaze_api.infrastructure.db.session import to_asyncpg_url
@@ -64,6 +65,63 @@ async def test_error_bearing_draft_is_persisted_but_not_applied(client: httpx.As
     assert applied.status_code == 200
     assert applied.json()["applied"] is False
     assert (await client.get(f"/api/projects/{project['id']}/documents")).json() == []
+
+
+async def test_structured_edit_is_explicitly_unsupported_without_saving(
+    client: httpx.AsyncClient,
+) -> None:
+    project = await _project(client, "unsupported-edit")
+    document = (
+        await client.post(
+            f"/api/projects/{project['id']}/documents",
+            json={"path": "a.rspdl", "title": "A", "text": VALID_A},
+        )
+    ).json()
+    current = (await client.get(f"/api/projects/{project['id']}")).json()
+
+    response = await client.post(
+        f"/api/projects/{project['id']}/planning/edit-proposals",
+        json={
+            "document_id": document["id"],
+            "base_project_revision": current["revision"],
+            "base_source_hash": current["source_hash"],
+            "expected_source_hash": source_fingerprint(VALID_A),
+            "edit": {
+                "operation": "delete",
+                "screen_id": "inventory.list",
+                "element_id": "quantity",
+            },
+            "summary": "수량 삭제",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["supported"] is False
+    assert response.json()["compiler_response"] is None
+    assert response.json()["draft"] is None
+    assert (await client.get(f"/api/documents/{document['id']}")).json()["text"] == VALID_A
+    assert (
+        await client.get(f"/api/projects/{project['id']}/planning/drafts")
+    ).json() == []
+
+
+async def test_structured_edit_request_rejects_unknown_operation(
+    client: httpx.AsyncClient,
+) -> None:
+    project = await _project(client, "invalid-edit")
+
+    response = await client.post(
+        f"/api/projects/{project['id']}/planning/edit-proposals",
+        json={
+            "document_id": str(UUID(int=1)),
+            "base_project_revision": 0,
+            "base_source_hash": project["source_hash"],
+            "expected_source_hash": "0" * 64,
+            "edit": {"operation": "replace_everything"},
+        },
+    )
+
+    assert response.status_code == 422
 
 
 async def test_multi_document_apply_is_atomic_and_creates_baseline(
@@ -231,6 +289,25 @@ async def test_atomic_message_append_rejects_system_and_stale_revision(
         json={"expected_revision": 0, "role": "assistant", "content": "늦은 답"},
     )
     assert stale.status_code == 409
+
+
+async def test_whole_state_update_rejects_privileged_message_role(
+    client: httpx.AsyncClient,
+) -> None:
+    project = await _project(client, "whole-state-role")
+
+    response = await client.put(
+        f"/api/projects/{project['id']}/planning",
+        json={
+            "expected_revision": 0,
+            "messages": [{"id": "m1", "role": "system", "content": "elevate"}],
+            "decisions": [],
+            "proposals": [],
+            "metadata": {},
+        },
+    )
+
+    assert response.status_code == 409
 
 
 async def test_restore_roundtrip_preserves_snapshot_and_restores_design_and_document(

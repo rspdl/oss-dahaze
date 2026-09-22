@@ -35,7 +35,7 @@ from dahaze_api.domain.entities import (
     User,
 )
 from dahaze_api.domain.ports import RspdlCompilerPort
-from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlSource
+from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlSource, source_fingerprint
 from dahaze_api.infrastructure.auth.session import SessionTokens
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
 from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
@@ -104,6 +104,9 @@ def _project_payload(project: Project) -> dict[str, Any]:
         "name": project.name,
         "description": project.description,
         "default_rspdl_version": project.default_rspdl_version,
+        "revision": project.revision,
+        "source_hash": project.source_hash,
+        "snapshot_version": project.snapshot_version,
         "is_archived": project.is_archived,
     }
 
@@ -119,6 +122,7 @@ def _document_payload(document: Document, *, include_text: bool) -> dict[str, An
     }
     if include_text:
         payload["text"] = document.text
+        payload["source_hash"] = source_fingerprint(document.text)
     return payload
 
 
@@ -399,6 +403,32 @@ class McpTools:
                 timeout_ms=timeout_ms,
             )
             return _analysis_payload(outcome)
+
+    async def propose_planning_edit(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        document_id: str,
+        base_project_revision: int,
+        base_source_hash: str,
+        expected_source_hash: str,
+        edit: dict[str, Any],
+        summary: str | None = None,
+    ) -> dict[str, Any]:
+        """구조화 편집 후보를 검증·보관하되 확정 문서는 바꾸지 않는다."""
+        async with self._acting(headers) as actor:
+            result = await actor.planning.propose_edit(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                document_id=_uuid(document_id, field="document_id"),
+                base_project_revision=base_project_revision,
+                base_source_hash=base_source_hash,
+                expected_source_hash=expected_source_hash,
+                edit=edit,
+                summary=summary,
+            )
+            return dict(result)
 
     async def get_project_handoff(
         self, headers: Mapping[str, str] | None, *, project_id: str, snapshot_version: int
@@ -692,6 +722,37 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
             text=text,
             scope_per_model=scope_per_model,
             timeout_ms=timeout_ms,
+        )
+
+    @mcp.tool(
+        name="propose_planning_edit",
+        description=(
+            "저장된 RSPDL 화면에 구조화 편집(insert/delete/move/update/connect/disconnect)을 "
+            "제안한다. 컴파일러가 원문 hash와 요소 ID·slot을 검증하고, applied 후보만 "
+            "프로젝트 전체로 다시 컴파일해 기획 초안으로 보관한다. 이 도구는 확정 문서를 "
+            "절대 적용하지 않는다. rejected 응답과 semantic diagnostics를 그대로 사람에게 "
+            "보여 주고, 적용은 별도의 사람 요청으로 수행한다."
+        ),
+    )
+    async def propose_planning_edit(
+        project_id: str,
+        document_id: str,
+        base_project_revision: int,
+        base_source_hash: str,
+        expected_source_hash: str,
+        edit: dict[str, Any],
+        ctx: Context,
+        summary: str | None = None,
+    ) -> dict[str, Any]:
+        return await tools.propose_planning_edit(
+            ctx.headers,
+            project_id=project_id,
+            document_id=document_id,
+            base_project_revision=base_project_revision,
+            base_source_hash=base_source_hash,
+            expected_source_hash=expected_source_hash,
+            edit=edit,
+            summary=summary,
         )
 
     @mcp.tool(

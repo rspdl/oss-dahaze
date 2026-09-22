@@ -31,6 +31,15 @@ SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 # 선행 `/` 가 통과해 상위 경로를 가리키는 문자열이 저장된다. 지금은 경로를 파일시스템에
 # 쓰지 않지만, 나중에 export 나 git 연동이 생기면 그대로 traversal 이 된다.
 DOCUMENT_PATH_PATTERN = re.compile(r"^[\w-]+(?:/[\w-]+)*\.rspdl$")
+MAX_DOCUMENT_TITLE_LENGTH = 200
+
+
+def validate_document_identity(*, path: str, title: str) -> None:
+    """REST, MCP, 기획 초안이 공유하는 문서 경로·제목 규칙."""
+    if not DOCUMENT_PATH_PATTERN.match(path):
+        raise Conflict(f"문서 경로가 올바르지 않다: {path!r} (.rspdl 로 끝나야 한다)")
+    if not title or len(title) > MAX_DOCUMENT_TITLE_LENGTH:
+        raise Conflict(f"문서 제목은 1~{MAX_DOCUMENT_TITLE_LENGTH}자여야 한다")
 
 
 class WorkspaceService:
@@ -139,8 +148,7 @@ class WorkspaceService:
         )
         self._require_write(membership)
 
-        if not DOCUMENT_PATH_PATTERN.match(path):
-            raise Conflict(f"문서 경로가 올바르지 않다: {path!r} (.rspdl 로 끝나야 한다)")
+        validate_document_identity(path=path, title=title)
 
         project = await self._projects.get(project_id)
         if project is None:

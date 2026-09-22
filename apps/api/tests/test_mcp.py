@@ -320,6 +320,39 @@ async def test_documents_are_listed_without_their_text(
     assert "text" not in listed[0]
 
 
+async def test_structured_edit_tool_never_auto_saves_document(
+    tools: McpTools, tokens: SessionTokens, user: User, project: Project
+) -> None:
+    headers = auth(tokens.issue_mcp(user.id))
+    document = await tools.create_document(
+        headers,
+        project_id=str(project.id),
+        path="inventory.rspdl",
+        title="재고",
+        text=VALID_TEXT,
+    )
+    current = await tools.get_project(headers, project_id=str(project.id))
+    read = await tools.read_document(headers, document_id=document["id"])
+
+    result = await tools.propose_planning_edit(
+        headers,
+        project_id=str(project.id),
+        document_id=document["id"],
+        base_project_revision=current["revision"],
+        base_source_hash=current["source_hash"],
+        expected_source_hash=read["source_hash"],
+        edit={
+            "operation": "delete",
+            "screen_id": "inventory.list",
+            "element_id": "quantity",
+        },
+    )
+
+    assert result["supported"] is False
+    assert result["draft"] is None
+    assert (await tools.read_document(headers, document_id=document["id"]))["text"] == VALID_TEXT
+
+
 @pytest.mark.parametrize("bad_id", ["not-a-uuid", "", "123"])
 async def test_malformed_id_is_a_clear_error(
     tools: McpTools, tokens: SessionTokens, user: User, bad_id: str
@@ -720,6 +753,7 @@ async def test_tools_are_advertised_over_http(
         "compile_rspdl",
         "check_rspdl",
         "find_bounded_model",
+        "propose_planning_edit",
         "get_project_handoff",
     }
     # 설명이 LLM 에게는 유일한 인터페이스다. 비어 있으면 도구가 없는 것과 같다.

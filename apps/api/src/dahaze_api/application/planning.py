@@ -8,9 +8,16 @@ from uuid import UUID
 
 from dahaze_api.application.analysis import AnalyzeWorkspace
 from dahaze_api.application.errors import AccessDenied, Conflict, NotFound
-from dahaze_api.application.workspace import WorkspaceService
+from dahaze_api.application.workspace import WorkspaceService, validate_document_identity
 from dahaze_api.domain.ports import PlanningRepositoryPort, RspdlCompilerPort
-from dahaze_api.domain.rspdl import RspdlSource, project_source_hash
+from dahaze_api.domain.rspdl import RspdlSource, project_source_hash, source_fingerprint
+
+ALLOWED_MESSAGE_ROLES = frozenset({"user", "assistant"})
+
+
+def _validate_message_roles(messages: Sequence[Mapping[str, Any]]) -> None:
+    if any(message.get("role") not in ALLOWED_MESSAGE_ROLES for message in messages):
+        raise Conflict("기획 메시지 role은 user 또는 assistant여야 한다")
 
 
 def _has_blocking_diagnostics(
@@ -77,6 +84,7 @@ class PlanningService:
         proposals: Sequence[Mapping[str, Any]],
         metadata: Mapping[str, Any],
     ) -> Mapping[str, Any]:
+        _validate_message_roles(messages)
         project = await self._workspace.get_project(actor_id=actor_id, project_id=project_id)
         membership = await self._workspace.require_membership(
             actor_id=actor_id, project_id=project_id
@@ -100,6 +108,7 @@ class PlanningService:
     async def append_message(
         self, *, actor_id: UUID, project_id: UUID, expected_revision: int, role: str, content: str
     ) -> Mapping[str, Any]:
+        _validate_message_roles([{"role": role}])
         membership = await self._workspace.require_membership(
             actor_id=actor_id, project_id=project_id
         )
@@ -242,6 +251,7 @@ class PlanningService:
                 text, title = change.get("text"), change.get("title")
                 if not isinstance(text, str) or not isinstance(title, str) or not title:
                     raise Conflict("upsert 변경에는 title과 text가 필요하다")
+                validate_document_identity(path=path, title=title)
                 by_path[path] = {
                     "id": by_path.get(path, {}).get("id"),
                     "path": path,
@@ -272,6 +282,83 @@ class PlanningService:
             result=None if outcome is None else outcome.result,
             base_result=None if base_outcome is None else base_outcome.result,
         )
+
+    async def propose_edit(
+        self,
+        *,
+        actor_id: UUID,
+        project_id: UUID,
+        document_id: UUID,
+        base_project_revision: int,
+        base_source_hash: str,
+        expected_source_hash: str,
+        edit: Mapping[str, Any],
+        summary: str | None,
+    ) -> Mapping[str, Any]:
+        """컴파일러 편집 후보를 프로젝트 초안으로 만든다. 확정 문서는 저장하지 않는다."""
+        project = await self._workspace.get_project(actor_id=actor_id, project_id=project_id)
+        if project.revision != base_project_revision or project.source_hash != base_source_hash:
+            raise Conflict("프로젝트 원문이 다른 곳에서 변경되었다")
+        membership = await self._workspace.require_membership(
+            actor_id=actor_id, project_id=project_id
+        )
+        if not membership.role.can_write:
+            raise AccessDenied("이 프로젝트에 쓰기 권한이 없다")
+        document = await self._workspace.get_document(actor_id=actor_id, document_id=document_id)
+        if document.project_id != project_id:
+            raise NotFound("문서를 찾을 수 없다")
+        if source_fingerprint(document.text) != expected_source_hash:
+            raise Conflict("문서 원문이 다른 곳에서 변경되었다")
+
+        edited = await self._compiler.edit(
+            RspdlSource(path=document.path, text=document.text),
+            expected_source_hash=expected_source_hash,
+            edit=edit,
+        )
+        payload: dict[str, Any] = {
+            "supported": edited.supported,
+            "unsupported_reason": edited.unsupported_reason,
+            "rspdl_version": edited.runtime.rspdl_version,
+            "wire_schema_version": edited.runtime.wire_schema_version,
+            "locale": edited.runtime.locale,
+            "compiler_response": edited.response,
+            "draft": None,
+        }
+        if not edited.supported:
+            return payload
+        response = edited.response
+        if not isinstance(response, Mapping):
+            raise RuntimeError("supported rspdl edit did not include a response")
+        outcome = response.get("outcome")
+        if not isinstance(outcome, Mapping):
+            raise RuntimeError("rspdl edit response did not include an outcome")
+        if outcome.get("status") == "rejected":
+            return payload
+        if outcome.get("status") != "applied":
+            raise RuntimeError("rspdl edit response included an unknown status")
+        candidate_text = response.get("candidate_text")
+        candidate_hash = response.get("candidate_source_hash")
+        if not isinstance(candidate_text, str) or not isinstance(candidate_hash, str):
+            raise RuntimeError("applied rspdl edit did not include a candidate source")
+        if source_fingerprint(candidate_text) != candidate_hash:
+            raise RuntimeError("rspdl edit candidate hash does not match its source")
+
+        payload["draft"] = await self.create_draft(
+            actor_id=actor_id,
+            project_id=project_id,
+            base_project_revision=base_project_revision,
+            base_source_hash=base_source_hash,
+            changes=[
+                {
+                    "operation": "upsert",
+                    "path": document.path,
+                    "title": document.title,
+                    "text": candidate_text,
+                }
+            ],
+            summary=summary,
+        )
+        return payload
 
     async def draft(self, *, actor_id: UUID, draft_id: UUID) -> Mapping[str, Any]:
         draft = await self._store.get_draft(draft_id)

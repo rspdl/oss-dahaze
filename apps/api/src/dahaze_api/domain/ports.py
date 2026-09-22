@@ -21,7 +21,12 @@ from dahaze_api.domain.entities import (
     User,
 )
 from dahaze_api.domain.llm import EbnfGrammar
-from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlRuntime, RspdlSource
+from dahaze_api.domain.rspdl import (
+    AnalysisOutcome,
+    RspdlEditOutcome,
+    RspdlRuntime,
+    RspdlSource,
+)
 
 
 class RspdlCompilerPort(Protocol):
@@ -52,6 +57,16 @@ class RspdlCompilerPort(Protocol):
         scope_per_model: int | None = None,
         timeout_ms: int | None = None,
     ) -> AnalysisOutcome: ...
+
+    async def edit(
+        self,
+        source: RspdlSource,
+        *,
+        expected_source_hash: str,
+        edit: Mapping[str, Any],
+    ) -> RspdlEditOutcome:
+        """컴파일러 소유의 구조화 편집으로 저장되지 않은 후보 원문을 만든다."""
+        ...
 
 
 class AnalysisCachePort(Protocol):

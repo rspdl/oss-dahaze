@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 from dahaze_api.application.errors import AccessDenied, Conflict, NotFound
+from dahaze_api.domain.rspdl import InvalidRspdlEditRequest
 from dahaze_api.interface.rest.dependencies import CurrentUser, Planning
 from dahaze_api.interface.rest.schemas import (
     AppendPlanningDecisionRequest,
@@ -24,6 +25,8 @@ from dahaze_api.interface.rest.schemas import (
     PlanningStateResponse,
     ProjectSnapshotResponse,
     ProjectSnapshotSummaryResponse,
+    ProposePlanningEditRequest,
+    ProposePlanningEditResponse,
     RestoreProjectSnapshotRequest,
     UndoPlanningMetadataRequest,
     UpdatePlanningStateRequest,
@@ -193,6 +196,35 @@ async def create_planning_draft(
         return PlanningDraftResponse.model_validate(value)
     except (NotFound, AccessDenied, Conflict) as exc:
         _raise(exc)
+
+
+@router.post(
+    "/projects/{project_id}/planning/edit-proposals",
+    name="propose_planning_edit",
+)
+async def propose_planning_edit(
+    project_id: UUID,
+    body: ProposePlanningEditRequest,
+    user: CurrentUser,
+    planning: Planning,
+) -> ProposePlanningEditResponse:
+    """구조화 편집을 컴파일하고 검토 가능한 초안으로 만든다. 확정 원문은 바꾸지 않는다."""
+    try:
+        value = await planning.propose_edit(
+            actor_id=user.id,
+            project_id=project_id,
+            document_id=body.document_id,
+            base_project_revision=body.base_project_revision,
+            base_source_hash=body.base_source_hash,
+            expected_source_hash=body.expected_source_hash,
+            edit=body.edit.model_dump(exclude_none=True),
+            summary=body.summary,
+        )
+        return ProposePlanningEditResponse.model_validate(value)
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+    except InvalidRspdlEditRequest as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
 
 @router.get("/projects/{project_id}/planning/drafts", name="list_planning_drafts")
