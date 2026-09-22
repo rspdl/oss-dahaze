@@ -1,11 +1,11 @@
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { ProjectCompileResponse } from '@dahaze/api-client'
 import screenStructure from './__screen-structure-fixture.json'
 import { collectScreenMockups, findScreenMockup } from './screen-layouts'
-import { ScreenMockupFrame } from './screen-mockup'
+import { dispatchPreviewAction, outcomeForPreviewAction, ScreenMockupFrame } from './screen-mockup'
 import type { MockupViewport } from './screen-mockup'
 
 function response(result: unknown): ProjectCompileResponse {
@@ -122,12 +122,43 @@ describe('프로토타입 체험', () => {
     expect(markup).toContain('<input')
   })
 
-  it('한 행동에 여러 경로가 있으면 결과 선택을 요구한다', () => {
+  it('한 행동에 여러 결과가 있어도 선언된 버튼을 유지하고 별도 시나리오를 고른다', () => {
     const screen = findScreenMockup(collected, 'reservation.facility_list')!
     const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} mode="experience" outcomesByElementId={{ open: [{ id: 'success', label: '성공', targetScreenKey: 'detail' }, { id: 'failure', label: '실패', targetScreenKey: 'error' }] }} />)
-    expect(markup).toContain('결과 선택')
+    expect(markup).toMatch(/<button[^>]*>상세 보기<\/button>/)
+    expect(markup).toContain('aria-label="상세 보기 결과 시나리오"')
     expect(markup).toContain('성공')
     expect(markup).toContain('실패')
+  })
+
+  it('실제 버튼 동작은 선택한 결과 하나만 해석한다', () => {
+    const outcomes = [{ id: 'success', label: '성공', targetScreenKey: 'detail' }, { id: 'failure', label: '실패', targetScreenKey: 'error' }]
+    const onAction = vi.fn()
+    dispatchPreviewAction(onAction, 'input.rspdl:reservation.facility_list', 'open', outcomes, 'failure')
+    expect(outcomeForPreviewAction(outcomes, 'failure')).toBe(outcomes[1])
+    expect(outcomeForPreviewAction(outcomes, 'missing')).toBe(outcomes[0])
+    expect(onAction).toHaveBeenCalledOnce()
+    expect(onAction).toHaveBeenCalledWith({ screenKey: 'input.rspdl:reservation.facility_list', elementId: 'open', outcome: outcomes[1] })
+  })
+
+  it('popup handler를 회색 오버레이로 목업 뷰포트 안에 표시한다', () => {
+    const screen = findScreenMockup(collected, 'reservation.facility_list')!
+    const popup = { id: 'failure', label: '실패', handler: { kind: 'popup' as const, id: 'missing', content: '예약을 찾지 못했습니다.' } }
+    const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} mode="experience" outcomesByElementId={{ open: [popup] }} activeOutcome={popup} />)
+    expect(markup).toMatch(/data-mockup-viewport[\s\S]*data-outcome-preview="popup"/)
+    expect(markup).toContain('role="dialog"')
+    expect(markup).toContain('bg-black/35')
+    expect(markup).toContain('예약을 찾지 못했습니다.')
+    expect(markup).toContain('미리보기 닫기')
+  })
+
+  it.each(['message', 'state', 'loading'] as const)('%s handler를 뷰포트 안의 피드백으로 표시한다', (kind) => {
+    const screen = findScreenMockup(collected, 'reservation.facility_list')!
+    const outcome = { id: kind, label: kind, handler: { kind, id: `${kind}-handler` } }
+    const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} mode="experience" activeOutcome={outcome} />)
+    expect(markup).toMatch(new RegExp(`data-mockup-viewport[\\s\\S]*data-outcome-preview="${kind}"`))
+    expect(markup).toContain('role="status"')
+    expect(markup).toContain(`${kind}-handler`)
   })
 
   it('샘플 상황을 모델 단위의 표시된 예시로 일관되게 만든다', () => {

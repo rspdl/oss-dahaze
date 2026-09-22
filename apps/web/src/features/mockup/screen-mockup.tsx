@@ -60,6 +60,8 @@ export interface ScreenMockupFrameProps {
   sampleVariant?: SampleVariant
   samples?: ModelSampleSet[]
   outcomesByElementId?: Readonly<Record<string, ActionOutcome[]>>
+  selectedOutcomeIdByElementId?: Readonly<Record<string, string>>
+  activeOutcome?: ActionOutcome | null
   selectedElementPath?: string | null
   selectedElementScreenKey?: string | null
   designByElementPath?: Readonly<Record<string, ElementDesign>>
@@ -67,6 +69,8 @@ export interface ScreenMockupFrameProps {
   onElementSelect?: (binding: ElementSelection) => void
   onDesignChange?: (change: DesignChange) => void
   onAction?: (action: PrototypeAction) => void
+  onOutcomeSelect?: (elementId: string, outcomeId: string) => void
+  onOutcomeDismiss?: () => void
   selectedSampleIdByModel?: Readonly<Record<string, string>>
   onSampleSelect?: (modelId: string, recordId: string) => void
   values?: Readonly<Record<string, string | boolean>>
@@ -327,12 +331,11 @@ function Element({ element, path, context }: { element: MockupElement; path: str
     }
     case 'button': {
       if (context.mode !== 'experience') return <span className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text">{element.name}</span>
-      if (element.id === null) return <button type="button" disabled title="안정적 요소 ID가 없어 체험할 수 없습니다" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text opacity-50">{element.name} · ID 없음</button>
+      if (element.id === null) return <button type="button" disabled title="안정적 요소 ID가 없어 체험할 수 없습니다" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text opacity-50">{element.name}</button>
       const elementId = element.id
       const outcomes = context.outcomesByElementId?.[elementId] ?? []
-      if (outcomes.length > 1) return <label className="inline-flex items-center gap-2 text-xs"><span>{element.name}</span><select aria-label={`${element.name} 결과`} defaultValue="" onChange={(event) => { const outcome = outcomes.find((item) => item.id === event.target.value); if (outcome) context.onAction?.({ screenKey: context.screenKey, elementId, outcome }) }}><option value="" disabled>결과 선택</option>{outcomes.map((outcome) => <option key={outcome.id} value={outcome.id}>{outcome.label}</option>)}</select></label>
-      if (outcomes.length === 0) return <button type="button" disabled title="선언된 결과가 없어 체험할 수 없습니다" className="inline-flex h-8 items-center rounded-md bg-accent px-3 text-xs font-medium text-on-solid opacity-50">{element.name} · 결과 없음</button>
-      return <button type="button" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text" onClick={(event) => { event.stopPropagation(); const outcome = outcomes[0]; if (outcome) context.onAction?.({ screenKey: context.screenKey, elementId, outcome }) }}>{element.name}</button>
+      if (outcomes.length === 0) return <button type="button" disabled title="선언된 결과가 없어 체험할 수 없습니다" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text opacity-50">{element.name}</button>
+      return <button type="button" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text" onClick={(event) => { event.stopPropagation(); dispatchPreviewAction(context.onAction, context.screenKey, elementId, outcomes, context.selectedOutcomeIdByElementId?.[elementId]) }}>{element.name}</button>
     }
     case 'placeholder':
       return <Placeholder text={element.text} />
@@ -341,6 +344,46 @@ function Element({ element, path, context }: { element: MockupElement; path: str
   }
   })()
   return <div data-element-path={path} className={cn('relative', selected && 'ring-2 ring-accent')} style={{ width: design?.width, minHeight: design?.height }} onClick={(event) => { if (context.mode !== 'edit') return; event.stopPropagation(); context.onElementSelect?.(selection) }}>{child}{selected && context.mode === 'edit' ? <div className="nodrag absolute top-1 right-1 flex gap-1 rounded bg-surface p-1 shadow"><label className="text-[10px]">W <input aria-label="요소 너비" type="number" className="w-14 border" value={design?.width ?? ''} onChange={(event) => context.onDesignChange?.({ binding, patch: { width: Number(event.target.value) || undefined } })} /></label><label className="text-[10px]">H <input aria-label="요소 높이" type="number" className="w-14 border" value={design?.height ?? ''} onChange={(event) => context.onDesignChange?.({ binding, patch: { height: Number(event.target.value) || undefined } })} /></label><button type="button" className="text-[10px] text-diagnostic-error" onClick={() => context.onProposeSemanticEdit?.({ kind: 'delete-element', binding: selection })}>삭제 제안</button></div> : null}</div>
+}
+
+/** 시나리오를 고르는 것만으로는 실행하지 않는다. 선언된 버튼을 누를 때 선택 결과를 해석한다. */
+export function outcomeForPreviewAction(outcomes: readonly ActionOutcome[], selectedOutcomeId?: string): ActionOutcome | undefined {
+  return outcomes.find((outcome) => outcome.id === selectedOutcomeId) ?? outcomes[0]
+}
+
+export function dispatchPreviewAction(onAction: ScreenMockupFrameProps['onAction'], screenKey: string, elementId: string, outcomes: readonly ActionOutcome[], selectedOutcomeId?: string): void {
+  const outcome = outcomeForPreviewAction(outcomes, selectedOutcomeId)
+  if (outcome !== undefined) onAction?.({ screenKey, elementId, outcome })
+}
+
+function scenarioControls(elements: readonly MockupElement[], outcomesByElementId: Readonly<Record<string, ActionOutcome[]>>): { elementId: string; name: string; outcomes: ActionOutcome[] }[] {
+  return elements.flatMap((element) => {
+    if (element.kind === 'button' && element.id !== null) {
+      const outcomes = outcomesByElementId[element.id] ?? []
+      return outcomes.length > 1 ? [{ elementId: element.id, name: element.name, outcomes }] : []
+    }
+    if (element.kind === 'header' || element.kind === 'section') return scenarioControls(element.children, outcomesByElementId)
+    if (element.kind === 'form') return scenarioControls(element.inputs, outcomesByElementId)
+    return []
+  })
+}
+
+const HANDLER_LABEL = { state: '상태', message: '메시지', popup: '팝업', loading: '로딩' } as const
+
+function OutcomePreview({ outcome, onDismiss }: { outcome: ActionOutcome | null | undefined; onDismiss?: () => void }) {
+  const handler = outcome?.handler
+  if (handler === null || handler === undefined) return null
+  const heading = `${HANDLER_LABEL[handler.kind]} · ${handler.id}`
+  const content = handler.content === null || handler.content === undefined || handler.content === '' ? null : handler.content
+  const close = <button type="button" className="shrink-0 rounded border border-border-strong bg-surface px-2 py-1 text-[11px]" onClick={onDismiss}>미리보기 닫기</button>
+
+  if (handler.kind === 'popup') {
+    return <div data-outcome-preview="popup" className="absolute inset-0 z-20 flex items-center justify-center bg-black/35 p-6"><div role="dialog" aria-modal="false" aria-label={`선언된 ${handler.kind} handler`} className="w-full max-w-sm rounded-lg border border-border-strong bg-surface p-4 text-text shadow-xl"><div className="flex items-start gap-3"><div className="min-w-0 flex-1"><p className="text-xs font-semibold">{heading}</p>{content === null ? null : <p className="mt-2 text-sm text-text-muted">{content}</p>}</div>{close}</div></div></div>
+  }
+  if (handler.kind === 'loading') {
+    return <div data-outcome-preview="loading" role="status" aria-label={`선언된 ${handler.kind} handler`} className="absolute inset-0 z-20 flex items-center justify-center bg-surface/85 p-6"><div className="flex max-w-sm items-center gap-3 rounded-lg border border-border-strong bg-surface px-4 py-3 shadow-lg"><span aria-hidden className="size-4 animate-spin rounded-full border-2 border-border-strong border-t-text" /><div className="min-w-0 flex-1"><p className="text-xs font-semibold">{heading}</p>{content === null ? null : <p className="mt-1 text-xs text-text-muted">{content}</p>}</div>{close}</div></div>
+  }
+  return <div data-outcome-preview={handler.kind} role="status" aria-label={`선언된 ${handler.kind} handler`} className="absolute inset-x-3 bottom-3 z-20 flex items-start gap-3 rounded-lg border border-border-strong bg-surface px-3 py-2 text-text shadow-lg"><div className="min-w-0 flex-1"><p className="text-xs font-semibold">{heading}</p>{content === null ? null : <p className="mt-1 text-xs text-text-muted">{content}</p>}</div>{close}</div>
 }
 
 function selectedSampleValue(context: ElementContext, fieldId: string): string | number | boolean | null | undefined {
@@ -365,12 +408,14 @@ export function ScreenMockupFrame({
   className,
   dimensions,
   mode = 'edit', sampleVariant = 'normal', samples, outcomesByElementId,
+  selectedOutcomeIdByElementId, activeOutcome,
   selectedElementPath, selectedElementScreenKey, designByElementPath, sourceHash, onElementSelect, onDesignChange,
-  onAction, onProposeSemanticEdit,
+  onAction, onOutcomeSelect, onOutcomeDismiss, onProposeSemanticEdit,
   selectedSampleIdByModel, onSampleSelect,
   values, onValueChange,
 }: ScreenMockupFrameProps) {
-  const context: ElementContext = { screenKey: screen.key, mode, sampleVariant, samples, outcomesByElementId, selectedElementPath, selectedElementScreenKey, designByElementPath, sourceHash, onElementSelect, onDesignChange, onAction, onProposeSemanticEdit, selectedSampleIdByModel, onSampleSelect, values, onValueChange }
+  const context: ElementContext = { screenKey: screen.key, mode, sampleVariant, samples, outcomesByElementId, selectedOutcomeIdByElementId, activeOutcome, selectedElementPath, selectedElementScreenKey, designByElementPath, sourceHash, onElementSelect, onDesignChange, onAction, onOutcomeSelect, onOutcomeDismiss, onProposeSemanticEdit, selectedSampleIdByModel, onSampleSelect, values, onValueChange }
+  const controls = mode === 'experience' ? scenarioControls(screen.elements, outcomesByElementId ?? {}) : []
   return (
     <figure
       className={cn(
@@ -388,6 +433,9 @@ export function ScreenMockupFrame({
         )}
       </figcaption>
 
+      {controls.length === 0 ? null : <div aria-label="결과 시나리오 선택" className="flex flex-wrap gap-2 border-b border-border bg-surface-raised px-4 py-2 text-[11px] text-text-muted">{controls.map((control) => <label key={control.elementId} className="flex items-center gap-2"><span>{control.name} 결과 시나리오</span><select aria-label={`${control.name} 결과 시나리오`} value={outcomeForPreviewAction(control.outcomes, selectedOutcomeIdByElementId?.[control.elementId])?.id ?? ''} onChange={(event) => onOutcomeSelect?.(control.elementId, event.target.value)} className="max-w-64 rounded border border-border-strong bg-surface px-2 py-1 text-text"><option value="" disabled>결과 선택</option>{control.outcomes.map((outcome) => <option key={outcome.id} value={outcome.id}>{outcome.label}</option>)}</select></label>)}</div>}
+
+      <div data-mockup-viewport className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       {screen.elements.length === 0 ? (
         <div className="px-4 py-6 text-[11px] text-text-subtle">
           레이아웃에 요소가 없다
@@ -399,6 +447,8 @@ export function ScreenMockupFrame({
           ))}
         </div>
       )}
+      {mode === 'experience' ? <OutcomePreview outcome={activeOutcome} onDismiss={onOutcomeDismiss} /> : null}
+      </div>
     </figure>
   )
 }
