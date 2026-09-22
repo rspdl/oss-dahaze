@@ -29,7 +29,7 @@ describe('PlanningWorkspace', () => {
   it('명시적으로 초안을 선택하지 않으면 적용된 초안을 미리보기나 진단 출처로 쓰지 않는다', () => {
     const markup = renderToStaticMarkup(<PlanningWorkspace model={{
       ...base,
-      compiler: { state: 'recognized', source: { kind: 'current', documents: [{ path: 'accepted.rspdl', sourceHash: 'a'.repeat(64) }] }, rspdlVersion: '0.8.0', diagnostics: [] },
+      compiler: { state: 'recognized', source: { kind: 'current', documents: [{ id: 'document-1', path: 'accepted.rspdl', sourceHash: 'a'.repeat(64) }] }, rspdlVersion: '0.8.0', diagnostics: [] },
       drafts: [{ id: 'applied', summary: '예전 적용 초안', baseRevision: 3, status: 'applied', changes: [{ path: 'old.rspdl', after: 'old' }], diagnostics: [], analysis: [] }],
     }} />)
 
@@ -46,7 +46,7 @@ describe('PlanningWorkspace', () => {
       compiler: {
         state: 'recognized',
         source: { kind: 'draft', draftId: 'draft-1', summary: '연락처 변경', baseProjectRevision: 3, baseSourceHash: 'base-hash', candidateSourceHash: 'candidate-hash', stale: true },
-        diagnostics: [{ id: 'candidate:0', title: '후보 진단' }],
+        diagnostics: [{ id: 'candidate:0', title: '후보 진단', sourcePath: 'candidate.rspdl' }],
       },
       drafts: [{ id: 'draft-1', summary: '연락처 변경', baseRevision: 3, status: 'draft', changes: [], diagnostics: [], analysis: [] }],
     }} />)
@@ -56,6 +56,21 @@ describe('PlanningWorkspace', () => {
     expect(markup).toContain('후보 원문 candidate-hash')
     expect(markup).toContain('현재 저장 명세와 다른 기준에서 만든 초안')
     expect(markup).toContain('후보 진단')
+    expect(markup).toContain('<span class="mt-1 block font-mono text-[11px] text-text-subtle">candidate.rspdl</span>')
+    expect(markup).not.toMatch(/<button[^>]*>candidate\.rspdl<\/button>/)
+  })
+
+  it('저장 명세 진단은 핸들러가 있을 때만 문서 이동 버튼으로 표시한다', () => {
+    const model: PlanningWorkspaceModel = {
+      ...base,
+      compiler: { state: 'recognized', source: { kind: 'current', documents: [{ id: 'document-1', path: 'accepted.rspdl', sourceHash: 'a'.repeat(64) }] }, diagnostics: [{ id: 'accepted:0', title: '저장본 진단', sourcePath: 'accepted.rspdl' }] },
+    }
+    const clickable = renderToStaticMarkup(<PlanningWorkspace model={model} onOpenSource={() => undefined} />)
+    const staticPath = renderToStaticMarkup(<PlanningWorkspace model={model} />)
+
+    expect(clickable).toMatch(/<button[^>]*>accepted\.rspdl<\/button>/)
+    expect(staticPath).toContain('<span class="mt-1 block font-mono text-[11px] text-text-subtle">accepted.rspdl</span>')
+    expect(staticPath).not.toMatch(/<button[^>]*>accepted\.rspdl<\/button>/)
   })
 
   it('불러오기 실패와 지원하지 않는 결과를 검사 전과 구분한다', () => {

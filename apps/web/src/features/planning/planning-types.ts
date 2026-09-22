@@ -6,7 +6,7 @@ export type PlanningSnapshot = { revision: number; createdAt: string; changeKind
 
 export type PlanningCompilerState = 'not-run' | 'running' | 'recognized' | 'unsupported-shape' | 'failed'
 export type PlanningCompilerSource =
-  | { kind: 'current'; documents: { path: string; sourceHash: string }[] }
+  | { kind: 'current'; documents: { id: string; path: string; sourceHash: string }[] }
   | { kind: 'draft'; draftId: string; summary: string; baseProjectRevision: number; baseSourceHash: string; candidateSourceHash: string; stale: boolean }
 
 export interface PlanningCompilerReview {

@@ -7,7 +7,7 @@ vi.mock('./handoff-inspector', () => ({ HandoffInspector: () => null }))
 vi.mock('./metadata-editor', () => ({ MetadataEditor: () => null }))
 vi.mock('./planning-workspace', () => ({ PlanningWorkspace: () => null }))
 
-import { toModel, type PlanningCompilerInputs } from './planning-screen'
+import { acceptedCompilerDocumentHref, toModel, type PlanningCompilerInputs } from './planning-screen'
 
 function state(overrides: Partial<PlanningStateResponse> = {}): PlanningStateResponse {
   return {
@@ -52,7 +52,7 @@ describe('planning compiler review model', () => {
     const applied = { ...draftSummary(), applied_revision: 4 }
     const model = toModel(state(), [applied], [], null, inputs({ selectedDraft: { state: 'ready', data: draft({ files: [{ path: 'candidate.rspdl', diagnostics: [diagnostic('후보 진단')] }] }) } }))
 
-    expect(model.compiler).toMatchObject({ state: 'recognized', source: { kind: 'current', documents: [{ path: 'accepted.rspdl', sourceHash: 'a'.repeat(64) }] }, rspdlVersion: '0.8.0' })
+    expect(model.compiler).toMatchObject({ state: 'recognized', source: { kind: 'current', documents: [{ id: 'document-1', path: 'accepted.rspdl', sourceHash: 'a'.repeat(64) }] }, rspdlVersion: '0.8.0' })
     expect(model.compiler.diagnostics).toEqual([expect.objectContaining({ detail: '저장본 진단', sourcePath: 'accepted.rspdl' })])
     expect(model.selectedDraftId).toBeNull()
   })
@@ -85,5 +85,14 @@ describe('planning compiler review model', () => {
     expect(loading.compiler).toMatchObject({ state: 'running', source: { kind: 'current', documents: [] }, diagnostics: [] })
     expect(failed.compiler).toMatchObject({ state: 'failed', source: { kind: 'current', documents: [] }, diagnostics: [], failureMessage: 'compile request failed' })
     expect(unsupported.compiler).toMatchObject({ state: 'unsupported-shape', diagnostics: [] })
+  })
+
+  it('builds document navigation only from recognized accepted compiler metadata', () => {
+    const accepted = toModel(state(), [], [], null, inputs()).compiler
+    const candidate = toModel(state(), [draftSummary()], [], 'draft-1', inputs({ selectedDraft: { state: 'ready', data: draft({ files: [{ path: 'candidate.rspdl', diagnostics: [] }] }) } })).compiler
+
+    expect(acceptedCompilerDocumentHref('project-1', accepted, 'accepted.rspdl')).toBe('/projects/project-1/documents/document-1')
+    expect(acceptedCompilerDocumentHref('project-1', accepted, 'missing.rspdl')).toBeNull()
+    expect(acceptedCompilerDocumentHref('project-1', candidate, 'candidate.rspdl')).toBeNull()
   })
 })
