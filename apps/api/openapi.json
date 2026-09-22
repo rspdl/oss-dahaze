@@ -405,6 +405,13 @@
             "title": "Path",
             "type": "string"
           },
+          "source_hash": {
+            "description": "컴파일에 사용한 문서 원문 UTF-8 바이트의 소문자 SHA-256",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Source Hash",
+            "type": "string"
+          },
           "target_rspdl_version": {
             "description": "문서가 대상으로 삼는 rspdl 버전",
             "title": "Target Rspdl Version",
@@ -426,10 +433,51 @@
           "id",
           "path",
           "title",
+          "source_hash",
           "target_rspdl_version",
           "updated_at"
         ],
         "title": "CompiledDocumentRef",
+        "type": "object"
+      },
+      "CompilerEditHandler": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "handler에 함께 기록할 표시 문구",
+            "title": "Content"
+          },
+          "id": {
+            "description": "handler가 참조할 상태·메시지·팝업·로딩 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "같은 화면에서 실행할 handler 종류",
+            "enum": [
+              "state",
+              "message",
+              "popup",
+              "loading"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "CompilerEditHandler",
         "type": "object"
       },
       "CompilerEditPatch": {
@@ -446,6 +494,12 @@
             ],
             "description": "button의 RSPDL action ID 변경",
             "title": "Action Id"
+          },
+          "clear_action": {
+            "default": false,
+            "description": "button의 기존 action 연결을 명시적으로 제거할지 여부",
+            "title": "Clear Action",
+            "type": "boolean"
           },
           "field_id": {
             "anyOf": [
@@ -517,6 +571,17 @@
       "ConnectCompilerEdit": {
         "additionalProperties": false,
         "properties": {
+          "handler": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompilerEditHandler"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "같은 화면 handler 경로. 화면 이동 경로면 null"
+          },
           "label": {
             "anyOf": [
               {
@@ -526,7 +591,7 @@
                 "type": "null"
               }
             ],
-            "description": "선택적인 경로 표시 이름",
+            "description": "경로에 기록할 선택적인 표시 이름",
             "title": "Label"
           },
           "operation": {
@@ -534,6 +599,19 @@
             "description": "화면 경로 연결 편집",
             "title": "Operation",
             "type": "string"
+          },
+          "outcome_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "출발 action 안의 outcome ID. 없으면 null",
+            "title": "Outcome Id"
           },
           "source_element_id": {
             "description": "경로를 시작할 요소 ID",
@@ -548,17 +626,23 @@
             "type": "string"
           },
           "target_screen_id": {
-            "description": "도착 RSPDL 화면 ID",
-            "minLength": 1,
-            "title": "Target Screen Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "도착 RSPDL 화면 ID. handler 경로면 null",
+            "title": "Target Screen Id"
           }
         },
         "required": [
-          "operation",
           "source_screen_id",
           "source_element_id",
-          "target_screen_id"
+          "operation"
         ],
         "title": "ConnectCompilerEdit",
         "type": "object"
@@ -759,6 +843,17 @@
       "DisconnectCompilerEdit": {
         "additionalProperties": false,
         "properties": {
+          "handler": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompilerEditHandler"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "같은 화면 handler 경로. 화면 이동 경로면 null"
+          },
           "label": {
             "anyOf": [
               {
@@ -768,7 +863,7 @@
                 "type": "null"
               }
             ],
-            "description": "연결할 때 사용한 경로 표시 이름",
+            "description": "경로에 기록할 선택적인 표시 이름",
             "title": "Label"
           },
           "operation": {
@@ -777,8 +872,21 @@
             "title": "Operation",
             "type": "string"
           },
+          "outcome_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "출발 action 안의 outcome ID. 없으면 null",
+            "title": "Outcome Id"
+          },
           "source_element_id": {
-            "description": "경로를 시작한 요소 ID",
+            "description": "경로를 시작할 요소 ID",
             "minLength": 1,
             "title": "Source Element Id",
             "type": "string"
@@ -790,17 +898,23 @@
             "type": "string"
           },
           "target_screen_id": {
-            "description": "도착 RSPDL 화면 ID",
-            "minLength": 1,
-            "title": "Target Screen Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "도착 RSPDL 화면 ID. handler 경로면 null",
+            "title": "Target Screen Id"
           }
         },
         "required": [
-          "operation",
           "source_screen_id",
           "source_element_id",
-          "target_screen_id"
+          "operation"
         ],
         "title": "DisconnectCompilerEdit",
         "type": "object"

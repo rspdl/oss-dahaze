@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SourceIn(BaseModel):
@@ -235,6 +235,11 @@ class CompiledDocumentRef(BaseModel):
     id: UUID = Field(description="문서 식별자")
     path: str = Field(description="result.files[].path 와 같은 소스 경로")
     title: str = Field(description="화면에 표시할 문서 제목")
+    source_hash: str = Field(
+        min_length=64,
+        max_length=64,
+        description="컴파일에 사용한 문서 원문 UTF-8 바이트의 소문자 SHA-256",
+    )
     target_rspdl_version: str = Field(description="문서가 대상으로 삼는 rspdl 버전")
     updated_at: datetime = Field(description="컴파일에 사용한 저장 문서의 마지막 수정 시각")
 
@@ -422,6 +427,9 @@ class CompilerEditPatch(CompilerEditModel):
     field_ids: list[str] | None = Field(default=None, description="list의 표시 필드 ID 변경")
     name: str | None = Field(default=None, description="button 표시 이름 변경")
     action_id: str | None = Field(default=None, description="button의 RSPDL action ID 변경")
+    clear_action: bool = Field(
+        default=False, description="button의 기존 action 연결을 명시적으로 제거할지 여부"
+    )
 
 
 class UpdateCompilerEdit(CompilerEditModel):
@@ -431,20 +439,41 @@ class UpdateCompilerEdit(CompilerEditModel):
     patch: CompilerEditPatch = Field(description="요소 종류에 허용된 속성 변경")
 
 
-class ConnectCompilerEdit(CompilerEditModel):
-    operation: Literal["connect"] = Field(description="화면 경로 연결 편집")
+class CompilerEditHandler(CompilerEditModel):
+    kind: Literal["state", "message", "popup", "loading"] = Field(
+        description="같은 화면에서 실행할 handler 종류"
+    )
+    id: str = Field(min_length=1, description="handler가 참조할 상태·메시지·팝업·로딩 ID")
+    content: str | None = Field(default=None, description="handler에 함께 기록할 표시 문구")
+
+
+class CompilerPathEdit(CompilerEditModel):
     source_screen_id: str = Field(min_length=1, description="출발 RSPDL 화면 ID")
     source_element_id: str = Field(min_length=1, description="경로를 시작할 요소 ID")
-    target_screen_id: str = Field(min_length=1, description="도착 RSPDL 화면 ID")
-    label: str | None = Field(default=None, description="선택적인 경로 표시 이름")
+    target_screen_id: str | None = Field(
+        default=None, min_length=1, description="도착 RSPDL 화면 ID. handler 경로면 null"
+    )
+    outcome_id: str | None = Field(
+        default=None, min_length=1, description="출발 action 안의 outcome ID. 없으면 null"
+    )
+    handler: CompilerEditHandler | None = Field(
+        default=None, description="같은 화면 handler 경로. 화면 이동 경로면 null"
+    )
+    label: str | None = Field(default=None, description="경로에 기록할 선택적인 표시 이름")
+
+    @model_validator(mode="after")
+    def require_one_destination(self) -> Self:
+        if (self.target_screen_id is None) == (self.handler is None):
+            raise ValueError("exactly one of target_screen_id or handler is required")
+        return self
 
 
-class DisconnectCompilerEdit(CompilerEditModel):
+class ConnectCompilerEdit(CompilerPathEdit):
+    operation: Literal["connect"] = Field(description="화면 경로 연결 편집")
+
+
+class DisconnectCompilerEdit(CompilerPathEdit):
     operation: Literal["disconnect"] = Field(description="화면 경로 연결 해제 편집")
-    source_screen_id: str = Field(min_length=1, description="출발 RSPDL 화면 ID")
-    source_element_id: str = Field(min_length=1, description="경로를 시작한 요소 ID")
-    target_screen_id: str = Field(min_length=1, description="도착 RSPDL 화면 ID")
-    label: str | None = Field(default=None, description="연결할 때 사용한 경로 표시 이름")
 
 
 CompilerEditOperation = Annotated[

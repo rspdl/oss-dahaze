@@ -6,6 +6,7 @@ from typing import cast
 from uuid import UUID
 
 import httpx
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from dahaze_api.domain.entities import User
@@ -118,6 +119,100 @@ async def test_structured_edit_request_rejects_unknown_operation(
             "base_source_hash": project["source_hash"],
             "expected_source_hash": "0" * 64,
             "edit": {"operation": "replace_everything"},
+        },
+    )
+
+    assert response.status_code == 422
+
+
+async def test_structured_path_edits_accept_outcomes_and_same_screen_handlers(
+    client: httpx.AsyncClient,
+) -> None:
+    project = await _project(client, "path-edit-contract")
+    document = (
+        await client.post(
+            f"/api/projects/{project['id']}/documents",
+            json={"path": "a.rspdl", "title": "A", "text": VALID_A},
+        )
+    ).json()
+    current = (await client.get(f"/api/projects/{project['id']}")).json()
+    request = {
+        "document_id": document["id"],
+        "base_project_revision": current["revision"],
+        "base_source_hash": current["source_hash"],
+        "expected_source_hash": source_fingerprint(VALID_A),
+    }
+
+    target = await client.post(
+        f"/api/projects/{project['id']}/planning/edit-proposals",
+        json={
+            **request,
+            "edit": {
+                "operation": "connect",
+                "source_screen_id": "booking.search",
+                "source_element_id": "lookup",
+                "target_screen_id": "booking.result",
+                "outcome_id": "booking.lookup.found",
+                "handler": None,
+                "label": "찾음",
+            },
+        },
+    )
+    handler = await client.post(
+        f"/api/projects/{project['id']}/planning/edit-proposals",
+        json={
+            **request,
+            "edit": {
+                "operation": "connect",
+                "source_screen_id": "booking.search",
+                "source_element_id": "lookup",
+                "target_screen_id": None,
+                "outcome_id": "booking.lookup.missing",
+                "handler": {
+                    "kind": "message",
+                    "id": "missing",
+                    "content": "예약을 찾지 못했습니다.",
+                },
+                "label": None,
+            },
+        },
+    )
+
+    assert target.status_code == 200, target.text
+    assert handler.status_code == 200, handler.text
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        {
+            "operation": "connect",
+            "source_screen_id": "booking.search",
+            "source_element_id": "lookup",
+        },
+        {
+            "operation": "disconnect",
+            "source_screen_id": "booking.search",
+            "source_element_id": "lookup",
+            "target_screen_id": "booking.result",
+            "handler": {"kind": "message", "id": "missing", "content": None},
+        },
+    ],
+    ids=["neither-destination", "both-destinations"],
+)
+async def test_structured_path_edit_requires_exactly_one_destination(
+    client: httpx.AsyncClient, edit: dict[str, object]
+) -> None:
+    project = await _project(client, f"invalid-path-{edit['operation']}")
+
+    response = await client.post(
+        f"/api/projects/{project['id']}/planning/edit-proposals",
+        json={
+            "document_id": str(UUID(int=1)),
+            "base_project_revision": 0,
+            "base_source_hash": project["source_hash"],
+            "expected_source_hash": "0" * 64,
+            "edit": edit,
         },
     )
 

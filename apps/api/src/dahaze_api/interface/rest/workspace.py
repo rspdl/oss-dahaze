@@ -18,6 +18,7 @@ from dahaze_api.domain.entities import (
     ProjectMembership,
     ProjectRole,
 )
+from dahaze_api.domain.rspdl import source_fingerprint
 from dahaze_api.interface.rest.dependencies import (
     CurrentUser,
     ProjectCompiler,
@@ -187,6 +188,7 @@ async def compile_project(
                 id=d.id,
                 path=d.path,
                 title=d.title,
+                source_hash=source_fingerprint(d.text),
                 target_rspdl_version=d.target_rspdl_version,
                 updated_at=d.updated_at,
             )

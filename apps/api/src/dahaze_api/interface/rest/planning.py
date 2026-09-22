@@ -255,7 +255,9 @@ async def propose_planning_edit(
             base_project_revision=body.base_project_revision,
             base_source_hash=body.base_source_hash,
             expected_source_hash=body.expected_source_hash,
-            edit=body.edit.model_dump(exclude_none=True),
+            # Path disconnects are exact matches. Preserve explicit nulls so the compiler can
+            # distinguish a missing outcome/label/handler from another edge at the same endpoint.
+            edit=body.edit.model_dump(),
             summary=body.summary,
         )
         return ProposePlanningEditResponse.model_validate(value)

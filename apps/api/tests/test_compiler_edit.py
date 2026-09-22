@@ -306,8 +306,8 @@ async def test_malformed_native_edit_request_is_a_client_error(
     def reject_request(request: Mapping[str, Any]) -> dict[str, Any]:
         raise RuntimeError("RSPDL-SDK-001: invalid request: unknown field")
 
-    monkeypatch.setattr(local_adapter.rspdl, "edit", reject_request, raising=False)
-    monkeypatch.setattr(local_adapter.rspdl, "EDIT_SCHEMA_VERSION", 1, raising=False)
+    monkeypatch.setattr(local_adapter.rspdl, "edit", reject_request, raising=False)  # type: ignore[attr-defined]
+    monkeypatch.setattr(local_adapter.rspdl, "EDIT_SCHEMA_VERSION", 1, raising=False)  # type: ignore[attr-defined]
     compiler = LocalRspdlCompiler()
 
     with pytest.raises(InvalidRspdlEditRequest, match="unknown field"):
@@ -324,8 +324,8 @@ async def test_native_internal_edit_failure_remains_a_server_error(
     def fail_response(request: Mapping[str, Any]) -> dict[str, Any]:
         raise RuntimeError("RSPDL-SDK-005: failed to serialize SDK response")
 
-    monkeypatch.setattr(local_adapter.rspdl, "edit", fail_response, raising=False)
-    monkeypatch.setattr(local_adapter.rspdl, "EDIT_SCHEMA_VERSION", 1, raising=False)
+    monkeypatch.setattr(local_adapter.rspdl, "edit", fail_response, raising=False)  # type: ignore[attr-defined]
+    monkeypatch.setattr(local_adapter.rspdl, "EDIT_SCHEMA_VERSION", 1, raising=False)  # type: ignore[attr-defined]
     compiler = LocalRspdlCompiler()
 
     with pytest.raises(RuntimeError, match="RSPDL-SDK-005"):
@@ -334,6 +334,81 @@ async def test_native_internal_edit_failure_remains_a_server_error(
             expected_source_hash=source_fingerprint(SOURCE),
             edit={"operation": "delete", "screen_id": "x", "element_id": "y"},
         )
+
+
+async def test_native_path_edit_serialization_preserves_exact_edge_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[Mapping[str, Any]] = []
+    compiler = LocalRspdlCompiler()
+
+    def record_request(request: Mapping[str, Any]) -> dict[str, Any]:
+        requests.append(request)
+        source = cast(Mapping[str, str], request["source"])
+        return {
+            "schema_version": request["schema_version"],
+            "wire_schema_version": compiler.runtime.wire_schema_version,
+            "rspdl_version": compiler.runtime.rspdl_version,
+            "locale": compiler.runtime.locale,
+            "source_hash": source_fingerprint(source["text"]),
+            "outcome": {"status": "rejected"},
+            "tombstones": [],
+            "id_remap": {},
+        }
+
+    monkeypatch.setattr(local_adapter.rspdl, "edit", record_request, raising=False)  # type: ignore[attr-defined]
+    monkeypatch.setattr(local_adapter.rspdl, "EDIT_SCHEMA_VERSION", 1, raising=False)  # type: ignore[attr-defined]
+    common = {
+        "operation": "disconnect",
+        "source_screen_id": "booking.search",
+        "source_element_id": "lookup",
+        "target_screen_id": "booking.result",
+        "handler": None,
+        "label": None,
+    }
+    found = {**common, "outcome_id": "booking.lookup.found"}
+    missing = {**common, "outcome_id": "booking.lookup.missing"}
+    same_screen = {
+        "operation": "connect",
+        "source_screen_id": "booking.search",
+        "source_element_id": "lookup",
+        "target_screen_id": None,
+        "outcome_id": "booking.lookup.missing",
+        "handler": {
+            "kind": "message",
+            "id": "missing",
+            "content": "예약을 찾지 못했습니다.",
+        },
+        "label": None,
+    }
+    clear_conflict = {
+        "operation": "update",
+        "screen_id": "booking.search",
+        "element_id": "lookup",
+        "patch": {
+            "text": None,
+            "field_id": None,
+            "model_id": None,
+            "field_ids": None,
+            "name": None,
+            "action_id": "booking.lookup",
+            "clear_action": True,
+        },
+    }
+    for edit in (found, missing, same_screen, clear_conflict):
+        await compiler.edit(
+            RspdlSource(path="booking.rspdl", text=SOURCE),
+            expected_source_hash=source_fingerprint(SOURCE),
+            edit=edit,
+        )
+
+    assert [request["edit"] for request in requests] == [
+        found,
+        missing,
+        same_screen,
+        clear_conflict,
+    ]
+    assert requests[0]["edit"] != requests[1]["edit"]
 
 
 def test_source_fingerprint_uses_exact_utf8_bytes() -> None:
