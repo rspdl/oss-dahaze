@@ -2,6 +2,9 @@
 
 import * as React from 'react'
 import { cn } from '@dahaze/ui'
+import type { RspdlDiagnostic } from '@dahaze/rspdl-editor'
+
+import { renderDiagnosticMessage, renderDiagnosticTitle } from '../../shared/rspdl/diagnostic-messages'
 
 import {
   findReadableElement,
@@ -9,6 +12,7 @@ import {
   sourceExcerpt,
   type NamedSpecificationRef,
   type ReadableElement,
+  type ReadableDiagnostic,
   type ReadableField,
   type ReadableOutcome,
   type ReadablePath,
@@ -63,12 +67,24 @@ export function ReadableSpecificationPanel({
 function ProjectStatus({ specification }: { specification: ReadableSpecification }) {
   return <>
     <FactSection title="컴파일러 진단" state={specification.diagnosticsState} empty="컴파일러가 보고한 진단이 없습니다.">
-      {specification.diagnostics.map((diagnostic, index) => <article key={`${diagnostic.path}:${diagnostic.ruleId}:${index}`} className="rounded-control border px-3 py-2 text-xs"><div className="flex items-center justify-between gap-2"><p className="font-medium text-text">{diagnostic.message ?? diagnostic.messageKey}</p><span className="text-[10px] text-text-subtle">{diagnostic.severity}</span></div><p className="mt-1 font-mono text-[10px] text-text-subtle">{diagnostic.ruleId} · {diagnostic.messageKey}</p>{Object.keys(diagnostic.arguments).length === 0 ? null : <p className="mt-1 break-all text-text-muted">{JSON.stringify(diagnostic.arguments)}</p>}<SourceDetails source={diagnostic.source} /></article>)}
+      {specification.diagnostics.map((diagnostic, index) => <DiagnosticFacts key={`${diagnostic.path}:${diagnostic.ruleId}:${index}`} diagnostic={diagnostic} />)}
     </FactSection>
     <FactSection title="사람과 AI의 남은 맥락" state={specification.context.length === 0 ? 'absent' : 'present'} empty="보류 결정, 확인 질문, 검증 미지원 제안이 없습니다.">
       {specification.context.map((item) => <article key={`${item.kind}:${item.id}`} className="border-l-2 pl-3 text-xs"><p className="font-medium text-text">{item.kind === 'deferred' ? '보류 결정' : item.kind === 'question' ? '확인 질문' : '검증 미지원 제안'} · {item.title}</p>{item.content ? <p className="mt-1 text-text-muted">{item.content}</p> : null}<p className="mt-1 text-[10px] text-text-subtle">컴파일러 판정이 아닌 기획 맥락</p></article>)}
     </FactSection>
   </>
+}
+
+function DiagnosticFacts({ diagnostic }: { diagnostic: ReadableDiagnostic }) {
+  const wire = {
+    rule_id: diagnostic.ruleId,
+    severity: diagnostic.severity,
+    message_key: diagnostic.messageKey,
+    arguments: diagnostic.arguments,
+    span: diagnostic.source.span ?? { start: 0, end: 0 },
+    ...(diagnostic.message === null ? {} : { message: diagnostic.message }),
+  } as RspdlDiagnostic
+  return <article className="rounded-control border px-3 py-2 text-xs"><div className="flex items-center justify-between gap-2"><p className="font-medium text-text">{renderDiagnosticTitle(wire)}</p><span className="text-[10px] text-text-subtle">{diagnostic.severity}</span></div><p className="mt-1 text-text-muted">{renderDiagnosticMessage(wire)}</p><p className="mt-1 font-mono text-[10px] text-text-subtle">{diagnostic.ruleId} · {diagnostic.messageKey}</p><SourceDetails source={diagnostic.source} /></article>
 }
 
 function AllSpecification({ specification }: { specification: ReadableSpecification }) {

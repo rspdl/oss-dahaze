@@ -1,3 +1,5 @@
+import type { CompilerEditHandler } from '@dahaze/api-client'
+
 export type PrototypeMode = 'edit' | 'experience'
 export type SampleVariant = 'normal' | 'empty' | 'long' | 'many'
 
@@ -54,7 +56,8 @@ export function designBindingKey(binding: DesignBinding): string {
 export interface ActionOutcome {
   id: string
   label: string
-  targetScreenKey: string
+  targetScreenKey?: string | null
+  handler?: CompilerEditHandler | null
 }
 
 export interface PrototypeAction {
@@ -63,9 +66,19 @@ export interface PrototypeAction {
   outcome: ActionOutcome
 }
 
+interface PathProposal {
+  sourceScreenKey: string
+  sourceElementId: string
+  outcomeId: string | null
+  targetScreenId: string | null
+  handler: CompilerEditHandler | null
+  label: string | null
+}
+
 export type SemanticProposal =
   | { kind: 'add-element'; screenKey: string }
   | { kind: 'delete-element'; binding: ElementSelection }
   | { kind: 'move-element'; binding: ElementSelection }
   | { kind: 'update-element'; binding: ElementSelection }
-  | { kind: 'connect'; sourceScreenKey: string; sourceElementId: string; targetScreenKey: string }
+  | ({ kind: 'connect' } & PathProposal)
+  | ({ kind: 'disconnect' } & PathProposal)

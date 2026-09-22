@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@dahaze/ui'
 import type { ProjectCompileResponse, ProjectSnapshotResponse } from '@dahaze/api-client'
 
@@ -17,6 +17,7 @@ import {
 } from '@/features/specification/readable-specification'
 import { ReadableSpecificationPanel } from '@/features/specification/readable-specification-panel'
 import { parsePlanningEnvironments, visibleScreenKeys } from './environments'
+import { snapshotDocumentSourceHashes } from './snapshot-document-hash'
 
 const SAMPLE_VARIANTS: { id: SampleVariant; label: string }[] = [
   { id: 'normal', label: '정상' },
@@ -59,6 +60,7 @@ export function HandoffInspector({ snapshot, compare }: { snapshot: ProjectSnaps
   const designScope = environmentId === 'all' ? 'all' : environmentId
   const design = designForScope(metadata?.design, designScope)
   const comparison = useMemo(() => compare === undefined ? null : compareSnapshots(compare, snapshot), [compare, snapshot])
+  const documentSourceHashes = useSnapshotDocumentHashes(snapshot.documents)
 
   const selectEnvironment = (id: string) => {
     setRequestedEnvironmentId(id)
@@ -97,7 +99,7 @@ export function HandoffInspector({ snapshot, compare }: { snapshot: ProjectSnaps
         <span className="text-text-subtle">{selectedEnvironment?.name ?? '전체'} · {dimensions.width}×{dimensions.height}</span>
       </div>
       {selectedScreen === undefined ? <p className="mt-2 text-xs text-diagnostic-warning">이 환경에서 표시할 수 있는 화면이 없습니다.</p> : <>
-        <div className="mt-2 max-h-[34rem] overflow-auto rounded-control border bg-canvas p-2" aria-label="읽기 전용 화면"><ScreenMockupFrame screen={selectedScreen} dimensions={dimensions} mode="edit" sampleVariant={sampleVariant} samples={samples} designByElementPath={design} sourceHash={snapshot.source_hash} /></div>
+        <div className="mt-2 max-h-[34rem] overflow-auto rounded-control border bg-canvas p-2" aria-label="읽기 전용 화면"><ScreenMockupFrame screen={selectedScreen} dimensions={dimensions} mode="edit" sampleVariant={sampleVariant} samples={samples} designByElementPath={design} sourceHash={documentSourceHashes[selectedScreen.path]} /></div>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs"><label>기능명세 범위 <select aria-label="전달본 기능명세 요소" value={effectiveElementPath} onChange={(event) => setElementPath(event.target.value)} className="max-w-64 rounded border bg-surface px-2 py-1"><option value="">화면 전체</option>{selectableElements.map((element) => <option key={element.key} value={element.path}>{elementOptionLabel(element)}</option>)}</select></label><span className="text-text-subtle">배치 {Object.keys(design).length}건 · 샘플 모델 {samples.length}개</span></div>
       </>}
     </section>
@@ -151,6 +153,16 @@ function designForScope(value: unknown, scope: string): Record<string, { width?:
   const elements = record(selected?.elements)
   if (elements === null) return {}
   return Object.fromEntries(Object.entries(elements).flatMap(([key, raw]) => { const item = record(raw); if (item === null) return []; const width = number(item.width); const height = number(item.height); return [[key, { ...(width === null ? {} : { width }), ...(height === null ? {} : { height }) }]] }))
+}
+
+function useSnapshotDocumentHashes(documents: readonly unknown[]): Record<string, string> {
+  const [hashes, setHashes] = useState<Record<string, string>>({})
+  useEffect(() => {
+    let active = true
+    void snapshotDocumentSourceHashes(documents).then((next) => { if (active) setHashes(next) })
+    return () => { active = false }
+  }, [documents])
+  return hashes
 }
 
 function orderCategories(categories: ReadableCategory[]): { category: ReadableCategory; depth: number }[] {

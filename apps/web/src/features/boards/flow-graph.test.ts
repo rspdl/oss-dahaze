@@ -99,6 +99,13 @@ describe('buildFlowGraph', () => {
     expect(built.danglingPaths).toHaveLength(1)
   })
 
+  it('환경 필터로 숨긴 화면의 경로를 끊긴 경로라고 부르지 않는다', () => {
+    const built = buildFlowGraph(collected, mockups.screens, 'desktop', { visibleScreenKeys: new Set() })
+    expect(built.nodes).toHaveLength(0)
+    expect(built.edges).toHaveLength(0)
+    expect(built.danglingPaths).toHaveLength(0)
+  })
+
   it('경로가 순환해도 멈추지 않고 모든 화면에 자리를 준다', () => {
     const cyclic: CollectedBoard = {
       ...collected,

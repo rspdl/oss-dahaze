@@ -5,7 +5,6 @@ import Link from 'next/link'
 import {
   useProposePlanningEdit,
   type DocumentResponse,
-  type ProposePlanningEditRequestEdit,
   type ProposePlanningEditResponse,
 } from '@dahaze/api-client'
 import { Button } from '@dahaze/ui'
@@ -15,8 +14,9 @@ import type { SemanticProposal } from '@/features/mockup/prototype-contract'
 import { errorMessage } from '@/shared/api/errors'
 import type { FlowGraph } from './flow-graph'
 import { utf8Sha256 } from './document-hash'
+import { buildEdit, type PlanningElementKind } from './planning-edit-contract'
 
-type ElementKind = 'header' | 'section' | 'form' | 'heading' | 'input' | 'list' | 'button' | 'placeholder'
+type ElementKind = PlanningElementKind
 
 export function PlanningEditPanel({ projectId, projectRevision, projectSourceHash, proposal, graph, document, onClose }: {
   projectId: string
@@ -36,12 +36,12 @@ export function PlanningEditPanel({ projectId, projectRevision, projectSourceHas
   const [parentId, setParentId] = useState('')
   const [beforeId, setBeforeId] = useState('')
   const [slot, setSlot] = useState<'root' | 'children' | 'inputs'>('root')
-  const [label, setLabel] = useState('')
+  const [label, setLabel] = useState(() => proposal.kind === 'connect' ? proposal.label ?? '' : '')
   const [result, setResult] = useState<ProposePlanningEditResponse | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
 
   const sourceNode = useMemo(() => graph.nodes.find((node) => node.id === sourceScreenKey(proposal)), [graph.nodes, proposal])
-  const targetNode = proposal.kind === 'connect' ? graph.nodes.find((node) => node.id === proposal.targetScreenKey) : undefined
+  const targetNode = proposal.kind === 'connect' || proposal.kind === 'disconnect' ? graph.nodes.find((node) => node.screen.id === proposal.targetScreenId) : undefined
   const editable = document !== undefined && sourceNode !== undefined
   const status = compilerStatus(result?.compiler_response)
   const submit = async () => {
@@ -49,7 +49,7 @@ export function PlanningEditPanel({ projectId, projectRevision, projectSourceHas
     setFailure(null)
     setResult(null)
     try {
-      const edit = buildEdit(proposal, sourceNode.screen.id, targetNode?.screen.id, { kind, elementId, value, secondaryValue, parentId, beforeId, slot, label })
+      const edit = buildEdit(proposal, sourceNode.screen.id, { kind, elementId, value, secondaryValue, parentId, beforeId, slot, label })
       const expectedSourceHash = await utf8Sha256(document.text)
       const response = await mutation.mutateAsync({ projectId, data: {
         base_project_revision: projectRevision,
@@ -74,7 +74,8 @@ export function PlanningEditPanel({ projectId, projectRevision, projectSourceHas
     {proposal.kind === 'update-element' ? proposal.binding.elementId === undefined ? <UnsupportedLegacy /> : <div className="mt-3 grid gap-2 sm:grid-cols-2"><Field label={updateLabel(proposal.binding.elementKind)}><input value={value} onChange={(event) => setValue(event.target.value)} className="w-full rounded border bg-surface px-2 py-1" /></Field>{proposal.binding.elementKind === 'list' || proposal.binding.elementKind === 'button' ? <Field label={proposal.binding.elementKind === 'list' ? '필드 ID들 (쉼표 구분)' : '행동 ID (선택)'}><input value={secondaryValue} onChange={(event) => setSecondaryValue(event.target.value)} className="w-full rounded border bg-surface px-2 py-1" /></Field> : null}</div> : null}
     {proposal.kind === 'move-element' ? proposal.binding.elementId === undefined ? <UnsupportedLegacy /> : <div className="mt-3 grid gap-2 sm:grid-cols-2"><PlacementFields parentId={parentId} setParentId={setParentId} beforeId={beforeId} setBeforeId={setBeforeId} slot={slot} setSlot={setSlot} /></div> : null}
     {proposal.kind === 'delete-element' && proposal.binding.elementId === undefined ? <UnsupportedLegacy /> : null}
-    {proposal.kind === 'connect' ? <div className="mt-3"><p>{proposal.sourceElementId} → {targetNode?.screen.name ?? '도착 화면 없음'}</p><Field label="경로 표시 이름 (선택)"><input value={label} onChange={(event) => setLabel(event.target.value)} className="w-full rounded border bg-surface px-2 py-1" /></Field></div> : null}
+    {proposal.kind === 'connect' ? <div className="mt-3"><p>{proposal.sourceElementId} · {proposal.outcomeId} → {endpointLabel(proposal, targetNode?.screen.name)}</p><Field label="경로 표시 이름 (선택)"><input value={label} onChange={(event) => setLabel(event.target.value)} className="w-full rounded border bg-surface px-2 py-1" /></Field></div> : null}
+    {proposal.kind === 'disconnect' ? <div className="mt-3"><p>{proposal.sourceElementId} · {proposal.outcomeId ?? '결과 미지정'} → {endpointLabel(proposal, targetNode?.screen.name)}</p><p className="mt-1 text-text-subtle">결과, 도착 또는 handler, 표시 이름이 모두 일치하는 경로만 해제합니다.</p></div> : null}
     <Button className="mt-3" size="sm" disabled={!editable || mutation.isPending || hasUnsupportedLegacy(proposal)} onClick={() => void submit()}>{mutation.isPending ? '컴파일 중' : '변경안 컴파일'}</Button>
     {failure ? <p className="mt-2 rounded border border-diagnostic-error/40 px-2 py-1 text-diagnostic-error">{failure}</p> : null}
     {result ? <div className="mt-3 rounded border px-3 py-2"><p>rspdl {result.rspdl_version} · wire {result.wire_schema_version}</p>{!result.supported ? <p className="mt-1 text-diagnostic-warning">이 RSPDL 런타임에서는 구조화 편집을 사용할 수 없습니다. {result.unsupported_reason}</p> : status === 'rejected' ? <p className="mt-1 text-diagnostic-error">컴파일러가 변경을 거절했습니다. {compilerReason(result.compiler_response)}</p> : status !== 'applied' ? <p className="mt-1 text-diagnostic-warning">컴파일러 응답 상태를 확인할 수 없어 성공으로 처리하지 않았습니다.</p> : result.draft === null ? <p className="mt-1 text-diagnostic-warning">후보는 만들어졌지만 검토 가능한 프로젝트 초안이 없습니다.</p> : <><p className="mt-1">프로젝트 전체를 다시 컴파일한 초안을 만들었습니다.</p><Link href={`/projects/${projectId}/planning`} className="mt-2 inline-block font-medium text-accent">변경안 검토 및 적용 →</Link></>}</div> : null}
@@ -85,27 +86,17 @@ function PlacementFields({ parentId, setParentId, beforeId, setBeforeId, slot, s
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><span className="mb-1 block text-text-subtle">{label}</span>{children}</label> }
 function UnsupportedLegacy() { return <p className="mt-2 text-diagnostic-warning">이 요소는 안정적 ID가 없는 이전 형식이라 위치로 추측해 편집할 수 없습니다.</p> }
 function hasUnsupportedLegacy(proposal: SemanticProposal) { return (proposal.kind === 'delete-element' || proposal.kind === 'move-element' || proposal.kind === 'update-element') && proposal.binding.elementId === undefined }
-function sourceScreenKey(proposal: SemanticProposal): string { return proposal.kind === 'connect' ? proposal.sourceScreenKey : proposal.kind === 'add-element' ? proposal.screenKey : proposal.binding.screenKey }
+function sourceScreenKey(proposal: SemanticProposal): string { return proposal.kind === 'connect' || proposal.kind === 'disconnect' ? proposal.sourceScreenKey : proposal.kind === 'add-element' ? proposal.screenKey : proposal.binding.screenKey }
 function newElementId(): string { return `element_${crypto.randomUUID().replaceAll('-', '')}` }
 function requiresPrimary(kind: ElementKind) { return kind === 'heading' || kind === 'button' || kind === 'input' || kind === 'list' || kind === 'placeholder' }
 function primaryLabel(kind: ElementKind) { if (kind === 'button') return '버튼 이름'; if (kind === 'input') return '필드 ID'; if (kind === 'list') return '모델 ID'; return '표시 문구' }
 function updateLabel(kind: string) { if (kind === 'button') return '버튼 이름'; if (kind === 'input') return '필드 ID'; if (kind === 'list') return '모델 ID'; return '표시 문구' }
-function commaIds(value: string): string[] { return value.split(',').map((item) => item.trim()).filter(Boolean) }
-function optional(value: string): string | undefined { return value.trim() === '' ? undefined : value.trim() }
-function summaryFor(proposal: SemanticProposal) { if (proposal.kind === 'add-element') return '화면 요소 추가'; if (proposal.kind === 'delete-element') return '화면 요소 삭제'; if (proposal.kind === 'move-element') return '화면 요소 이동'; if (proposal.kind === 'update-element') return '화면 요소 속성 변경'; return '화면 경로 연결' }
+function summaryFor(proposal: SemanticProposal) { if (proposal.kind === 'add-element') return '화면 요소 추가'; if (proposal.kind === 'delete-element') return '화면 요소 삭제'; if (proposal.kind === 'move-element') return '화면 요소 이동'; if (proposal.kind === 'update-element') return '화면 요소 속성 변경'; return proposal.kind === 'disconnect' ? '화면 경로 연결 해제' : '화면 경로 연결' }
 
-function buildEdit(proposal: SemanticProposal, screenId: string, targetScreenId: string | undefined, form: { kind: ElementKind; elementId: string; value: string; secondaryValue: string; parentId: string; beforeId: string; slot: 'root' | 'children' | 'inputs'; label: string }): ProposePlanningEditRequestEdit {
-  if (proposal.kind === 'delete-element') return { operation: 'delete', screen_id: screenId, element_id: proposal.binding.elementId! }
-  if (proposal.kind === 'move-element') return { operation: 'move', screen_id: screenId, element_id: proposal.binding.elementId!, slot: form.slot, parent_element_id: optional(form.parentId), before_element_id: optional(form.beforeId) }
-  if (proposal.kind === 'connect') return { operation: 'connect', source_screen_id: screenId, source_element_id: proposal.sourceElementId, target_screen_id: targetScreenId ?? '', label: optional(form.label) }
-  if (proposal.kind === 'update-element') {
-    const binding = proposal.binding
-    const patch = binding.elementKind === 'button' ? { name: form.value, action_id: optional(form.secondaryValue) ?? null } : binding.elementKind === 'input' ? { field_id: form.value } : binding.elementKind === 'list' ? { model_id: form.value, field_ids: commaIds(form.secondaryValue) } : { text: form.value }
-    return { operation: 'update', screen_id: screenId, element_id: binding.elementId!, patch }
-  }
-  const base = { id: form.elementId }
-  const element = form.kind === 'heading' ? { ...base, kind: 'heading' as const, text: form.value } : form.kind === 'button' ? { ...base, kind: 'button' as const, name: form.value, action_id: optional(form.secondaryValue) } : form.kind === 'input' ? { ...base, kind: 'input' as const, field_id: form.value } : form.kind === 'list' ? { ...base, kind: 'list' as const, model_id: form.value, field_ids: commaIds(form.secondaryValue) } : form.kind === 'placeholder' ? { ...base, kind: 'placeholder' as const, text: form.value } : { ...base, kind: form.kind }
-  return { operation: 'insert', screen_id: screenId, element, slot: form.slot, parent_element_id: optional(form.parentId), before_element_id: optional(form.beforeId) }
+function endpointLabel(proposal: Extract<SemanticProposal, { kind: 'connect' | 'disconnect' }>, targetName: string | undefined): string {
+  if (proposal.targetScreenId !== null) return `화면 이동 · ${targetName ?? proposal.targetScreenId}`
+  if (proposal.handler !== null) return `${proposal.handler.kind} · ${proposal.handler.id}${proposal.handler.content ? ` · ${proposal.handler.content}` : ''}`
+  return '처리 대상 없음'
 }
 
 function compilerStatus(value: unknown): string | null { const response = record(value); const outcome = record(response?.outcome); return typeof outcome?.status === 'string' ? outcome.status : null }

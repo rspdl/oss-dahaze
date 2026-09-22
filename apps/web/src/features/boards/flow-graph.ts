@@ -68,16 +68,19 @@ export function buildFlowGraph(
   const mockupByKey = new Map(mockups.map((mockup) => [mockup.key, mockup]))
   const visibleScreens = options.visibleScreenKeys === undefined ? collected.screens : collected.screens.filter((screen) => options.visibleScreenKeys!.has(screen.key))
   const screenByKey = new Map(visibleScreens.map((screen) => [screen.key, screen]))
+  const allScreenKeys = new Set(collected.screens.map((screen) => screen.key))
   const sourceKeyOf = (path: BoardPath) => refKey(path.path, path.sourceScreenId)
   const targetKeyOf = (path: BoardPath) => refKey(path.path, path.targetScreenId)
 
   const danglingPaths: BoardPath[] = []
   const livePaths: BoardPath[] = []
   for (const path of collected.paths) {
-    if (screenByKey.has(sourceKeyOf(path)) && screenByKey.has(targetKeyOf(path))) {
-      livePaths.push(path)
-    } else {
+    const sourceKey = sourceKeyOf(path)
+    const targetKey = targetKeyOf(path)
+    if (!allScreenKeys.has(sourceKey) || !allScreenKeys.has(targetKey)) {
       danglingPaths.push(path)
+    } else if (screenByKey.has(sourceKey) && screenByKey.has(targetKey)) {
+      livePaths.push(path)
     }
   }
 

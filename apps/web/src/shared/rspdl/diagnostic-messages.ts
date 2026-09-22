@@ -28,6 +28,11 @@ const DIAGNOSTIC_TITLES: Readonly<Record<string, string>> = {
   'semantic.workflow.acquisition_source_not_found': '데이터 획득 출발 경로가 없습니다',
   'semantic.workflow.acquired_data_not_placed_input': '획득한다고 선언한 입력이 화면에 없습니다',
   'semantic.workflow.verification_unknown': '데이터 가용성을 확정할 수 없습니다',
+  'semantic.layout.required_input_without_slot': '필수 입력을 놓을 자리가 없습니다',
+  'semantic.outcome.handler_missing': '행동 결과를 처리하는 경로가 없습니다',
+  'semantic.outcome.handler_ambiguous': '행동 결과 처리 경로가 여러 개입니다',
+  'semantic.recovery.target_invalid': '복구 대상을 확인할 수 없습니다',
+  'semantic.recovery.release_execution_unknown': '해제 실행을 확정할 수 없습니다',
 }
 
 const STATIC_MESSAGES: Readonly<Record<string, string>> = {
@@ -166,6 +171,8 @@ function syntaxKind(kind: string): string {
 }
 
 const MESSAGE_RENDERERS: Readonly<Record<string, Renderer>> = {
+  'semantic.layout.required_input_without_slot': (arguments_) =>
+    `화면 ${argument(arguments_, 'screen_id')}이(가) 입력한다고 선언한 필수 필드 ${argument(arguments_, 'field_id')}을(를) 채울 자리가 어떤 화면에도 없습니다.`,
   'semantic.workflow.required_data_unavailable': (arguments_) =>
     `업무 ${argument(arguments_, 'workflow_id')}의 완료 화면 ${argument(arguments_, 'completion_screen_id')}에 도착하는 경로 중 ${argument(arguments_, 'field_id')} 데이터가 확보되지 않는 경로가 있습니다: ${argument(arguments_, 'missing_path')}`,
   'semantic.workflow.completion_unreachable': (arguments_) =>
@@ -179,6 +186,21 @@ const MESSAGE_RENDERERS: Readonly<Record<string, Renderer>> = {
     const label = reason === 'reachable_delete' ? '도달 가능한 삭제 동작' : reason === 'conditional_action_production' ? '조건부 행동 생산' : reason
     return `업무 ${argument(arguments_, 'workflow_id')}의 데이터 가용성은 현재 분석 범위에서 확정할 수 없습니다: ${label}`
   },
+  'semantic.outcome.duplicate_lookup_result': (arguments_) => `조회 결과 ${argument(arguments_, 'result_id')}이(가) 중복 선언되었습니다.`,
+  'semantic.outcome.lookup_input_mismatch': (arguments_) => `조회 결과 ${argument(arguments_, 'result_id')}의 행동 입력과 모델이 일치하지 않습니다.`,
+  'semantic.outcome.duplicate_id': (arguments_) => `행동 ${argument(arguments_, 'action_id')}의 결과 ${argument(arguments_, 'outcome_id')}이(가) 중복 선언되었습니다.`,
+  'semantic.outcome.lookup_source_mismatch': (arguments_) => `행동 ${argument(arguments_, 'action_id')}의 조회 결과 ${argument(arguments_, 'result_id')}은(는) 필드 ${argument(arguments_, 'field_id')}의 성공 데이터 근거가 아닙니다.`,
+  'semantic.outcome.derivation_source_mismatch': (arguments_) => `필드 ${argument(arguments_, 'field_id')}을(를) 만드는 계산 선언이 정확히 하나가 아닙니다.`,
+  'semantic.outcome.producer_source_mismatch': (arguments_) => `생산자 ${argument(arguments_, 'producer_id')}은(는) 이 행동과 필드의 데이터 근거가 아닙니다.`,
+  'semantic.outcome.non_success_provides_data': (arguments_) => `성공이 아닌 결과 ${argument(arguments_, 'outcome_id')}은(는) 제공 데이터를 선언할 수 없습니다.`,
+  'semantic.outcome.producer_coverage_unknown': (arguments_) => `조건부 생산자 ${argument(arguments_, 'producer_id')}이(가) 결과 ${argument(arguments_, 'outcome_id')}에서 항상 실행되는지 확정할 수 없습니다.`,
+  'semantic.outcome.optional_data_unknown': (arguments_) => `선택 필드 ${argument(arguments_, 'field_id')}의 값이 결과 ${argument(arguments_, 'outcome_id')}에서 항상 존재하는지 확정할 수 없습니다.`,
+  'semantic.outcome.path_mismatch': (arguments_) => `화면 흐름의 결과 ${argument(arguments_, 'outcome_id')}이(가) 출발 버튼 행동의 결과가 아닙니다.`,
+  'semantic.outcome.handler_missing': (arguments_) => `${argument(arguments_, 'screen_id')}.${argument(arguments_, 'element_id')} 버튼의 결과 ${argument(arguments_, 'outcome_id')}을(를) 처리하는 경로가 없습니다.`,
+  'semantic.outcome.handler_ambiguous': (arguments_) => `${argument(arguments_, 'screen_id')}.${argument(arguments_, 'element_id')} 버튼의 결과 ${argument(arguments_, 'outcome_id')} 처리 경로가 여러 개라 하나로 확정할 수 없습니다.`,
+  'semantic.outcome.legacy_path_unverified': (arguments_) => `${argument(arguments_, 'screen_id')}.${argument(arguments_, 'element_id')}의 기존 흐름은 행동 결과가 연결되지 않아 결과 처리를 검증하지 않았습니다.`,
+  'semantic.recovery.target_invalid': (arguments_) => `결과 ${argument(arguments_, 'outcome_id')}의 복구 대상이 정확한 화면 버튼 또는 경로와 연결되지 않습니다.`,
+  'semantic.recovery.release_execution_unknown': (arguments_) => `결과 ${argument(arguments_, 'outcome_id')}의 release 행동은 제공되지만 실제 실행과 멱등성은 확정할 수 없습니다.`,
   'ko.lex.unclosed_stable_id': (arguments_) =>
     `${argument(arguments_, 'closing')}로 닫히지 않은 stable ID입니다.`,
   'ko.syntax.domain_annotation_forbidden': (arguments_) =>
