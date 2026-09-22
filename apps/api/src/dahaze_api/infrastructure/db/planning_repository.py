@@ -25,6 +25,7 @@ from dahaze_api.infrastructure.db.models import (
 def _state(row: PlanningStateRow) -> dict[str, Any]:
     return {
         "revision": row.revision,
+        "metadata_revision": row.metadata_revision,
         "messages": row.messages,
         "decisions": row.decisions,
         "proposals": row.proposals,
@@ -84,6 +85,7 @@ class SqlPlanningRepository:
             .values(
                 project_id=project_id,
                 revision=0,
+                metadata_revision=0,
                 messages=[],
                 decisions=[],
                 proposals=[],
@@ -103,6 +105,7 @@ class SqlPlanningRepository:
         self,
         project_id: UUID,
         *,
+        actor_id: UUID,
         expected_revision: int,
         messages: Sequence[Mapping[str, Any]],
         decisions: Sequence[Mapping[str, Any]],
@@ -120,6 +123,9 @@ class SqlPlanningRepository:
         ).scalar_one()
         if row.revision != expected_revision:
             return None
+        metadata_changed = dict(row.metadata_) != dict(metadata)
+        if metadata_changed:
+            await self._ensure_metadata_baseline(row, actor_id=actor_id)
         row.revision += 1
         row.messages, row.decisions, row.proposals = (
             list(messages),
@@ -127,6 +133,13 @@ class SqlPlanningRepository:
             list(proposals),
         )
         row.metadata_ = dict(metadata)
+        if metadata_changed:
+            row.metadata_revision += 1
+            self._add_metadata_revision(
+                row,
+                actor_id=actor_id,
+                summary="기획 상태 전체 갱신",
+            )
         await self._session.flush()
         await self._session.refresh(row)
         return _state(row)
@@ -247,48 +260,42 @@ class SqlPlanningRepository:
         row = await self._lock_state(project_id)
         if row.revision != expected_revision:
             return None
-        baseline = (
-            await self._session.execute(
-                select(PlanningMetadataRevisionRow).where(
-                    PlanningMetadataRevisionRow.project_id == project_id,
-                    PlanningMetadataRevisionRow.revision == row.revision,
-                )
-            )
-        ).scalar_one_or_none()
-        if baseline is None:
-            self._session.add(
-                PlanningMetadataRevisionRow(
-                    id=uuid4(),
-                    project_id=project_id,
-                    revision=row.revision,
-                    metadata_=dict(row.metadata_),
-                    author_id=actor_id,
-                    summary="메타데이터 변경 전 기준",
-                )
-            )
         metadata = dict(row.metadata_)
         metadata.update(dict(patch))
+        if metadata == dict(row.metadata_):
+            return {
+                "revision": row.revision,
+                "metadata_revision": row.metadata_revision,
+                "metadata": metadata,
+            }
+        await self._ensure_metadata_baseline(row, actor_id=actor_id)
         row.revision += 1
         row.metadata_ = metadata
-        history = PlanningMetadataRevisionRow(
-            id=uuid4(),
-            project_id=project_id,
-            revision=row.revision,
-            metadata_=metadata,
-            author_id=actor_id,
-            summary=summary,
-        )
-        self._session.add(history)
+        row.metadata_revision += 1
+        self._add_metadata_revision(row, actor_id=actor_id, summary=summary)
         await self._session.flush()
-        return {"revision": row.revision, "metadata": metadata}
+        return {
+            "revision": row.revision,
+            "metadata_revision": row.metadata_revision,
+            "metadata": metadata,
+        }
 
-    async def list_metadata_revisions(self, project_id: UUID) -> list[Mapping[str, Any]]:
+    async def list_metadata_revisions(
+        self,
+        project_id: UUID,
+        *,
+        limit: int,
+        before_revision: int | None,
+    ) -> list[Mapping[str, Any]]:
+        query = select(PlanningMetadataRevisionRow).where(
+            PlanningMetadataRevisionRow.project_id == project_id
+        )
+        if before_revision is not None:
+            query = query.where(PlanningMetadataRevisionRow.revision < before_revision)
         rows = (
             (
                 await self._session.execute(
-                    select(PlanningMetadataRevisionRow)
-                    .where(PlanningMetadataRevisionRow.project_id == project_id)
-                    .order_by(PlanningMetadataRevisionRow.revision.desc())
+                    query.order_by(PlanningMetadataRevisionRow.revision.desc()).limit(limit)
                 )
             )
             .scalars()
@@ -321,20 +328,68 @@ class SqlPlanningRepository:
         ).scalar_one_or_none()
         if target is None:
             return None
+        if dict(target.metadata_) == dict(row.metadata_):
+            return {
+                "revision": row.revision,
+                "metadata_revision": row.metadata_revision,
+                "metadata": dict(row.metadata_),
+            }
+        await self._ensure_metadata_baseline(row, actor_id=actor_id)
         row.revision += 1
         row.metadata_ = dict(target.metadata_)
+        row.metadata_revision += 1
+        self._add_metadata_revision(
+            row,
+            actor_id=actor_id,
+            summary=f"메타데이터 리비전 {target_revision} 복원",
+        )
+        await self._session.flush()
+        return {
+            "revision": row.revision,
+            "metadata_revision": row.metadata_revision,
+            "metadata": row.metadata_,
+        }
+
+    async def _ensure_metadata_baseline(
+        self, row: PlanningStateRow, *, actor_id: UUID
+    ) -> None:
+        baseline = (
+            await self._session.execute(
+                select(PlanningMetadataRevisionRow).where(
+                    PlanningMetadataRevisionRow.project_id == row.project_id,
+                    PlanningMetadataRevisionRow.revision == row.revision,
+                )
+            )
+        ).scalar_one_or_none()
+        if baseline is None:
+            self._session.add(
+                PlanningMetadataRevisionRow(
+                    id=uuid4(),
+                    project_id=row.project_id,
+                    revision=row.revision,
+                    metadata_=dict(row.metadata_),
+                    author_id=actor_id,
+                    summary="메타데이터 변경 전 기준",
+                )
+            )
+
+    def _add_metadata_revision(
+        self,
+        row: PlanningStateRow,
+        *,
+        actor_id: UUID,
+        summary: str | None,
+    ) -> None:
         self._session.add(
             PlanningMetadataRevisionRow(
                 id=uuid4(),
-                project_id=project_id,
+                project_id=row.project_id,
                 revision=row.revision,
-                metadata_=row.metadata_,
+                metadata_=dict(row.metadata_),
                 author_id=actor_id,
-                summary=f"메타데이터 리비전 {target_revision} 복원",
+                summary=summary,
             )
         )
-        await self._session.flush()
-        return {"revision": row.revision, "metadata": row.metadata_}
 
     async def create_draft(
         self,
@@ -660,12 +715,23 @@ class SqlPlanningRepository:
             actor_id,
             f"프로젝트 버전 {revision} 복원",
         )
-        state.revision += 1
         target_state = cast(dict[str, Any], target.planning_state)
+        target_metadata = cast(dict[str, object], target_state.get("metadata", {}))
+        metadata_changed = dict(state.metadata_) != target_metadata
+        if metadata_changed:
+            await self._ensure_metadata_baseline(state, actor_id=actor_id)
+        state.revision += 1
         state.messages = cast(list[object], target_state.get("messages", []))
         state.decisions = cast(list[object], target_state.get("decisions", []))
         state.proposals = cast(list[object], target_state.get("proposals", []))
-        state.metadata_ = cast(dict[str, object], target_state.get("metadata", {}))
+        state.metadata_ = target_metadata
+        if metadata_changed:
+            state.metadata_revision += 1
+            self._add_metadata_revision(
+                state,
+                actor_id=actor_id,
+                summary=f"프로젝트 버전 {revision}의 메타데이터 복원",
+            )
         project.revision += 1
         project.source_hash = target.source_hash
         project.snapshot_version += 1

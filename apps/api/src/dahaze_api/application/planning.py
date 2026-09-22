@@ -102,6 +102,7 @@ class PlanningService:
             raise AccessDenied("이 프로젝트에 쓰기 권한이 없다")
         updated = await self._store.update_state(
             project_id,
+            actor_id=actor_id,
             expected_revision=expected_revision,
             messages=messages,
             decisions=decisions,
@@ -212,10 +213,17 @@ class PlanningService:
         return updated
 
     async def metadata_history(
-        self, *, actor_id: UUID, project_id: UUID
+        self,
+        *,
+        actor_id: UUID,
+        project_id: UUID,
+        limit: int,
+        before_revision: int | None,
     ) -> list[Mapping[str, Any]]:
         await self._workspace.get_project(actor_id=actor_id, project_id=project_id)
-        return await self._store.list_metadata_revisions(project_id)
+        return await self._store.list_metadata_revisions(
+            project_id, limit=limit, before_revision=before_revision
+        )
 
     async def undo_metadata(
         self, *, actor_id: UUID, project_id: UUID, expected_revision: int, target_revision: int

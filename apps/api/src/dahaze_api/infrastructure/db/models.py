@@ -244,6 +244,9 @@ class PlanningStateRow(TimestampMixin, Base):
         Uuid, ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
     )
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    metadata_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     messages: Mapped[list[object]] = mapped_column(JsonB, nullable=False, default=list)
     decisions: Mapped[list[object]] = mapped_column(JsonB, nullable=False, default=list)
     proposals: Mapped[list[object]] = mapped_column(JsonB, nullable=False, default=list)

@@ -282,6 +282,9 @@ class PlanningMetadata(BaseModel):
 
 class PlanningStateResponse(BaseModel):
     revision: int = Field(description="대화·결정·메타데이터의 독립 optimistic revision")
+    metadata_revision: int = Field(
+        description="메시지·결정 변경과 독립적으로 증가하는 메타데이터 hydration token"
+    )
     project_revision: int = Field(description="확정 RSPDL 원문 변경 묶음 버전")
     source_hash: str = Field(description="현재 확정 원문의 canonical workspace hash")
     messages: list[dict[str, Any]]
@@ -643,10 +646,13 @@ class PatchPlanningMetadataRequest(BaseModel):
 
 class PlanningMetadataMutationResponse(BaseModel):
     revision: int
+    metadata_revision: int = Field(description="갱신된 메타데이터 hydration token")
     metadata: PlanningMetadata
 
 
-class PlanningMetadataRevisionResponse(PlanningMetadataMutationResponse):
+class PlanningMetadataRevisionResponse(BaseModel):
+    revision: int = Field(description="이 메타데이터 전문을 저장한 당시 기획 상태 revision")
+    metadata: PlanningMetadata
     author_id: UUID | None
     summary: str | None
     created_at: datetime

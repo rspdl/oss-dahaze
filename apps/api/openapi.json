@@ -2024,6 +2024,11 @@
           "metadata": {
             "$ref": "#/components/schemas/PlanningMetadata"
           },
+          "metadata_revision": {
+            "description": "갱신된 메타데이터 hydration token",
+            "title": "Metadata Revision",
+            "type": "integer"
+          },
           "revision": {
             "title": "Revision",
             "type": "integer"
@@ -2031,6 +2036,7 @@
         },
         "required": [
           "revision",
+          "metadata_revision",
           "metadata"
         ],
         "title": "PlanningMetadataMutationResponse",
@@ -2059,6 +2065,7 @@
             "$ref": "#/components/schemas/PlanningMetadata"
           },
           "revision": {
+            "description": "이 메타데이터 전문을 저장한 당시 기획 상태 revision",
             "title": "Revision",
             "type": "integer"
           },
@@ -2105,6 +2112,11 @@
           "metadata": {
             "$ref": "#/components/schemas/PlanningMetadata"
           },
+          "metadata_revision": {
+            "description": "메시지·결정 변경과 독립적으로 증가하는 메타데이터 hydration token",
+            "title": "Metadata Revision",
+            "type": "integer"
+          },
           "project_revision": {
             "description": "확정 RSPDL 원문 변경 묶음 버전",
             "title": "Project Revision",
@@ -2131,6 +2143,7 @@
         },
         "required": [
           "revision",
+          "metadata_revision",
           "project_revision",
           "source_hash",
           "messages",
@@ -5353,6 +5366,35 @@
               "format": "uuid",
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_revision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Revision"
             }
           },
           {

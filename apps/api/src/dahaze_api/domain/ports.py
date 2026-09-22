@@ -271,6 +271,7 @@ class PlanningRepositoryPort(Protocol):
         self,
         project_id: UUID,
         *,
+        actor_id: UUID,
         expected_revision: int,
         messages: Sequence[Mapping[str, Any]],
         decisions: Sequence[Mapping[str, Any]],
@@ -312,7 +313,13 @@ class PlanningRepositoryPort(Protocol):
         patch: Mapping[str, Any],
         summary: str | None,
     ) -> Mapping[str, Any] | None: ...
-    async def list_metadata_revisions(self, project_id: UUID) -> list[Mapping[str, Any]]: ...
+    async def list_metadata_revisions(
+        self,
+        project_id: UUID,
+        *,
+        limit: int,
+        before_revision: int | None,
+    ) -> list[Mapping[str, Any]]: ...
     async def undo_metadata(
         self,
         project_id: UUID,

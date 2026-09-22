@@ -310,6 +310,101 @@ async def test_whole_state_update_rejects_privileged_message_role(
     assert response.status_code == 409
 
 
+async def test_message_only_update_does_not_reset_metadata_hydration_token(
+    client: httpx.AsyncClient,
+) -> None:
+    project = await _project(client, "metadata-token")
+    metadata = (
+        await client.patch(
+            f"/api/projects/{project['id']}/planning/metadata",
+            json={"expected_revision": 0, "design": {"screen": {"x": 10}}},
+        )
+    ).json()
+
+    message = await client.post(
+        f"/api/projects/{project['id']}/planning/messages",
+        json={
+            "expected_revision": metadata["revision"],
+            "role": "user",
+            "content": "화면을 검토해 줘",
+        },
+    )
+    assert message.status_code == 201
+    state = (await client.get(f"/api/projects/{project['id']}/planning")).json()
+    assert state["revision"] == message.json()["revision"]
+    assert state["metadata_revision"] == metadata["metadata_revision"]
+
+
+async def test_metadata_history_is_bounded_and_cursorable(client: httpx.AsyncClient) -> None:
+    project = await _project(client, "bounded-metadata-history")
+    revision = 0
+    for x in range(4):
+        response = await client.patch(
+            f"/api/projects/{project['id']}/planning/metadata",
+            json={"expected_revision": revision, "design": {"screen": {"x": x}}},
+        )
+        assert response.status_code == 200, response.text
+        revision = response.json()["revision"]
+
+    first = (
+        await client.get(
+            f"/api/projects/{project['id']}/planning/metadata/history",
+            params={"limit": 2},
+        )
+    ).json()
+    assert len(first) == 2
+    assert first[0]["revision"] > first[1]["revision"]
+    second = (
+        await client.get(
+            f"/api/projects/{project['id']}/planning/metadata/history",
+            params={"limit": 2, "before_revision": first[-1]["revision"]},
+        )
+    ).json()
+    assert len(second) <= 2
+    assert all(item["revision"] < first[-1]["revision"] for item in second)
+
+
+async def test_metadata_noop_patch_and_undo_preserve_revision_and_history(
+    client: httpx.AsyncClient,
+) -> None:
+    project = await _project(client, "metadata-noop")
+    changed = (
+        await client.patch(
+            f"/api/projects/{project['id']}/planning/metadata",
+            json={"expected_revision": 0, "design": {"screen": {"x": 10}}},
+        )
+    ).json()
+    history_before = (
+        await client.get(f"/api/projects/{project['id']}/planning/metadata/history")
+    ).json()
+
+    patched = await client.patch(
+        f"/api/projects/{project['id']}/planning/metadata",
+        json={
+            "expected_revision": changed["revision"],
+            "design": {"screen": {"x": 10}},
+        },
+    )
+    undone = await client.post(
+        f"/api/projects/{project['id']}/planning/metadata/undo",
+        json={
+            "expected_revision": changed["revision"],
+            "target_revision": changed["revision"],
+        },
+    )
+    history_after = (
+        await client.get(f"/api/projects/{project['id']}/planning/metadata/history")
+    ).json()
+
+    assert patched.status_code == 200, patched.text
+    assert undone.status_code == 200, undone.text
+    assert patched.json()["revision"] == changed["revision"]
+    assert undone.json()["revision"] == changed["revision"]
+    assert patched.json()["metadata_revision"] == changed["metadata_revision"]
+    assert undone.json()["metadata_revision"] == changed["metadata_revision"]
+    assert history_after == history_before
+
+
 async def test_decision_resolution_preserves_id_and_rejects_stale_or_unknown(
     client: httpx.AsyncClient,
 ) -> None:
@@ -389,6 +484,7 @@ async def test_restore_roundtrip_preserves_snapshot_and_restores_design_and_docu
             },
         )
     ).json()
+    assert state["metadata_revision"] == 1
     captured = (
         await client.post(
             f"/api/projects/{project['id']}/planning/snapshots",
@@ -415,6 +511,7 @@ async def test_restore_roundtrip_preserves_snapshot_and_restores_design_and_docu
             },
         )
     ).json()
+    assert changed_state["metadata_revision"] == 2
     restored = await client.post(
         f"/api/projects/{project['id']}/planning/snapshots/1/restore",
         json={
@@ -431,6 +528,12 @@ async def test_restore_roundtrip_preserves_snapshot_and_restores_design_and_docu
     assert restored_doc["target_rspdl_version"] == document["target_rspdl_version"]
     restored_state = (await client.get(f"/api/projects/{project['id']}/planning")).json()
     assert restored_state["metadata"]["design"]["a"]["x"] == 10
+    assert restored_state["metadata_revision"] == 3
+    history = (
+        await client.get(f"/api/projects/{project['id']}/planning/metadata/history")
+    ).json()
+    assert history[0]["revision"] == restored_state["revision"]
+    assert history[0]["metadata"]["design"]["a"]["x"] == 10
     original = (await client.get(f"/api/projects/{project['id']}/planning/snapshots/1")).json()
     assert original["documents"][0]["id"] == document["id"]
 

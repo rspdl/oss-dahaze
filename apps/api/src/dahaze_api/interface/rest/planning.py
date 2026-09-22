@@ -177,12 +177,21 @@ async def patch_planning_metadata(
     "/projects/{project_id}/planning/metadata/history", name="list_planning_metadata_history"
 )
 async def list_planning_metadata_history(
-    project_id: UUID, user: CurrentUser, planning: Planning
+    project_id: UUID,
+    user: CurrentUser,
+    planning: Planning,
+    limit: int = Query(default=20, ge=1, le=100),
+    before_revision: int | None = Query(default=None, ge=1),
 ) -> list[PlanningMetadataRevisionResponse]:
     try:
         return [
             PlanningMetadataRevisionResponse.model_validate(item)
-            for item in await planning.metadata_history(actor_id=user.id, project_id=project_id)
+            for item in await planning.metadata_history(
+                actor_id=user.id,
+                project_id=project_id,
+                limit=limit,
+                before_revision=before_revision,
+            )
         ]
     except (NotFound, AccessDenied, Conflict) as exc:
         _raise(exc)
