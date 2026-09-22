@@ -75,11 +75,13 @@ screen_paths              [{ source_screen_id, source_element_id,
 | `input` | `field_id` | 라벨 + 타입에 맞는 입력칸 |
 | `list` | `model_id`, `field_ids[]` | 표 또는 카드 목록 |
 | `button` | `id`, `name`, `action_id?` | 버튼 |
-| `placeholder` | `name` | 회색 박스 + 이름표 |
+| `placeholder` | `text` | 회색 박스 + 이름표 |
 
 `input`과 `list`는 id만 들고 있으므로 **같은 응답의 `module.models`와 조인**해 필드 이름과
 `value_type`을 가져온다. 타입이 입력칸 모양을 정한다 — 정수는 숫자칸, enum은 선택칸, 날짜는
 날짜칸. 이 매핑도 결정적이며 IR이 준 사실만 쓴다.
+
+`placeholder`는 `text` 를 들고 `button` 은 `name` 을 든다. 둘을 헷갈리면 이름표가 비어 보인다.
 
 `placeholder`가 안전판이다. 지도·차트처럼 선언할 수 없는 자리는 회색 박스와 이름표로 남는다.
 채우는 것은 디자인의 일이다.
