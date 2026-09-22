@@ -1,0 +1,20 @@
+{
+  "document": "airline-planning.rspdl",
+  "project_document_path": "airline-planning.rspdl",
+  "expected_counts": {
+    "models": 6,
+    "roles": 4,
+    "actions": 15,
+    "screens": 15,
+    "screen_layouts": 15,
+    "screen_elements": 123,
+    "screen_elements_without_id": 0,
+    "categories": 9,
+    "screen_category_assignments": 15,
+    "screen_permissions": 17,
+    "screen_paths": 43,
+    "action_outcomes": 32,
+    "lookup_results": 2,
+    "workflows": 1
+  }
+}

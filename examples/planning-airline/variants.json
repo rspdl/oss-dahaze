@@ -1,0 +1,78 @@
+[
+  {
+    "id": "bypass-required-contact",
+    "description": "모바일 승객 정보에서 연락처 단계를 건너뛰되 승객 이름은 획득한 경로를 추가한다.",
+    "replacements": [
+      {
+        "before": "            - 버튼: { id: continue, 이름: \"연락처 입력\", 행동: 모바일 승객 저장 }\n            - 버튼: { id: cancel, 이름: \"예약 중단\", 행동: 모바일 예약 중단 }",
+        "after": "            - 버튼: { id: continue, 이름: \"연락처 입력\", 행동: 모바일 승객 저장 }\n            - 버튼: { id: skip_contact, 이름: \"연락처 건너뛰기\" }\n            - 버튼: { id: cancel, 이름: \"예약 중단\", 행동: 모바일 예약 중단 }"
+      },
+      {
+        "before": "  - 출발: 모바일 승객 정보 화면.continue\n    결과: invalid\n    처리: { 종류: 메시지, id: invalid_passenger, 내용: \"승객 이름과 생년월일을 확인하세요.\" }",
+        "after": "  - 출발: 모바일 승객 정보 화면.continue\n    결과: invalid\n    처리: { 종류: 메시지, id: invalid_passenger, 내용: \"승객 이름과 생년월일을 확인하세요.\" }\n  - 출발: 모바일 승객 정보 화면.skip_contact\n    도착: 모바일 결제 화면"
+      },
+      {
+        "before": "      - 출발: 모바일 승객 정보 화면.continue\n        데이터:\n          - 모델: 승객\n            필드: 승객 이름",
+        "after": "      - 출발: 모바일 승객 정보 화면.continue\n        데이터:\n          - 모델: 승객\n            필드: 승객 이름\n      - 출발: 모바일 승객 정보 화면.skip_contact\n        데이터:\n          - 모델: 승객\n            필드: 승객 이름"
+      }
+    ],
+    "expected_diagnostics": [
+      {
+        "rule_id": "RSPDL-WORKFLOW-001",
+        "severity": "error",
+        "message_key": "semantic.workflow.required_data_unavailable"
+      }
+    ]
+  },
+  {
+    "id": "denied-backoffice-permission",
+    "description": "결제 담당자의 결제 재시도 허용 정책만 거부로 바꾼다.",
+    "replacements": [
+      {
+        "before": "결제 담당자는 결제의 결제 금액을 결제 재시도할 수 있다.",
+        "after": "결제 담당자는 결제의 결제 금액을 결제 재시도할 수 없다."
+      }
+    ],
+    "expected_diagnostics": [
+      {
+        "rule_id": "RSPDL-SCREEN-POLICY-001",
+        "severity": "error",
+        "message_key": "semantic.screen_permission.denied"
+      }
+    ]
+  },
+  {
+    "id": "missing-payment-failure-handler",
+    "description": "PC 결제 거절 결과의 originating button handler 하나만 제거한다.",
+    "replacements": [
+      {
+        "before": "  - 출발: PC 통합 예약 화면.pay\n    결과: declined\n    처리: { 종류: 메시지, id: desktop_payment_declined, 내용: \"결제가 거절되었습니다. 다른 수단으로 다시 시도하세요.\" }\n",
+        "after": ""
+      }
+    ],
+    "expected_diagnostics": [
+      {
+        "rule_id": "RSPDL-OUTCOME-010",
+        "severity": "error",
+        "message_key": "semantic.outcome.handler_missing"
+      }
+    ]
+  },
+  {
+    "id": "unreachable-wrong-retry",
+    "description": "운영 결제 거절의 retry 의무를 고객 검색 버튼과 잘못 연결한다.",
+    "replacements": [
+      {
+        "before": "  결제 재시도:\n    - id: paid\n      유형: 성공\n    - id: declined\n      유형: 실패\n      복구: { 종류: retry, 화면: 운영 결제 복구 화면, 요소: retry, 행동: 결제 재시도 }",
+        "after": "  결제 재시도:\n    - id: paid\n      유형: 성공\n    - id: declined\n      유형: 실패\n      복구: { 종류: retry, 화면: 항공편 검색 화면, 요소: search, 행동: 항공편 검색 }"
+      }
+    ],
+    "expected_diagnostics": [
+      {
+        "rule_id": "RSPDL-RECOVERY-001",
+        "severity": "error",
+        "message_key": "semantic.recovery.target_invalid"
+      }
+    ]
+  }
+]
