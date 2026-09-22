@@ -3,7 +3,9 @@
 import { useMemo, useState } from 'react'
 import {
   useApplyPlanningDraft,
-  useAppendPlanningDecision,
+  useCompileProject,
+  useCaptureProjectSnapshot,
+  useResolvePlanningDecision,
   useAppendPlanningMessage,
   useGetPlanningDraft,
   useGetPlanningState,
@@ -18,11 +20,12 @@ import {
   type PlanningDraftSummaryResponse,
   type PlanningStateResponse,
   type PlanningMetadataRevisionResponse,
+  type ProjectCompileResponse,
   type ProjectSnapshotResponse,
   type ProjectSnapshotSummaryResponse,
 } from '@dahaze/api-client'
 import { useQueryClient } from '@tanstack/react-query'
-import { ErrorState, Skeleton, toast } from '@dahaze/ui'
+import { Button, ErrorState, Skeleton, toast } from '@dahaze/ui'
 
 import { RequireSession } from '@/features/auth/require-session'
 import { errorMessage } from '@/shared/api/errors'
@@ -33,6 +36,8 @@ import type { PlanningDraft, PlanningItem, PlanningWorkspaceModel } from './plan
 import { PlanningWorkspace } from './planning-workspace'
 import { HandoffInspector } from './handoff-inspector'
 import { MetadataEditor } from './metadata-editor'
+import { collectPolicies } from '@/shared/rspdl/policies'
+import { collectBoard } from '@/features/boards/board-ir'
 
 export function PlanningWorkspaceScreen({ projectId }: { projectId: string }) {
   return <AppShell fullBleed lockToViewport breadcrumb={<Crumb>기획 워크스페이스</Crumb>}><RequireSession><PlanningLoader projectId={projectId} /></RequireSession></AppShell>
@@ -40,6 +45,7 @@ export function PlanningWorkspaceScreen({ projectId }: { projectId: string }) {
 
 function PlanningLoader({ projectId }: { projectId: string }) {
   const state = useGetPlanningState<PlanningStateResponse>(projectId)
+  const compilation = useCompileProject<ProjectCompileResponse>(projectId)
   const drafts = useListPlanningDrafts<PlanningDraftSummaryResponse[]>(projectId, { limit: 50, offset: 0 })
   const snapshots = useListProjectSnapshots<ProjectSnapshotSummaryResponse[]>(projectId, { limit: 50, offset: 0 })
   const metadataHistory = useListPlanningMetadataHistory<PlanningMetadataRevisionResponse[]>(projectId)
@@ -48,13 +54,15 @@ function PlanningLoader({ projectId }: { projectId: string }) {
   const selectedDraft = useGetPlanningDraft<PlanningDraftResponse>(activeDraftId ?? '', { query: { enabled: activeDraftId !== null } })
   const [selectedSnapshotVersion, setSelectedSnapshotVersion] = useState<number | null>(null)
   const [compareSnapshotVersion, setCompareSnapshotVersion] = useState<number | null>(null)
+  const [snapshotSummary, setSnapshotSummary] = useState('')
   const selectedSnapshot = useGetProjectSnapshot<ProjectSnapshotResponse>(projectId, selectedSnapshotVersion ?? 0, { query: { enabled: selectedSnapshotVersion !== null } })
   const compareSnapshot = useGetProjectSnapshot<ProjectSnapshotResponse>(projectId, compareSnapshotVersion ?? 0, { query: { enabled: compareSnapshotVersion !== null } })
   const queryClient = useQueryClient()
   const apply = useApplyPlanningDraft()
+  const captureSnapshot = useCaptureProjectSnapshot()
   const restore = useRestoreProjectSnapshot()
   const appendMessage = useAppendPlanningMessage()
-  const appendDecision = useAppendPlanningDecision()
+  const resolveDecision = useResolvePlanningDecision()
   const patchMetadata = usePatchPlanningMetadata()
   const undoMetadata = useUndoPlanningMetadata()
 
@@ -65,8 +73,9 @@ function PlanningLoader({ projectId }: { projectId: string }) {
   const refresh = () => queryClient.invalidateQueries()
   const metadataBusy = patchMetadata.isPending || undoMetadata.isPending
   const metadataRevision = Math.max(0, ...(metadataHistory.data ?? []).map((entry) => entry.revision))
-  const metadataEditor = <MetadataEditor key={metadataRevision} metadata={state.data.metadata} revision={model.revision} history={metadataHistory.data ?? []} busy={metadataBusy} onSave={async (metadata, summary) => { try { await patchMetadata.mutateAsync({ projectId, data: { expected_revision: model.revision, environments: metadata.environments, sample_data: metadata.sample_data, summary } }); await refresh(); toast.success('환경과 샘플 데이터를 저장했습니다'); return true } catch (error) { toast.error('메타데이터를 저장하지 못했습니다', { description: errorMessage(error) }); return false } }} onUndo={(targetRevision) => undoMetadata.mutate({ projectId, data: { expected_revision: model.revision, target_revision: targetRevision } }, { onSuccess: async () => { await refresh(); toast.success('메타데이터 전체를 선택한 리비전으로 되돌렸습니다') }, onError: (error) => toast.error('되돌리지 못했습니다', { description: errorMessage(error) }) })} />
-  return <PlanningWorkspace model={model} busy={apply.isPending || restore.isPending || appendMessage.isPending || appendDecision.isPending || metadataBusy} onSendMessage={async (content) => { try { await appendMessage.mutateAsync({ projectId, data: { role: 'user', content, expected_revision: model.revision } }); await refresh(); toast.success('답변을 저장했습니다', { description: 'AI 응답은 아직 생성하지 않습니다.' }); return true } catch (error) { toast.error('답변을 저장하지 못했습니다', { description: errorMessage(error) }); return false } }} onResolveDecision={async (id, action, reason) => { const item = model.unresolvedDecisions.find((decision) => decision.id === id); if (!item) return false; try { await appendDecision.mutateAsync({ projectId, data: { title: item.title, status: action === 'adopt' ? 'decided' : 'deferred', rationale: reason || null, expected_revision: model.revision } }); await refresh(); return true } catch (error) { toast.error('결정을 저장하지 못했습니다', { description: errorMessage(error) }); return false } }} onSelectDraft={setSelectedDraftId} onApplyDraft={(draftId) => apply.mutate({ draftId, data: { expected_project_revision: model.projectRevision, expected_source_hash: model.sourceHash } }, { onSuccess: async (result) => { await refresh(); toast[result.applied ? 'success' : 'error'](result.applied ? '변경안을 적용했습니다' : '변경안이 적용되지 않았습니다') }, onError: (error) => toast.error('변경안을 적용하지 못했습니다', { description: errorMessage(error) }) })} onInspectSnapshot={(version) => { setSelectedSnapshotVersion(version); if (compareSnapshotVersion === version) setCompareSnapshotVersion(null) }} onRestoreSnapshot={(snapshotVersion) => restore.mutate({ projectId, revision: snapshotVersion, data: { expected_planning_revision: model.revision, expected_project_revision: model.projectRevision, expected_source_hash: model.sourceHash } }, { onSuccess: async () => { await refresh(); toast.success('선택한 버전을 새 프로젝트 버전으로 복원했습니다') }, onError: (error) => toast.error('버전을 복원하지 못했습니다', { description: errorMessage(error) }) })} handoff={<>{metadataEditor}{selectedSnapshot.data ? <><label className="mx-4 mt-3 block text-xs">비교 버전 <select value={compareSnapshotVersion ?? ''} onChange={(event) => setCompareSnapshotVersion(event.target.value === '' ? null : Number(event.target.value))} className="ml-2 rounded border bg-surface px-2 py-1"><option value="">선택 안 함</option>{model.snapshots.filter((entry) => entry.revision !== selectedSnapshotVersion).map((entry) => <option key={entry.revision} value={entry.revision}>스냅샷 {entry.revision}</option>)}</select></label><HandoffInspector snapshot={selectedSnapshot.data} compare={compareSnapshot.data} /></> : null}</>} />
+  const catalog = toMetadataCatalog(compilation.data)
+  const metadataEditor = <MetadataEditor key={metadataRevision} metadata={state.data.metadata} catalog={catalog} revision={model.revision} history={metadataHistory.data ?? []} busy={metadataBusy} onSave={async (metadata, summary) => { try { await patchMetadata.mutateAsync({ projectId, data: { expected_revision: model.revision, environments: metadata.environments, sample_data: metadata.sample_data, summary } }); await refresh(); toast.success('환경과 샘플 데이터를 저장했습니다'); return true } catch (error) { toast.error('메타데이터를 저장하지 못했습니다', { description: errorMessage(error) }); return false } }} onUndo={(targetRevision) => undoMetadata.mutate({ projectId, data: { expected_revision: model.revision, target_revision: targetRevision } }, { onSuccess: async () => { await refresh(); toast.success('메타데이터 전체를 선택한 리비전으로 되돌렸습니다') }, onError: (error) => toast.error('되돌리지 못했습니다', { description: errorMessage(error) }) })} />
+  return <PlanningWorkspace model={model} busy={apply.isPending || restore.isPending || appendMessage.isPending || resolveDecision.isPending || metadataBusy} onSendMessage={async (content) => { try { await appendMessage.mutateAsync({ projectId, data: { role: 'user', content, expected_revision: model.revision } }); await refresh(); toast.success('답변을 저장했습니다', { description: 'AI 응답은 아직 생성하지 않습니다.' }); return true } catch (error) { toast.error('답변을 저장하지 못했습니다', { description: errorMessage(error) }); return false } }} onResolveDecision={async (id, action, reason) => { const item = model.unresolvedDecisions.find((decision) => decision.id === id); if (!item) return false; try { await resolveDecision.mutateAsync({ projectId, decisionId: id, data: { status: action === 'adopt' ? 'decided' : 'deferred', rationale: reason || null, expected_revision: model.revision } }); await refresh(); return true } catch (error) { toast.error('결정을 저장하지 못했습니다', { description: errorMessage(error) }); return false } }} onSelectDraft={setSelectedDraftId} onApplyDraft={(draftId) => apply.mutate({ draftId, data: { expected_project_revision: model.projectRevision, expected_source_hash: model.sourceHash } }, { onSuccess: async (result) => { await refresh(); toast[result.applied ? 'success' : 'error'](result.applied ? '변경안을 적용했습니다' : '변경안이 적용되지 않았습니다') }, onError: (error) => toast.error('변경안을 적용하지 못했습니다', { description: errorMessage(error) }) })} onInspectSnapshot={(version) => { setSelectedSnapshotVersion(version); if (compareSnapshotVersion === version) setCompareSnapshotVersion(null) }} onRestoreSnapshot={(snapshotVersion) => restore.mutate({ projectId, revision: snapshotVersion, data: { expected_planning_revision: model.revision, expected_project_revision: model.projectRevision, expected_source_hash: model.sourceHash } }, { onSuccess: async () => { await refresh(); toast.success('선택한 버전을 새 프로젝트 버전으로 복원했습니다') }, onError: (error) => toast.error('버전을 복원하지 못했습니다', { description: errorMessage(error) }) })} handoff={<><section className="border-t p-4"><h3 className="text-sm font-semibold">개발 전달본 만들기</h3><div className="mt-2 flex gap-2"><input aria-label="전달본 요약" value={snapshotSummary} onChange={(event) => setSnapshotSummary(event.target.value)} placeholder="이번 전달본의 변경 요약" className="min-w-0 flex-1 rounded border bg-surface px-2 text-xs" /><Button size="sm" disabled={captureSnapshot.isPending} onClick={() => captureSnapshot.mutate({ projectId, data: { expected_planning_revision: model.revision, expected_project_revision: model.projectRevision, expected_source_hash: model.sourceHash, summary: snapshotSummary || null } }, { onSuccess: async (snapshot) => { setSelectedSnapshotVersion(snapshot.snapshot_version); setSnapshotSummary(''); await refresh(); toast.success('현재 상태로 전달본을 만들었습니다') }, onError: (error) => toast.error('전달본을 만들지 못했습니다', { description: errorMessage(error) }) })}>현재 상태로 만들기</Button></div></section>{metadataEditor}{selectedSnapshot.data ? <><label className="mx-4 mt-3 block text-xs">비교 버전 <select value={compareSnapshotVersion ?? ''} onChange={(event) => setCompareSnapshotVersion(event.target.value === '' ? null : Number(event.target.value))} className="ml-2 rounded border bg-surface px-2 py-1"><option value="">선택 안 함</option>{model.snapshots.filter((entry) => entry.revision !== selectedSnapshotVersion).map((entry) => <option key={entry.revision} value={entry.revision}>스냅샷 {entry.revision}</option>)}</select></label><HandoffInspector snapshot={selectedSnapshot.data} compare={compareSnapshot.data} /></> : null}</>} />
 }
 
 function toModel(state: PlanningStateResponse, drafts: PlanningDraftSummaryResponse[], selectedDraft: PlanningDraftResponse | undefined, snapshots: ProjectSnapshotSummaryResponse[], selectedDraftId: string | null): PlanningWorkspaceModel {
@@ -96,3 +105,5 @@ function toItem(raw: Record<string, unknown>, index = 0): PlanningItem { return 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
 function string(value: unknown): string | null { return typeof value === 'string' ? value : null }
 function isDiagnostic(value: unknown): value is RspdlDiagnostic { return isRecord(value) && typeof value.rule_id === 'string' && typeof value.message_key === 'string' && isRecord(value.arguments) }
+
+function toMetadataCatalog(compilation: ProjectCompileResponse | undefined) { const policies = collectPolicies(compilation); const models = new Map<string, { id: string; name: string; fields: { id: string; name: string; typeKind: string }[] }>(); for (const group of policies.fields) { const model = models.get(group.model.id) ?? { ...group.model, fields: [] }; if (!model.fields.some((field) => field.id === group.field.id)) model.fields.push({ id: group.field.id, name: group.field.name, typeKind: group.field.typeKind }); models.set(model.id, model) } const board = collectBoard(compilation); return { models: [...models.values()], screens: board.screens.map((screen) => ({ key: screen.key, name: screen.name })) } }

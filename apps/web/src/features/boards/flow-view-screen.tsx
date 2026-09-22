@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { RequireSession } from '@/features/auth/require-session'
 import { DEFAULT_VIEWPORT_DIMENSIONS, type MockupViewport } from '@/features/mockup/screen-mockup'
+import { parseModelSamples } from '@/features/mockup/sample-data'
 import { designBindingKey, type DesignBinding, type ElementDesign, type PrototypeMode, type SampleVariant, type SemanticProposal } from '@/features/mockup/prototype-contract'
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
 import { screenSourceSpan } from './board-ir'
@@ -54,6 +55,7 @@ function FlowView({ projectId }: { projectId: string }) {
   const [connectionTarget, setConnectionTarget] = useState('')
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const environments = useMemo(() => parseEnvironments(planning.data?.metadata.environments), [planning.data?.metadata.environments])
+  const samples = useMemo(() => parseModelSamples(planning.data?.metadata.sample_data), [planning.data?.metadata.sample_data])
   const [environmentId, setEnvironmentId] = useState<string>('all')
   const environment = environments.find((entry) => entry.id === environmentId)
   const designScope = environmentId === 'all' ? 'all' : environmentId
@@ -85,6 +87,7 @@ function FlowView({ projectId }: { projectId: string }) {
     dimensions,
     mode,
     sampleVariant,
+    samples,
     selectedElementPath: selectedElement?.elementPath ?? null,
     selectedElementScreenKey: selectedElement?.screenKey ?? null,
     designByElementPath: effectiveDesign,
@@ -96,13 +99,13 @@ function FlowView({ projectId }: { projectId: string }) {
     onDesignChange: ({ binding, patch }: { binding: DesignBinding; patch: ElementDesign }) => {
       if (binding.elementPath === undefined) return
       const key = designBindingKey(binding)
-      setDesignHistory((history) => [...history.slice(-19), { elements: designByElementPath, positions }])
+      setDesignHistory((history) => [...history.slice(-19), { elements: effectiveDesign, positions: effectivePositions }])
       setDesignByElementPath((current) => ({ ...current, [key]: { ...current[key], ...patch } }))
       setDesignDirty(true)
     },
     onProposeSemanticEdit: setProposal,
     onAction: ({ outcome }: { outcome: { targetScreenKey: string } }) => setSelectedId(outcome.targetScreenKey),
-  }), [dimensions, mode, sampleVariant, selectedElement, effectiveDesign, selectedSampleIdByModel, experienceValues, designByElementPath, positions])
+  }), [dimensions, mode, sampleVariant, samples, selectedElement, effectiveDesign, selectedSampleIdByModel, experienceValues, effectivePositions])
   const prototypeForNode = useCallback((node: FlowNode) => ({ ...prototype, sourceHash: `${node.screen.path}:${data.documentsByPath.get(node.screen.path)?.updated_at ?? 'unknown'}`, outcomesByElementId: screenOutcomes[node.id] }), [prototype, data.documentsByPath, screenOutcomes])
 
   return (
@@ -201,7 +204,7 @@ function FlowView({ projectId }: { projectId: string }) {
             prototype={prototype}
             prototypeForNode={prototypeForNode}
             editable={mode === 'edit'}
-            onPositionChange={(screenKey, position) => { setDesignHistory((history) => [...history.slice(-19), { elements: designByElementPath, positions }]); setPositions((current) => ({ ...current, [screenKey]: position })); setDesignDirty(true) }}
+            onPositionChange={(screenKey, position) => { setDesignHistory((history) => [...history.slice(-19), { elements: effectiveDesign, positions: effectivePositions }]); setPositions((current) => ({ ...current, [screenKey]: position })); setDesignDirty(true) }}
           />
           {mode === 'edit' && inspectorOpen ? <SelectedSource projectId={projectId} data={data} node={selected} /> : null}
         </div>
