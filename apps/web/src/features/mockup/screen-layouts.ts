@@ -39,16 +39,16 @@ export interface MockupField {
 export type UnrecognizedReason = 'unknown-kind' | 'missing-data'
 
 export type MockupElement =
-  | { kind: 'header'; children: MockupElement[] }
-  | { kind: 'section'; children: MockupElement[] }
-  | { kind: 'heading'; text: string }
-  | { kind: 'form'; inputs: MockupElement[] }
-  | { kind: 'input'; field: MockupField }
-  | { kind: 'list'; modelId: string; modelName: string; fields: MockupField[] }
-  | { kind: 'button'; id: string; name: string; actionId: string | null }
+  | { kind: 'header'; id: string | null; children: MockupElement[] }
+  | { kind: 'section'; id: string | null; children: MockupElement[] }
+  | { kind: 'heading'; id: string | null; text: string }
+  | { kind: 'form'; id: string | null; inputs: MockupElement[] }
+  | { kind: 'input'; id: string | null; field: MockupField }
+  | { kind: 'list'; id: string | null; modelId: string; modelName: string; fields: MockupField[] }
+  | { kind: 'button'; id: string | null; name: string; actionId: string | null }
   /** IR 의 키 이름을 그대로 따른다. 자리표시자는 `name` 이 아니라 `text` 를 든다. */
-  | { kind: 'placeholder'; text: string }
-  | { kind: 'unrecognized'; rawKind: string; reason: UnrecognizedReason }
+  | { kind: 'placeholder'; id: string | null; text: string }
+  | { kind: 'unrecognized'; id: string | null; rawKind: string; reason: UnrecognizedReason }
 
 export interface ScreenMockup {
   /** 같은 id 가 다른 문서에 있어도 합쳐지지 않도록 path 를 포함한다. */
@@ -206,10 +206,12 @@ function toElement(
   models: Map<string, string>,
 ): MockupElement {
   const kind = str(raw.kind)
-  if (kind === null) return { kind: 'unrecognized', rawKind: '', reason: 'unknown-kind' }
+  const id = str(raw.id)
+  if (kind === null) return { kind: 'unrecognized', id, rawKind: '', reason: 'unknown-kind' }
 
   const unrecognized = (reason: UnrecognizedReason): MockupElement => ({
     kind: 'unrecognized',
+    id,
     rawKind: kind,
     reason,
   })
@@ -218,41 +220,41 @@ function toElement(
     case 'header':
     case 'section': {
       const children = records(raw.children).map((child) => toElement(child, facts, models))
-      return { kind, children }
+      return { kind, id, children }
     }
     case 'form': {
       const inputs = records(raw.inputs).map((input) => toElement(input, facts, models))
-      return { kind: 'form', inputs }
+      return { kind: 'form', id, inputs }
     }
     case 'heading': {
       const text = str(raw.text)
-      return text === null ? unrecognized('missing-data') : { kind: 'heading', text }
+      return text === null ? unrecognized('missing-data') : { kind: 'heading', id, text }
     }
     case 'input': {
       const fieldId = str(raw.field_id)
       return fieldId === null
         ? unrecognized('missing-data')
-        : { kind: 'input', field: toField(fieldId, facts) }
+        : { kind: 'input', id, field: toField(fieldId, facts) }
     }
     case 'list': {
       const modelId = str(raw.model_id)
       if (modelId === null) return unrecognized('missing-data')
       return {
         kind: 'list',
+        id,
         modelId,
         modelName: models.get(modelId) ?? modelId,
         fields: strings(raw.field_ids).map((fieldId) => toField(fieldId, facts)),
       }
     }
     case 'button': {
-      const id = str(raw.id)
       const name = str(raw.name)
-      if (id === null || name === null) return unrecognized('missing-data')
+      if (name === null) return unrecognized('missing-data')
       return { kind: 'button', id, name, actionId: str(raw.action_id) }
     }
     case 'placeholder': {
       const text = str(raw.text)
-      return text === null ? unrecognized('missing-data') : { kind: 'placeholder', text }
+      return text === null ? unrecognized('missing-data') : { kind: 'placeholder', id, text }
     }
     default:
       return unrecognized('unknown-kind')

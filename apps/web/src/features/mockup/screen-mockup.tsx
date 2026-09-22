@@ -273,7 +273,7 @@ function Unrecognized({
 }
 
 function Element({ element, path, context }: { element: MockupElement; path: string; context: ElementContext }) {
-  const stableId = element.kind === 'button' ? element.id : undefined
+  const stableId = element.id ?? undefined
   const binding: DesignBinding = { screenKey: context.screenKey, elementId: stableId, elementPath: path, sourceHash: context.sourceHash }
   const design = context.designByElementPath?.[designBindingKey(binding)]
   const selected = context.selectedElementPath === path && context.selectedElementScreenKey === context.screenKey
@@ -318,10 +318,12 @@ function Element({ element, path, context }: { element: MockupElement; path: str
     }
     case 'button': {
       if (context.mode !== 'experience') return <span className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text">{element.name}</span>
-      const outcomes = context.outcomesByElementId?.[element.id] ?? []
-      if (outcomes.length > 1) return <label className="inline-flex items-center gap-2 text-xs"><span>{element.name}</span><select aria-label={`${element.name} 결과`} defaultValue="" onChange={(event) => { const outcome = outcomes.find((item) => item.id === event.target.value); if (outcome) context.onAction?.({ screenKey: context.screenKey, elementId: element.id, outcome }) }}><option value="" disabled>결과 선택</option>{outcomes.map((outcome) => <option key={outcome.id} value={outcome.id}>{outcome.label}</option>)}</select></label>
+      if (element.id === null) return <button type="button" disabled title="안정적 요소 ID가 없어 체험할 수 없습니다" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text opacity-50">{element.name} · ID 없음</button>
+      const elementId = element.id
+      const outcomes = context.outcomesByElementId?.[elementId] ?? []
+      if (outcomes.length > 1) return <label className="inline-flex items-center gap-2 text-xs"><span>{element.name}</span><select aria-label={`${element.name} 결과`} defaultValue="" onChange={(event) => { const outcome = outcomes.find((item) => item.id === event.target.value); if (outcome) context.onAction?.({ screenKey: context.screenKey, elementId, outcome }) }}><option value="" disabled>결과 선택</option>{outcomes.map((outcome) => <option key={outcome.id} value={outcome.id}>{outcome.label}</option>)}</select></label>
       if (outcomes.length === 0) return <button type="button" disabled title="선언된 결과가 없어 체험할 수 없습니다" className="inline-flex h-8 items-center rounded-md bg-accent px-3 text-xs font-medium text-on-solid opacity-50">{element.name} · 결과 없음</button>
-      return <button type="button" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text" onClick={(event) => { event.stopPropagation(); const outcome = outcomes[0]; if (outcome) context.onAction?.({ screenKey: context.screenKey, elementId: element.id, outcome }) }}>{element.name}</button>
+      return <button type="button" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text" onClick={(event) => { event.stopPropagation(); const outcome = outcomes[0]; if (outcome) context.onAction?.({ screenKey: context.screenKey, elementId, outcome }) }}>{element.name}</button>
     }
     case 'placeholder':
       return <Placeholder text={element.text} />

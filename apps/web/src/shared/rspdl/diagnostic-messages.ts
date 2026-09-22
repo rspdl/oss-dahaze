@@ -23,6 +23,11 @@ const DIAGNOSTIC_TITLES: Readonly<Record<string, string>> = {
   'semantic.recalculation.exactly_one_required': '재계산 시점이 명확하지 않습니다',
   'semantic.recalculation.source_mismatch': '재계산에 사용하는 원본 필드가 다릅니다',
   'semantic.recalculation.derivation_missing': '재계산할 계산식이 없습니다',
+  'semantic.workflow.required_data_unavailable': '완료 경로에 필요한 데이터가 없습니다',
+  'semantic.workflow.completion_unreachable': '업무 완료 화면에 도달할 수 없습니다',
+  'semantic.workflow.acquisition_source_not_found': '데이터 획득 출발 경로가 없습니다',
+  'semantic.workflow.acquired_data_not_placed_input': '획득한다고 선언한 입력이 화면에 없습니다',
+  'semantic.workflow.verification_unknown': '데이터 가용성을 확정할 수 없습니다',
 }
 
 const STATIC_MESSAGES: Readonly<Record<string, string>> = {
@@ -161,6 +166,19 @@ function syntaxKind(kind: string): string {
 }
 
 const MESSAGE_RENDERERS: Readonly<Record<string, Renderer>> = {
+  'semantic.workflow.required_data_unavailable': (arguments_) =>
+    `업무 ${argument(arguments_, 'workflow_id')}의 완료 화면 ${argument(arguments_, 'completion_screen_id')}에 도착하는 경로 중 ${argument(arguments_, 'field_id')} 데이터가 확보되지 않는 경로가 있습니다: ${argument(arguments_, 'missing_path')}`,
+  'semantic.workflow.completion_unreachable': (arguments_) =>
+    `업무 ${argument(arguments_, 'workflow_id')}의 완료 화면 ${argument(arguments_, 'screen_id')}에 시작 화면에서 도달할 수 없습니다.`,
+  'semantic.workflow.acquisition_source_not_found': (arguments_) =>
+    `업무 ${argument(arguments_, 'workflow_id')}의 데이터 획득 출발점 ${argument(arguments_, 'screen_id')}.${argument(arguments_, 'element_id')}에 해당하는 흐름이 없습니다.`,
+  'semantic.workflow.acquired_data_not_placed_input': (arguments_) =>
+    `업무 ${argument(arguments_, 'workflow_id')}가 ${argument(arguments_, 'screen_id')} 화면에서 확보한다고 선언한 ${argument(arguments_, 'field_id')} 필드는 배치되고 선언된 입력이 아닙니다.`,
+  'semantic.workflow.verification_unknown': (arguments_) => {
+    const reason = argument(arguments_, 'reason')
+    const label = reason === 'reachable_delete' ? '도달 가능한 삭제 동작' : reason === 'conditional_action_production' ? '조건부 행동 생산' : reason
+    return `업무 ${argument(arguments_, 'workflow_id')}의 데이터 가용성은 현재 분석 범위에서 확정할 수 없습니다: ${label}`
+  },
   'ko.lex.unclosed_stable_id': (arguments_) =>
     `${argument(arguments_, 'closing')}로 닫히지 않은 stable ID입니다.`,
   'ko.syntax.domain_annotation_forbidden': (arguments_) =>

@@ -1,7 +1,9 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import { cn } from '@dahaze/ui'
+import { cn, toast } from '@dahaze/ui'
+import { useGetPlanningState, usePatchPlanningMetadata, type PlanningStateResponse } from '@dahaze/api-client'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { RequireSession } from '@/features/auth/require-session'
 import { DEFAULT_VIEWPORT_DIMENSIONS, type MockupViewport } from '@/features/mockup/screen-mockup'
@@ -32,6 +34,9 @@ const VIEWPORTS: { id: MockupViewport; label: string }[] = [
 
 function FlowView({ projectId }: { projectId: string }) {
   const data = useBoardData(projectId)
+  const planning = useGetPlanningState<PlanningStateResponse>(projectId)
+  const patchMetadata = usePatchPlanningMetadata()
+  const queryClient = useQueryClient()
   /* 뷰포트는 아직 화면 안의 상태다. 프로젝트마다 고르는 설정으로 서버에 올리는 것은
      다음 슬라이스의 일이다 (RFC-0001 저장하는 것). */
   const [viewport, setViewport] = useState<MockupViewport>('desktop')
@@ -40,16 +45,34 @@ function FlowView({ projectId }: { projectId: string }) {
   const [sampleVariant, setSampleVariant] = useState<SampleVariant>('normal')
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({})
   const [designByElementPath, setDesignByElementPath] = useState<Record<string, ElementDesign>>({})
-  const [designHistory, setDesignHistory] = useState<Record<string, ElementDesign>[]>([])
+  const [designHistory, setDesignHistory] = useState<{ elements: Record<string, ElementDesign>; positions: Record<string, { x: number; y: number }> }[]>([])
+  const [designDirty, setDesignDirty] = useState(false)
   const [selectedElement, setSelectedElement] = useState<DesignBinding | null>(null)
   const [proposal, setProposal] = useState<SemanticProposal | null>(null)
   const [selectedSampleIdByModel, setSelectedSampleIdByModel] = useState<Record<string, string>>({})
   const [experienceValues, setExperienceValues] = useState<Record<string, string | boolean>>({})
   const [connectionTarget, setConnectionTarget] = useState('')
   const [inspectorOpen, setInspectorOpen] = useState(true)
+  const environments = useMemo(() => parseEnvironments(planning.data?.metadata.environments), [planning.data?.metadata.environments])
+  const [environmentId, setEnvironmentId] = useState<string>('all')
+  const environment = environments.find((entry) => entry.id === environmentId)
+  const designScope = environmentId === 'all' ? 'all' : environmentId
+  const persistedDesign = useMemo(() => parseDesign(planning.data?.metadata.design, designScope), [planning.data?.metadata.design, designScope])
+  const visibleScreenKeys = useMemo(() => environment?.screenKeys.length ? new Set(environment.screenKeys) : undefined, [environment])
+  const effectivePositions = useMemo(() => ({ ...persistedDesign.positions, ...positions }), [persistedDesign.positions, positions])
+  const effectiveDesign = useMemo(() => ({ ...persistedDesign.elements, ...designByElementPath }), [persistedDesign.elements, designByElementPath])
+  const saveDesign = async () => {
+    if (!planning.data || !designDirty || patchMetadata.isPending) return
+    const raw = persistedDesign.raw
+    const scopes = typeof raw.environments === 'object' && raw.environments !== null ? raw.environments as Record<string, unknown> : {}
+    try {
+      await patchMetadata.mutateAsync({ projectId, data: { expected_revision: planning.data.revision, design: { ...raw, environments: { ...scopes, [designScope]: { positions: effectivePositions, elements: effectiveDesign } } }, summary: `배치 저장: ${environment?.name ?? '전체'}` } })
+      setDesignDirty(false); setPositions({}); setDesignByElementPath({}); await queryClient.invalidateQueries({ queryKey: planning.queryKey }); toast.success('배치를 저장했습니다')
+    } catch (error) { toast.error('배치를 저장하지 못했습니다', { description: error instanceof Error ? error.message : '최신 상태를 다시 불러온 뒤 재시도하세요.' }) }
+  }
   const graph = useMemo(
-    () => buildFlowGraph(data.board, data.mockups.screens, viewport, { positions, nodeWidth: dimensions.width }),
-    [data.board, data.mockups.screens, viewport, positions, dimensions.width],
+    () => buildFlowGraph(data.board, data.mockups.screens, viewport, { positions: effectivePositions, nodeWidth: dimensions.width, visibleScreenKeys }),
+    [data.board, data.mockups.screens, viewport, effectivePositions, dimensions.width, visibleScreenKeys],
   )
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
@@ -64,7 +87,7 @@ function FlowView({ projectId }: { projectId: string }) {
     sampleVariant,
     selectedElementPath: selectedElement?.elementPath ?? null,
     selectedElementScreenKey: selectedElement?.screenKey ?? null,
-    designByElementPath,
+    designByElementPath: effectiveDesign,
     selectedSampleIdByModel,
     values: experienceValues,
     onValueChange: (fieldId: string, value: string | boolean) => setExperienceValues((current) => ({ ...current, [fieldId]: value })),
@@ -73,14 +96,13 @@ function FlowView({ projectId }: { projectId: string }) {
     onDesignChange: ({ binding, patch }: { binding: DesignBinding; patch: ElementDesign }) => {
       if (binding.elementPath === undefined) return
       const key = designBindingKey(binding)
-      setDesignByElementPath((current) => {
-        setDesignHistory((history) => [...history.slice(-19), current])
-        return { ...current, [key]: { ...current[key], ...patch } }
-      })
+      setDesignHistory((history) => [...history.slice(-19), { elements: designByElementPath, positions }])
+      setDesignByElementPath((current) => ({ ...current, [key]: { ...current[key], ...patch } }))
+      setDesignDirty(true)
     },
     onProposeSemanticEdit: setProposal,
     onAction: ({ outcome }: { outcome: { targetScreenKey: string } }) => setSelectedId(outcome.targetScreenKey),
-  }), [dimensions, mode, sampleVariant, selectedElement, designByElementPath, selectedSampleIdByModel, experienceValues])
+  }), [dimensions, mode, sampleVariant, selectedElement, effectiveDesign, selectedSampleIdByModel, experienceValues, designByElementPath, positions])
   const prototypeForNode = useCallback((node: FlowNode) => ({ ...prototype, sourceHash: `${node.screen.path}:${data.documentsByPath.get(node.screen.path)?.updated_at ?? 'unknown'}`, outcomesByElementId: screenOutcomes[node.id] }), [prototype, data.documentsByPath, screenOutcomes])
 
   return (
@@ -149,12 +171,14 @@ function FlowView({ projectId }: { projectId: string }) {
 
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-control border bg-surface-raised/40 p-2 text-xs">
           <label>화면 <select aria-label="화면 찾기" value={selected?.id ?? ''} onChange={(event) => setSelectedId(event.target.value)} className="max-w-48 rounded border bg-surface px-2 py-1">{graph.nodes.map((node) => <option key={node.id} value={node.id}>{node.screen.name}</option>)}</select></label>
+          {environments.length > 0 ? <label>환경 <select value={environmentId} disabled={designDirty} title={designDirty ? '현재 환경의 배치를 저장하거나 되돌린 뒤 환경을 바꿀 수 있습니다.' : undefined} onChange={(event) => { const id = event.target.value; setEnvironmentId(id); setPositions({}); setDesignByElementPath({}); setDesignHistory([]); const next = environments.find((entry) => entry.id === id); if (next) setDimensions({ width: next.width, height: next.height }) }} className="rounded border bg-surface px-2 py-1 disabled:opacity-50"><option value="all">전체</option>{environments.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label> : null}
           <label>모드 <select value={mode} onChange={(event) => setMode(event.target.value as PrototypeMode)} className="rounded border bg-surface px-2 py-1"><option value="edit">편집</option><option value="experience">체험</option></select></label>
           <label>샘플 <select value={sampleVariant} onChange={(event) => setSampleVariant(event.target.value as SampleVariant)} className="rounded border bg-surface px-2 py-1"><option value="normal">정상</option><option value="empty">빈 상태</option><option value="long">긴 문구</option><option value="many">많은 데이터</option></select></label>
           <label>너비 <input aria-label="화면 너비" type="number" min={240} max={1920} value={dimensions.width} onChange={(event) => { const next = event.target.valueAsNumber; if (Number.isFinite(next)) setDimensions((value) => ({ ...value, width: Math.min(1920, Math.max(240, next)) })) }} className="w-20 rounded border bg-surface px-2 py-1" /></label>
           <label>높이 <input aria-label="화면 높이" type="number" min={320} max={2000} value={dimensions.height} onChange={(event) => { const next = event.target.valueAsNumber; if (Number.isFinite(next)) setDimensions((value) => ({ ...value, height: Math.min(2000, Math.max(320, next)) })) }} className="w-20 rounded border bg-surface px-2 py-1" /></label>
           {mode === 'edit' ? <button type="button" className="rounded border px-2 py-1" onClick={() => setProposal({ kind: 'add-element', screenKey: selected?.id ?? '' })}>요소 추가 제안</button> : null}
-          {mode === 'edit' ? <button type="button" disabled={designHistory.length === 0} className="rounded border px-2 py-1 disabled:opacity-40" onClick={() => { const previous = designHistory.at(-1); if (previous === undefined) return; setDesignByElementPath(previous); setDesignHistory((history) => history.slice(0, -1)) }}>배치 실행 취소</button> : null}
+          {mode === 'edit' ? <button type="button" disabled={designHistory.length === 0} className="rounded border px-2 py-1 disabled:opacity-40" onClick={() => { const previous = designHistory.at(-1); if (previous === undefined) return; setDesignByElementPath(previous.elements); setPositions(previous.positions); setDesignHistory((history) => history.slice(0, -1)); setDesignDirty(true) }}>배치 실행 취소</button> : null}
+          {mode === 'edit' ? <button type="button" disabled={!designDirty || patchMetadata.isPending} className="rounded border px-2 py-1 disabled:opacity-40" onClick={() => void saveDesign()}>{patchMetadata.isPending ? '저장 중' : designDirty ? '배치 저장' : '배치 저장됨'}</button> : null}
           {mode === 'edit' && selectedElement?.elementId !== undefined ? <><span className="text-text-muted">출발: {selectedElement.elementId}</span><label>도착 <select aria-label="연결 도착 화면" value={connectionTarget} onChange={(event) => setConnectionTarget(event.target.value)} className="rounded border bg-surface px-2 py-1"><option value="">화면 선택</option>{graph.nodes.filter((node) => node.id !== selectedElement.screenKey).map((node) => <option key={node.id} value={node.id}>{node.screen.name}</option>)}</select></label><button type="button" disabled={connectionTarget === ''} className="rounded border px-2 py-1 disabled:opacity-40" onClick={() => setProposal({ kind: 'connect', sourceScreenKey: selectedElement.screenKey, sourceElementId: selectedElement.elementId!, targetScreenKey: connectionTarget })}>연결 요청</button></> : null}
           {mode === 'edit' ? <button type="button" className="ml-auto rounded border px-2 py-1" aria-pressed={inspectorOpen} onClick={() => setInspectorOpen((open) => !open)}>{inspectorOpen ? '원문 닫기' : '원문 열기'}</button> : null}
         </div>
@@ -177,7 +201,7 @@ function FlowView({ projectId }: { projectId: string }) {
             prototype={prototype}
             prototypeForNode={prototypeForNode}
             editable={mode === 'edit'}
-            onPositionChange={(screenKey, position) => setPositions((current) => ({ ...current, [screenKey]: position }))}
+            onPositionChange={(screenKey, position) => { setDesignHistory((history) => [...history.slice(-19), { elements: designByElementPath, positions }]); setPositions((current) => ({ ...current, [screenKey]: position })); setDesignDirty(true) }}
           />
           {mode === 'edit' && inspectorOpen ? <SelectedSource projectId={projectId} data={data} node={selected} /> : null}
         </div>
@@ -185,6 +209,9 @@ function FlowView({ projectId }: { projectId: string }) {
     </BoardGate>
   )
 }
+
+function parseEnvironments(value: PlanningStateResponse['metadata']['environments']): { id: string; name: string; width: number; height: number; screenKeys: string[] }[] { if (!Array.isArray(value)) return []; return value.flatMap((raw, index) => typeof raw === 'object' && raw !== null ? [{ id: typeof raw.id === 'string' ? raw.id : `environment-${index}`, name: typeof raw.name === 'string' ? raw.name : `환경 ${index + 1}`, width: typeof raw.width === 'number' ? raw.width : 390, height: typeof raw.height === 'number' ? raw.height : 844, screenKeys: Array.isArray(raw.screenKeys) ? raw.screenKeys.filter((item): item is string => typeof item === 'string') : [] }] : []) }
+function parseDesign(value: PlanningStateResponse['metadata']['design'], scope: string): { raw: Record<string, unknown>; elements: Record<string, ElementDesign>; positions: Record<string, { x: number; y: number }> } { const raw = typeof value === 'object' && value !== null ? value : {}; const scopes = typeof raw.environments === 'object' && raw.environments !== null ? raw.environments as Record<string, unknown> : {}; const selected = typeof scopes[scope] === 'object' && scopes[scope] !== null ? scopes[scope] as Record<string, unknown> : {}; const elements = typeof selected.elements === 'object' && selected.elements !== null ? selected.elements as Record<string, ElementDesign> : {}; const positions = typeof selected.positions === 'object' && selected.positions !== null ? selected.positions as Record<string, { x: number; y: number }> : {}; return { raw, elements, positions } }
 
 function SelectedSource({
   projectId,

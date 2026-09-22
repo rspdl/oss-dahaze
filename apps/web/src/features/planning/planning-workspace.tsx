@@ -13,11 +13,13 @@ export interface PlanningWorkspaceProps {
   onSelectDraft?: (id: string) => void
   onApplyDraft?: (id: string) => void
   onRestoreSnapshot?: (revision: number) => void
+  onInspectSnapshot?: (revision: number) => void
   onOpenSource?: (path: string) => void
   onResolveDecision?: (id: string, action: 'adopt' | 'defer', reason: string) => Promise<boolean>
+  handoff?: React.ReactNode
 }
 
-export function PlanningWorkspace({ model, busy = false, onSendMessage, onSelectDraft, onApplyDraft, onRestoreSnapshot, onOpenSource, onResolveDecision }: PlanningWorkspaceProps) {
+export function PlanningWorkspace({ model, busy = false, onSendMessage, onSelectDraft, onApplyDraft, onRestoreSnapshot, onInspectSnapshot, onOpenSource, onResolveDecision, handoff }: PlanningWorkspaceProps) {
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
   const selectedDraft = model.drafts.find((draft) => draft.id === model.selectedDraftId) ?? model.drafts[0] ?? null
@@ -50,7 +52,8 @@ export function PlanningWorkspace({ model, busy = false, onSendMessage, onSelect
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="border-b p-4"><h3 className="text-sm font-semibold">작업 초안</h3><div className="mt-3 space-y-1">{model.drafts.length === 0 ? <p className="text-sm text-text-muted">저장된 초안이 없습니다.</p> : model.drafts.map((draft) => <button type="button" key={draft.id} onClick={() => onSelectDraft?.(draft.id)} className={cn('w-full border-l-2 px-3 py-2 text-left', selectedDraft?.id === draft.id ? 'border-accent bg-accent-subtle' : 'border-transparent hover:bg-surface-raised')}><span className="block text-sm font-medium">{draft.summary}</span><span className="mt-0.5 block text-xs text-text-subtle">기준 버전 {draft.baseRevision} · {draft.status === 'applied' ? '적용됨' : '검토 대기'}</span></button>)}</div></section>
         {selectedDraft === null ? null : <DraftPreview draft={selectedDraft} busy={busy} onApply={onApplyDraft} />}
-        <section className="p-4"><h3 className="text-sm font-semibold">프로젝트 버전</h3><div className="mt-3 divide-y border-y">{model.snapshots.map((snapshot) => <div key={snapshot.revision} className="flex items-center gap-3 py-2"><div className="min-w-0 flex-1"><p className="text-sm">스냅샷 {snapshot.revision}</p><p className="truncate text-xs text-text-subtle">{snapshot.changeKind} · {snapshot.sourceHash.slice(0, 10)}</p></div><Button size="sm" variant="ghost" disabled={busy || onRestoreSnapshot === undefined} onClick={() => onRestoreSnapshot?.(snapshot.revision)}>복원</Button></div>)}</div></section>
+        <section className="p-4"><h3 className="text-sm font-semibold">프로젝트 버전</h3><div className="mt-3 divide-y border-y">{model.snapshots.map((snapshot) => <div key={snapshot.revision} className="flex items-center gap-2 py-2"><button type="button" onClick={() => onInspectSnapshot?.(snapshot.revision)} className="min-w-0 flex-1 text-left"><span className="block text-sm">스냅샷 {snapshot.revision}</span><span className="block truncate text-xs text-text-subtle">{snapshot.changeKind} · {snapshot.sourceHash.slice(0, 10)}</span></button><Button size="sm" variant="ghost" disabled={busy || onRestoreSnapshot === undefined} onClick={() => onRestoreSnapshot?.(snapshot.revision)}>복원</Button></div>)}</div></section>
+        {handoff}
       </div>
     </aside>
   </div>
