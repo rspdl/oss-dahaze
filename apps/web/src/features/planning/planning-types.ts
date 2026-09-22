@@ -4,6 +4,19 @@ export type PlanningDraftChange = { path: string; before?: string | null; after:
 export type PlanningDraft = { id: string; summary: string; baseRevision: number; status: 'draft' | 'applying' | 'applied'; changes: PlanningDraftChange[]; diagnostics: PlanningItem[]; analysis: string[] }
 export type PlanningSnapshot = { revision: number; createdAt: string; changeKind: string; sourceHash: string }
 
+export type PlanningCompilerState = 'not-run' | 'running' | 'recognized' | 'unsupported-shape' | 'failed'
+export type PlanningCompilerSource =
+  | { kind: 'current'; documents: { path: string; sourceHash: string }[] }
+  | { kind: 'draft'; draftId: string; summary: string; baseProjectRevision: number; baseSourceHash: string; candidateSourceHash: string; stale: boolean }
+
+export interface PlanningCompilerReview {
+  state: PlanningCompilerState
+  source: PlanningCompilerSource
+  rspdlVersion?: string
+  diagnostics: PlanningItem[]
+  failureMessage?: string
+}
+
 export interface PlanningWorkspaceModel {
   revision: number
   projectRevision: number
@@ -13,7 +26,7 @@ export interface PlanningWorkspaceModel {
   unresolvedDecisions: PlanningItem[]
   questions: PlanningItem[]
   unsupported: PlanningItem[]
-  compiler: { state: 'not-run' | 'running' | 'recognized' | 'unsupported-shape'; rspdlVersion?: string; diagnostics: PlanningItem[] }
+  compiler: PlanningCompilerReview
   drafts: PlanningDraft[]
   selectedDraftId: string | null
   snapshots: PlanningSnapshot[]
