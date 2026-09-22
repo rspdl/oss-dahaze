@@ -109,7 +109,8 @@ describe('buildFlowGraph', () => {
           sourceElementId: 'open',
           targetScreenId: 'reservation.facility_detail',
           label: null,
-          path: 'p',
+          // 끝점은 **자기 문서 안의** 화면을 가리킨다. 아무 경로나 적으면 끊긴 경로가 된다.
+          path: 'screen-structure.rspdl',
           span: null,
         },
         {
@@ -118,7 +119,7 @@ describe('buildFlowGraph', () => {
           sourceElementId: 'back',
           targetScreenId: 'reservation.facility_list',
           label: null,
-          path: 'p',
+          path: 'screen-structure.rspdl',
           span: null,
         },
       ],

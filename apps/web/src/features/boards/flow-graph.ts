@@ -1,6 +1,6 @@
 import type { MockupViewport } from '@/features/mockup/screen-mockup'
 import type { ScreenMockup } from '@/features/mockup/screen-layouts'
-import type { BoardPath, BoardScreen, CollectedBoard } from './board-ir'
+import { refKey, type BoardPath, type BoardScreen, type CollectedBoard } from './board-ir'
 
 /**
  * 화면과 경로를 흐름 캔버스의 노드·간선으로 세운다.
@@ -50,13 +50,18 @@ export function buildFlowGraph(
   mockups: ScreenMockup[],
   viewport: MockupViewport,
 ): FlowGraph {
-  const mockupByScreenId = new Map(mockups.map((mockup) => [mockup.screenId, mockup]))
-  const screenById = new Map(collected.screens.map((screen) => [screen.id, screen]))
+  /* 전부 `path + id` 로 가른다. 같은 모듈 id 를 쓰는 두 문서에서 화면 id 가 글자 그대로
+     같아지므로, 바깥 id 로 묶으면 한 문서의 화면이 다른 문서의 것을 덮어쓴다. 경로의 끝점도
+     자기 문서 안의 화면을 가리키므로 같은 규칙으로 푼다. */
+  const mockupByKey = new Map(mockups.map((mockup) => [mockup.key, mockup]))
+  const screenByKey = new Map(collected.screens.map((screen) => [screen.key, screen]))
+  const sourceKeyOf = (path: BoardPath) => refKey(path.path, path.sourceScreenId)
+  const targetKeyOf = (path: BoardPath) => refKey(path.path, path.targetScreenId)
 
   const danglingPaths: BoardPath[] = []
   const livePaths: BoardPath[] = []
   for (const path of collected.paths) {
-    if (screenById.has(path.sourceScreenId) && screenById.has(path.targetScreenId)) {
+    if (screenByKey.has(sourceKeyOf(path)) && screenByKey.has(targetKeyOf(path))) {
       livePaths.push(path)
     } else {
       danglingPaths.push(path)
@@ -65,20 +70,20 @@ export function buildFlowGraph(
 
   /* 층을 정한다. 들어오는 경로가 없는 화면이 0층. 순환이 있어도 멈추도록 이미 본 화면은
      다시 내리지 않는다 — 경로의 순환은 언어가 막지 않는 것이고 보드가 멈춰서는 안 된다. */
-  const incoming = new Set(livePaths.map((path) => path.targetScreenId))
+  const incoming = new Set(livePaths.map(targetKeyOf))
   const outgoing = new Map<string, string[]>()
   for (const path of livePaths) {
-    const targets = outgoing.get(path.sourceScreenId) ?? []
-    targets.push(path.targetScreenId)
-    outgoing.set(path.sourceScreenId, targets)
+    const targets = outgoing.get(sourceKeyOf(path)) ?? []
+    targets.push(targetKeyOf(path))
+    outgoing.set(sourceKeyOf(path), targets)
   }
 
   const depth = new Map<string, number>()
   const queue: string[] = []
   for (const screen of collected.screens) {
-    if (!incoming.has(screen.id)) {
-      depth.set(screen.id, 0)
-      queue.push(screen.id)
+    if (!incoming.has(screen.key)) {
+      depth.set(screen.key, 0)
+      queue.push(screen.key)
     }
   }
   while (queue.length > 0) {
@@ -92,18 +97,18 @@ export function buildFlowGraph(
   }
   /* 순환 안에만 있는 화면은 위 탐색이 닿지 못한다. 선언 순서대로 0층에 세운다. */
   for (const screen of collected.screens) {
-    if (!depth.has(screen.id)) depth.set(screen.id, 0)
+    if (!depth.has(screen.key)) depth.set(screen.key, 0)
   }
 
   const rowInColumn = new Map<number, number>()
   const nodes: FlowNode[] = collected.screens.map((screen) => {
-    const column = depth.get(screen.id) ?? 0
+    const column = depth.get(screen.key) ?? 0
     const row = rowInColumn.get(column) ?? 0
     rowInColumn.set(column, row + 1)
     return {
       id: screen.key,
       screen,
-      mockup: mockupByScreenId.get(screen.id) ?? null,
+      mockup: mockupByKey.get(screen.key) ?? null,
       position: {
         x: column * (NODE_WIDTH[viewport] + COLUMN_GAP),
         y: row * (ROW_HEIGHT + ROW_GAP),
@@ -113,8 +118,8 @@ export function buildFlowGraph(
 
   const edges: FlowEdge[] = livePaths.map((path) => ({
     id: path.key,
-    source: screenById.get(path.sourceScreenId)!.key,
-    target: screenById.get(path.targetScreenId)!.key,
+    source: sourceKeyOf(path),
+    target: targetKeyOf(path),
     label: path.label ?? path.sourceElementId,
     path,
   }))

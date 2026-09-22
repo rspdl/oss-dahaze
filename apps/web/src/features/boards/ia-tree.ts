@@ -1,4 +1,4 @@
-import type { BoardCategory, BoardScreen, CollectedBoard } from './board-ir'
+import { refKey, type BoardCategory, type BoardScreen, type CollectedBoard } from './board-ir'
 
 /**
  * 분류와 화면을 트리로 세우고 자리를 잡는다.
@@ -53,33 +53,39 @@ export function buildIaTree(collected: CollectedBoard): IaTree {
   const nodes: IaNode[] = []
   const edges: IaEdge[] = []
 
-  /* 분류를 부모별로 모은다. 선언 순서가 곧 형제 순서이므로 들어온 차례대로 밀어 넣는다. */
+  /* 소속은 전부 `path + id` 로 푼다. 두 문서가 같은 모듈 id 를 선언하면 분류 id 도 글자 그대로
+     같아지므로, 바깥 id 로 묶으면 한 문서의 화면이 다른 문서의 분류에 붙고 같은 화면이 두 번
+     그려진다. 참조는 언제나 자기 문서 안의 선언을 가리킨다. */
   const childCategories = new Map<string, BoardCategory[]>()
   const roots: BoardCategory[] = []
-  const categoryIds = new Set(collected.categories.map((category) => category.id))
+  const categoryKeys = new Set(collected.categories.map((category) => category.key))
 
   for (const category of collected.categories) {
+    const parentKey =
+      category.parentId === null ? null : refKey(category.path, category.parentId)
     /* 부모를 찾지 못한 분류는 고아로 버리지 않고 최상위로 올린다. 컴파일러가 없는 부모를
        거부하므로 여기까지 오는 경우는 드물지만, 버리면 화면이 문서에 대해 거짓말을 한다. */
-    if (category.parentId === null || !categoryIds.has(category.parentId)) {
+    if (parentKey === null || !categoryKeys.has(parentKey)) {
       roots.push(category)
       continue
     }
-    const siblings = childCategories.get(category.parentId) ?? []
+    const siblings = childCategories.get(parentKey) ?? []
     siblings.push(category)
-    childCategories.set(category.parentId, siblings)
+    childCategories.set(parentKey, siblings)
   }
 
   const screensByCategory = new Map<string, BoardScreen[]>()
   const uncategorized: BoardScreen[] = []
   for (const screen of collected.screens) {
-    if (screen.categoryId === null || !categoryIds.has(screen.categoryId)) {
+    const categoryKey =
+      screen.categoryId === null ? null : refKey(screen.path, screen.categoryId)
+    if (categoryKey === null || !categoryKeys.has(categoryKey)) {
       uncategorized.push(screen)
       continue
     }
-    const members = screensByCategory.get(screen.categoryId) ?? []
+    const members = screensByCategory.get(categoryKey) ?? []
     members.push(screen)
-    screensByCategory.set(screen.categoryId, members)
+    screensByCategory.set(categoryKey, members)
   }
 
   /* 분류 안의 차례를 기획자가 적은 대로 되돌린다.
@@ -111,10 +117,10 @@ export function buildIaTree(collected: CollectedBoard): IaTree {
 
   function placeCategory(category: BoardCategory, depth: number): Placement {
     const children: Placement[] = []
-    for (const child of childCategories.get(category.id) ?? []) {
+    for (const child of childCategories.get(category.key) ?? []) {
       children.push(placeCategory(child, depth + 1))
     }
-    for (const screen of screensByCategory.get(category.id) ?? []) {
+    for (const screen of screensByCategory.get(category.key) ?? []) {
       children.push(placeScreen(screen, depth + 1))
     }
 

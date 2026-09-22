@@ -117,7 +117,13 @@ function SelectedSource({
   }
 
   const path = node.category?.path ?? node.screen?.path ?? null
-  const span = node.category?.span ?? node.screen?.span ?? null
+  /*
+   * 화면 노드는 **정보구조에 담긴 자리**를 가리킨다. 이 보드에서 노드를 고르는 것은 "이
+   * 화면이 왜 여기 있는가" 를 묻는 것이고, 그 답은 `정보구조:` 의 그 줄이지 화면을 선언한
+   * 문장이 아니다. 컴파일러가 소속의 span 을 주지 않았을 때만 선언 문장으로 내려앉는다.
+   */
+  const span =
+    node.category?.span ?? node.screen?.categorySpan ?? node.screen?.span ?? null
   const document = path === null ? undefined : data.documentsByPath.get(path)
 
   return (
