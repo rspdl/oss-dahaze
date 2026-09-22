@@ -3,7 +3,7 @@ id: mcp-and-llm-authoring
 title: MCP Server and LLM Authoring Loop
 type: adr
 status: accepted
-version: "2"
+version: "3"
 summary: Serves MCP and a provider-independent, grammar-constrained LLM authoring loop from the API, and requires every generated draft to pass the compiler before a human sees it.
 topics:
   - mcp
@@ -14,7 +14,7 @@ related:
   - rspdl-compiler-integration
   - document-storage-model
   - monorepo-structure-and-stack
-last_updated: "2026-08-23"
+last_updated: "2026-09-23"
 owners:
   - rspdl-maintainers
 ---
@@ -83,6 +83,22 @@ constrained decoding을 도입해도 기존 컴파일-진단-유한 재시도 �
 
 이유: 저장은 리비전을 만들고, 리비전은 되돌릴 수 없는 이력이다. LLM이 문서를 조용히 덮어쓰면
 사용자는 자기 문서에 무슨 일이 일어났는지 추적할 수 없게 된다.
+
+### 프로젝트 인터뷰와 후보 보관
+
+프로젝트 기획 작업공간에서는 인터뷰 대화·미정 제안과 컴파일된 후보를 작업 이력으로
+보관할 수 있다. 이 보관은 확정 문서 적용과 다르다. 후보에 오류가 남아도 보관하며,
+확정 원문은 사람이 변경 전후와 compiler 결과를 보고 명시적으로 적용할 때만 바뀐다.
+여러 문서 적용과 복원 계약은 [ADR-0007](0007-planning-workspace-versions.md)을 따른다.
+
+인터뷰 질문·추천·결정 이유는 사용자 의도를 정리하는 맥락이다. 이 자연어를 compiler가
+검증한 정책이나 진단으로 표시하지 않는다. 생성된 RSPDL 원문은 기존과 동일하게
+compiler를 거친 결과와 함께만 노출한다. AI가 추천한 정책도 사용자가 채택하고 원문에
+표현하기 전에는 검증된 의미가 아니다.
+
+대화의 저장 상태와 저작 작업의 진행 상태를 분리한다. 요청 재시도가 동일 후보를 조용히
+적용하거나 확정 원문을 덮어쓰지 않아야 한다. 이 계약의 구현 여부는 기획 작업공간 검수
+기록에서 따로 추적한다.
 
 ### 프롬프트는 rspdl 버전에 묶인다
 
