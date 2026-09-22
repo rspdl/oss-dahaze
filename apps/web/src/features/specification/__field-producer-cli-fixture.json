@@ -1,0 +1,106 @@
+{
+  "id": "production",
+  "name": "생산",
+  "models": [
+    {
+      "id": "production.request",
+      "name": "요청",
+      "fields": [
+        {
+          "id": "production.request.title",
+          "local_id": "title",
+          "name": "제목",
+          "required": true,
+          "value_type": { "kind": "string" },
+          "span": { "start": 179, "end": 210 }
+        }
+      ],
+      "span": { "start": 115, "end": 210 }
+    },
+    {
+      "id": "production.notice",
+      "name": "알림",
+      "fields": [
+        {
+          "id": "production.notice.title",
+          "local_id": "title",
+          "name": "제목",
+          "required": true,
+          "value_type": { "kind": "string" },
+          "span": { "start": 274, "end": 305 }
+        },
+        {
+          "id": "production.notice.request_title",
+          "local_id": "request_title",
+          "name": "요청 제목",
+          "required": true,
+          "value_type": { "kind": "string" },
+          "span": { "start": 310, "end": 356 }
+        },
+        {
+          "id": "production.notice.retry_count",
+          "local_id": "retry_count",
+          "name": "재시도 횟수",
+          "required": true,
+          "value_type": { "kind": "integer" },
+          "span": { "start": 361, "end": 405 }
+        }
+      ],
+      "span": { "start": 211, "end": 405 }
+    }
+  ],
+  "actions": [
+    {
+      "id": "production.assign",
+      "name": "전달",
+      "inputs": [
+        { "id": "production.assign.notification_title", "local_id": "notification_title", "name": "알림 제목", "kind": { "kind": "value", "definition": { "value_type": { "kind": "string" } } }, "span": { "start": 508, "end": 587 } },
+        { "id": "production.assign.request_status", "local_id": "request_status", "name": "요청 상태", "kind": { "kind": "value", "definition": { "value_type": { "kind": "enum", "definition": { "id": "production.status", "variants": ["production.status.held", "production.status.received"] } } } }, "span": { "start": 438, "end": 507 } },
+        { "id": "production.assign.target_request", "local_id": "target_request", "name": "대상 요청", "kind": { "kind": "existing_model", "definition": { "model_id": "production.request" } }, "span": { "start": 588, "end": 667 } }
+      ],
+      "span": { "start": 406, "end": 437 }
+    }
+  ],
+  "conditional_productions": [
+    {
+      "id": "production.production_7b7a95544ac8b022",
+      "action_id": "production.assign",
+      "trigger": { "kind": "action", "id": "production.assign" },
+      "output_model_id": "production.notice",
+      "instance_cardinality": "exactly_one",
+      "decision_input_id": "production.assign.request_status",
+      "branches": [
+        { "id": "production.held_skip", "variant_id": "production.status.held", "decision": "skip", "span": { "start": 776, "end": 883 } },
+        { "id": "production.received_create", "variant_id": "production.status.received", "decision": "create", "span": { "start": 668, "end": 775 } }
+      ],
+      "field_producers": [
+        {
+          "id": "production.request_title_binding",
+          "output_field_id": "production.notice.request_title",
+          "source": { "kind": "input_field", "definition": { "input_id": "production.assign.target_request", "field_id": "production.request.title" } },
+          "condition": null,
+          "phase": "pre_mutation",
+          "span": { "start": 1001, "end": 1142 }
+        },
+        {
+          "id": "production.retry_binding",
+          "output_field_id": "production.notice.retry_count",
+          "source": { "kind": "constant", "definition": { "value": { "value_type": { "kind": "integer" }, "representation": { "kind": "integer", "value": "0" } } } },
+          "condition": null,
+          "phase": "pre_mutation",
+          "span": { "start": 1143, "end": 1264 }
+        },
+        {
+          "id": "production.title_binding",
+          "output_field_id": "production.notice.title",
+          "source": { "kind": "action_input", "definition": { "input_id": "production.assign.notification_title" } },
+          "condition": null,
+          "phase": "pre_mutation",
+          "span": { "start": 884, "end": 1000 }
+        }
+      ],
+      "field_evaluation_order": ["production.notice.request_title", "production.notice.retry_count", "production.notice.title"],
+      "span": { "start": 776, "end": 883 }
+    }
+  ]
+}
