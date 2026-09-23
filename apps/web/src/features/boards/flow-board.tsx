@@ -138,7 +138,7 @@ export function FlowBoard({
 }) {
   const [zoom, setZoom] = useState(1)
   const instanceRef = useRef<ReactFlowInstance<ScreenFlowNode, Edge> | null>(null)
-  const fittedSelectionRef = useRef<string | null>(null)
+  const fitFrameRef = useRef<number | null>(null)
   const experienceSelectedId = prototype.mode === 'experience' ? selectedId : null
   const { baseNodes, edges } = useMemo(() => {
     const visibleNodes = experienceSelectedId === null ? graph.nodes : graph.nodes.filter((node) => node.id === experienceSelectedId)
@@ -168,14 +168,36 @@ export function FlowBoard({
     () => applyFlowNodeSelection(baseNodes, selectedId),
     [baseNodes, selectedId],
   )
+  const selectedGraphNode = graph.nodes.find((node) => node.id === selectedId)
+  const selectedPrototype = selectedGraphNode === undefined
+    ? prototype
+    : prototypeForNode?.(selectedGraphNode) ?? prototype
+  const selectedDimensions = selectedPrototype.dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
   const fitSelection = useCallback((instance: ReactFlowInstance<ScreenFlowNode, Edge>) => {
-    const token = `${prototype.mode ?? 'edit'}:${selectedId ?? 'all'}`
-    if (fittedSelectionRef.current === token) return
-    fittedSelectionRef.current = token
-    fitSelectedFlowNode(instance, selectedId)
-  }, [prototype.mode, selectedId])
+    if (fitFrameRef.current !== null) cancelAnimationFrame(fitFrameRef.current)
+    if (selectedId === null || selectedGraphNode === undefined) return
+
+    const position = prototype.mode === 'experience' ? { x: 0, y: 0 } : selectedGraphNode.position
+    void instance.setCenter(
+      position.x + selectedDimensions.width / 2,
+      position.y + selectedDimensions.height / 2,
+      { zoom: Math.min(instance.getZoom(), 0.2), duration: 0 },
+    )
+
+    // onlyRenderVisibleElements인 먼 노드는 먼저 viewport 안에 들어와야 상세 카드가 mount되고
+    // ResizeObserver가 실제 크기를 기록한다. 두 frame 뒤 그 측정값으로 맞춘다.
+    fitFrameRef.current = requestAnimationFrame(() => {
+      fitFrameRef.current = requestAnimationFrame(() => {
+        fitFrameRef.current = null
+        fitSelectedFlowNode(instance, selectedId)
+      })
+    })
+  }, [prototype.mode, selectedDimensions.height, selectedDimensions.width, selectedGraphNode, selectedId])
   useEffect(() => {
     if (instanceRef.current !== null) fitSelection(instanceRef.current)
+    return () => {
+      if (fitFrameRef.current !== null) cancelAnimationFrame(fitFrameRef.current)
+    }
   }, [fitSelection])
 
   return (
