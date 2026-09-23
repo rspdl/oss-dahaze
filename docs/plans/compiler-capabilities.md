@@ -5,12 +5,24 @@
 - 기획 작업공간이 사용하는 새 compiler 계약은 로컬 `533a542`까지 구현·통합 검수했다.
   검수한 rspdl-core 저장소 head는 `1387144`이며 core workspace, Node SDK, 라이선스,
   Python Linux wheel CI가 통과했다.
-- dahaze 작업 브랜치의 전체 하네스는 API 214개 통과·3개 skip, web 201개, editor 46개와
-  타입 검사, lint, build, 경계·OpenAPI 검사를 통과했다. AI 작업 경쟁 조건 8개와 worker
-  복구 시나리오 5개도 별도 검수에서 통과했다.
-- 실제 AI 생성 작업 `359ad62e`는 약 53초 후 성공했고 compiler error 진단은 0건이었다.
-  다만 원문에 없는 lookup 의미를 발명해 결과는 반려했다. 이는 compiler gate가 실행됐다는
-  증거이며 저작 의미가 승인됐다는 뜻은 아니다. 프롬프트 수정과 실제 작업 재검수가 남았다.
+- dahaze 최종 검수 커밋 `b920651`의 전체 하네스는 API 215개 통과·3개 skip, web 201개,
+  editor 46개와 타입 검사, lint, build, 경계·OpenAPI 검사를 통과했다. durable AI 작업의
+  기준 커밋 `cafab42` 당시 API 하네스 214개 통과·3개 skip 기록도 역사적 통합점으로 남긴다.
+  AI 작업 경쟁 조건 8개와 worker 복구 시나리오 5개도 별도 검수에서 통과했다.
+- 최신 분리 프롬프트와 `gpt-5.4-mini`의 실제 종단간 저작 흐름을 검수했다. 첫 생성 작업
+  `233eca`의 후보 `9aa9`에는 중복 ID `LINK003`과 중복 operation `DATA004`가 남았고,
+  compiler 진단을 그대로 표시한 뒤 manual-only 정책을 인터뷰·채택했다. 같은 후보에서 다시
+  생성한 작업 `ce733b15`의 초안 `a618e2d2`는 약 13초 만에 완료됐고 compiler 진단이 0건이었다.
+  결과에는 IA, 화면 2개, 결과 2개, 경로 2개와 manual workflow가 있었으며 invented lookup은
+  없었다. UI의 명시적 적용은 HTTP 200, `applied=true`로 프로젝트 revision 1을 만들었다.
+- acquisition을 제거한 반례 `15f347ee`에는 missing path `WORKFLOW001`이 발생했다. 적용은
+  HTTP 200, `applied=false`였고 source hash와 프로젝트 revision이 유지됐다. 이는 오류 진단이
+  남은 AI 원문이 compiler gate를 우회하지 못한다는 실제 검수 결과다.
+- 실제 모바일 DOM 390×844에서 실패 메시지는 입력 화면 안에 표시됐고 같은 버튼의 성공 결과는
+  완료 화면으로 이동했으며 입력값이 유지됐다. handoff snapshot 3은 source hash
+  `5bfd722a55…`, 결정 2개, 원문, IA·읽기 명세를 같은 버전에 담았다.
+- 이전 작업 `359ad62e`는 compiler error가 0건이어도 lookup 의미를 발명해 반려했던 역사적
+  사례다. 최신 프롬프트의 위 검수가 이를 대체한다.
 - 로컬 커밋과 wheel은 정식 compiler 릴리스가 아니다. dahaze 의존성 핀 승격과 production
   API·worker 배포도 하지 않았다.
 
