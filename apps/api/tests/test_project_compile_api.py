@@ -10,6 +10,8 @@ rspdl 0.1.0 에서 모듈은 파일마다 독립이다 (한 파일이 다른 파
 
 from __future__ import annotations
 
+import hashlib
+
 import httpx
 
 # 정책이 있는 문서. allow 와 deny 를 둘 다 둔다 — 화면이 네 축을 그대로 받는지 본다.
@@ -184,6 +186,32 @@ async def test_documents_map_paths_back_to_documents(
     assert by_path["inventory.rspdl"]["id"] == inventory_id
     # 컴파일된 파일 경로가 전부 문서로 되짚어진다.
     assert {f["path"] for f in body["result"]["files"]} == set(by_path)
+
+
+async def test_document_source_hash_fingerprints_exact_compiled_utf8_text(
+    client: httpx.AsyncClient,
+) -> None:
+    """문서 지문은 프로젝트 해시나 정규화한 텍스트의 해시가 아니다."""
+    project_id = await _project(client, "exact-document-hash")
+    crlf_text = EXPENSE_TEXT.replace("\n", "\r\n") + "  \r\n"
+    unicode_text = INVENTORY_TEXT + "# 눈송이 ❄️\n"
+    await _document(client, project_id, "expense.rspdl", crlf_text)
+    await _document(client, project_id, "inventory.rspdl", unicode_text)
+
+    body = (await client.get(f"/api/projects/{project_id}/compile")).json()
+    project = (await client.get(f"/api/projects/{project_id}")).json()
+    by_path = {document["path"]: document for document in body["documents"]}
+
+    assert by_path["expense.rspdl"]["source_hash"] == hashlib.sha256(
+        crlf_text.encode("utf-8")
+    ).hexdigest()
+    assert by_path["inventory.rspdl"]["source_hash"] == hashlib.sha256(
+        unicode_text.encode("utf-8")
+    ).hexdigest()
+    assert by_path["expense.rspdl"]["source_hash"] != hashlib.sha256(
+        crlf_text.strip().replace("\r\n", "\n").encode("utf-8")
+    ).hexdigest()
+    assert all(document["source_hash"] != project["source_hash"] for document in by_path.values())
 
 
 async def test_broken_source_is_200_with_diagnostics(

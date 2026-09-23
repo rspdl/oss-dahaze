@@ -33,6 +33,7 @@ from dahaze_api.infrastructure.auth.session import (
     MCP_AUDIENCE,
     SessionTokens,
 )
+from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
 from dahaze_api.infrastructure.db.repositories import (
     SqlDocumentRepository,
     SqlProjectRepository,
@@ -52,6 +53,18 @@ VALID_TEXT = (
     "    이름(name): 필수 문자열\n"
     "    수량(quantity): 필수 정수\n"
 )
+EDITABLE_TEXT = """---
+모듈: 상품(catalog)
+화면:
+  상품 입력 화면:
+    레이아웃:
+      - 제목: { id: title, 글: "상품 입력" }
+---
+
+상품(product)은 다음 필드들로 구성되어 있다.
+    이름(name): 필수 문자열
+상품 입력 화면(product_form)에서는 `상품`을 생성할 수 있다.
+"""
 
 
 @pytest.fixture
@@ -318,6 +331,110 @@ async def test_documents_are_listed_without_their_text(
 
     assert [d["path"] for d in listed] == ["inventory.rspdl"]
     assert "text" not in listed[0]
+
+
+async def test_structured_edit_tool_never_auto_saves_document(
+    tools: McpTools, tokens: SessionTokens, user: User, project: Project
+) -> None:
+    headers = auth(tokens.issue_mcp(user.id))
+    document = await tools.create_document(
+        headers,
+        project_id=str(project.id),
+        path="catalog.rspdl",
+        title="상품",
+        text=EDITABLE_TEXT,
+    )
+    current = await tools.get_project(headers, project_id=str(project.id))
+    read = await tools.read_document(headers, document_id=document["id"])
+
+    result = await tools.propose_planning_edit(
+        headers,
+        project_id=str(project.id),
+        document_id=document["id"],
+        base_project_revision=current["revision"],
+        base_source_hash=current["source_hash"],
+        expected_source_hash=read["source_hash"],
+        edit={
+            "operation": "update",
+            "screen_id": "catalog.product_form",
+            "element_id": "title",
+            "patch": {"text": "새 상품"},
+        },
+    )
+
+    assert result["supported"] is True
+    assert result["unsupported_reason"] is None
+    assert result["compiler_response"]["outcome"]["status"] == "applied"
+    assert "새 상품" in result["compiler_response"]["candidate_text"]
+    assert result["draft"] is not None
+    assert len(result["draft"]["candidate_documents"]) == 1
+    candidate = result["draft"]["candidate_documents"][0]
+    assert candidate["id"] == document["id"]
+    assert candidate["path"] == "catalog.rspdl"
+    assert candidate["title"] == "상품"
+    assert candidate["text"] == result["compiler_response"]["candidate_text"]
+    assert (await tools.read_document(headers, document_id=document["id"]))["text"] == EDITABLE_TEXT
+
+
+async def test_decision_resolution_tool_updates_existing_id(
+    tools: McpTools,
+    tokens: SessionTokens,
+    user: User,
+    project: Project,
+    session: AsyncSession,
+) -> None:
+    created = await SqlPlanningRepository(session).append_decision(
+        project.id,
+        expected_revision=0,
+        title="복구 경로",
+        rationale=None,
+        status="open",
+    )
+    assert created is not None
+    decision_id = created["item"]["id"]
+
+    result = await tools.resolve_planning_decision(
+        auth(tokens.issue_mcp(user.id)),
+        project_id=str(project.id),
+        decision_id=decision_id,
+        expected_revision=created["state"]["revision"],
+        status="deferred",
+        rationale="정책 확정 뒤 다시 본다.",
+    )
+
+    assert result["item"]["id"] == decision_id
+    assert result["item"]["status"] == "deferred"
+    assert len(result["state"]["decisions"]) == 1
+
+
+async def test_planning_ai_tool_never_exposes_frozen_source_or_checkpoints(
+    tools: McpTools, tokens: SessionTokens, user: User, project: Project
+) -> None:
+    headers = auth(tokens.issue_mcp(user.id))
+    created = await tools.create_planning_ai_job(
+        headers,
+        project_id=str(project.id),
+        request_id=str(uuid4()),
+        kind="interview",
+        instruction="정책을 검토해 주세요.",
+        expected_planning_revision=0,
+        selected_subject={
+            "kind": "screen",
+            "id": "inventory.list",
+            "source_path": "inventory.rspdl",
+            "stable_id": "inventory.list",
+        },
+    )
+
+    fetched = await tools.get_planning_ai_job(
+        headers, project_id=str(project.id), job_id=str(created["id"])
+    )
+    listed = await tools.list_planning_ai_jobs(headers, project_id=str(project.id))
+    for payload in (created, fetched, listed[0]):
+        assert "context" not in payload
+        assert "checkpoints" not in payload
+        assert "lease_token" not in payload
+        assert "lease_expires_at" not in payload
 
 
 @pytest.mark.parametrize("bad_id", ["not-a-uuid", "", "123"])
@@ -720,6 +837,15 @@ async def test_tools_are_advertised_over_http(
         "compile_rspdl",
         "check_rspdl",
         "find_bounded_model",
+        "propose_planning_edit",
+        "resolve_planning_decision",
+        "resolve_planning_proposal",
+        "create_planning_ai_job",
+        "get_planning_ai_job",
+        "list_planning_ai_jobs",
+        "cancel_planning_ai_job",
+        "retry_planning_ai_job",
+        "get_project_handoff",
     }
     # 설명이 LLM 에게는 유일한 인터페이스다. 비어 있으면 도구가 없는 것과 같다.
     assert all(tool["description"] for tool in advertised)

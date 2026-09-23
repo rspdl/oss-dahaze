@@ -59,6 +59,180 @@
         "title": "AnalysisResponse",
         "type": "object"
       },
+      "AppendPlanningDecisionRequest": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "status": {
+            "default": "decided",
+            "pattern": "^(decided|deferred|open)$",
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "title"
+        ],
+        "title": "AppendPlanningDecisionRequest",
+        "type": "object"
+      },
+      "AppendPlanningDecisionResponse": {
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/PlanningDecisionResponse"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item",
+          "revision"
+        ],
+        "title": "AppendPlanningDecisionResponse",
+        "type": "object"
+      },
+      "AppendPlanningMessageRequest": {
+        "properties": {
+          "content": {
+            "maxLength": 32000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "role": {
+            "description": "user | assistant",
+            "pattern": "^(user|assistant)$",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "role",
+          "content"
+        ],
+        "title": "AppendPlanningMessageRequest",
+        "type": "object"
+      },
+      "AppendPlanningMessageResponse": {
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/PlanningMessageResponse"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item",
+          "revision"
+        ],
+        "title": "AppendPlanningMessageResponse",
+        "type": "object"
+      },
+      "ApplyPlanningDraftRequest": {
+        "properties": {
+          "expected_project_revision": {
+            "minimum": 0.0,
+            "title": "Expected Project Revision",
+            "type": "integer"
+          },
+          "expected_source_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Expected Source Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_project_revision",
+          "expected_source_hash"
+        ],
+        "title": "ApplyPlanningDraftRequest",
+        "type": "object"
+      },
+      "ApplyPlanningDraftResponse": {
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/PlanningAnalysisResponse"
+          },
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "project_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Revision"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectSnapshotResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hash"
+          }
+        },
+        "required": [
+          "applied",
+          "project_revision",
+          "source_hash",
+          "analysis",
+          "snapshot"
+        ],
+        "title": "ApplyPlanningDraftResponse",
+        "type": "object"
+      },
       "AuthProvidersResponse": {
         "description": "설정된 OAuth 제공자. 프론트가 버튼을 하드코딩하지 않게 한다.\n\n아이디·비밀번호 로그인은 여기 없다. 설정과 무관하게 항상 열려 있으므로, 늘 참인 값을\n실어 보내면 프론트가 \"혹시 꺼져 있을 수도 있다\" 는 분기를 영원히 들고 있게 된다.",
         "properties": {
@@ -138,6 +312,44 @@
         "title": "AuthoringDraftResponse",
         "type": "object"
       },
+      "CaptureProjectSnapshotRequest": {
+        "properties": {
+          "expected_planning_revision": {
+            "minimum": 0.0,
+            "title": "Expected Planning Revision",
+            "type": "integer"
+          },
+          "expected_project_revision": {
+            "minimum": 0.0,
+            "title": "Expected Project Revision",
+            "type": "integer"
+          },
+          "expected_source_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Expected Source Hash",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "expected_project_revision",
+          "expected_source_hash",
+          "expected_planning_revision"
+        ],
+        "title": "CaptureProjectSnapshotRequest",
+        "type": "object"
+      },
       "CheckRequest": {
         "properties": {
           "data": {
@@ -193,6 +405,13 @@
             "title": "Path",
             "type": "string"
           },
+          "source_hash": {
+            "description": "컴파일에 사용한 문서 원문 UTF-8 바이트의 소문자 SHA-256",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Source Hash",
+            "type": "string"
+          },
           "target_rspdl_version": {
             "description": "문서가 대상으로 삼는 rspdl 버전",
             "title": "Target Rspdl Version",
@@ -214,10 +433,218 @@
           "id",
           "path",
           "title",
+          "source_hash",
           "target_rspdl_version",
           "updated_at"
         ],
         "title": "CompiledDocumentRef",
+        "type": "object"
+      },
+      "CompilerEditHandler": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "handler에 함께 기록할 표시 문구",
+            "title": "Content"
+          },
+          "id": {
+            "description": "handler가 참조할 상태·메시지·팝업·로딩 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "같은 화면에서 실행할 handler 종류",
+            "enum": [
+              "state",
+              "message",
+              "popup",
+              "loading"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "CompilerEditHandler",
+        "type": "object"
+      },
+      "CompilerEditPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "button의 RSPDL action ID 변경",
+            "title": "Action Id"
+          },
+          "clear_action": {
+            "default": false,
+            "description": "button의 기존 action 연결을 명시적으로 제거할지 여부",
+            "title": "Clear Action",
+            "type": "boolean"
+          },
+          "field_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "input의 RSPDL 필드 ID 변경",
+            "title": "Field Id"
+          },
+          "field_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "list의 표시 필드 ID 변경",
+            "title": "Field Ids"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "list의 RSPDL 모델 ID 변경",
+            "title": "Model Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "button 표시 이름 변경",
+            "title": "Name"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "heading/placeholder 문구 변경",
+            "title": "Text"
+          }
+        },
+        "title": "CompilerEditPatch",
+        "type": "object"
+      },
+      "ConnectCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "handler": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompilerEditHandler"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "같은 화면 handler 경로. 화면 이동 경로면 null"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "경로에 기록할 선택적인 표시 이름",
+            "title": "Label"
+          },
+          "operation": {
+            "const": "connect",
+            "description": "화면 경로 연결 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "outcome_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "출발 action 안의 outcome ID. 없으면 null",
+            "title": "Outcome Id"
+          },
+          "source_element_id": {
+            "description": "경로를 시작할 요소 ID",
+            "minLength": 1,
+            "title": "Source Element Id",
+            "type": "string"
+          },
+          "source_screen_id": {
+            "description": "출발 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Source Screen Id",
+            "type": "string"
+          },
+          "target_screen_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "도착 RSPDL 화면 ID. handler 경로면 null",
+            "title": "Target Screen Id"
+          }
+        },
+        "required": [
+          "source_screen_id",
+          "source_element_id",
+          "operation"
+        ],
+        "title": "ConnectCompilerEdit",
         "type": "object"
       },
       "CreateDocumentRequest": {
@@ -248,6 +675,138 @@
           "title"
         ],
         "title": "CreateDocumentRequest",
+        "type": "object"
+      },
+      "CreatePlanningAiJobRequest": {
+        "properties": {
+          "base_project_revision": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기대 원문 revision",
+            "title": "Base Project Revision"
+          },
+          "base_source_hash": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기대 원문 hash",
+            "title": "Base Source Hash"
+          },
+          "expected_planning_revision": {
+            "description": "사용자 메시지 기준 revision",
+            "minimum": 0.0,
+            "title": "Expected Planning Revision",
+            "type": "integer"
+          },
+          "instruction": {
+            "description": "인터뷰 답변 또는 생성 지시",
+            "maxLength": 12000,
+            "minLength": 1,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "kind": {
+            "description": "대화 또는 소스 생성 작업",
+            "enum": [
+              "interview",
+              "generate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "enqueue 재전송을 중복 제거하는 클라이언트 요청 ID",
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "selected_subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanningAiSubject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "선택한 대화 대상"
+          },
+          "source_draft_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "검토·수정할 저장 초안",
+            "title": "Source Draft Id"
+          }
+        },
+        "required": [
+          "request_id",
+          "kind",
+          "expected_planning_revision",
+          "instruction"
+        ],
+        "title": "CreatePlanningAiJobRequest",
+        "type": "object"
+      },
+      "CreatePlanningDraftRequest": {
+        "properties": {
+          "base_project_revision": {
+            "minimum": 0.0,
+            "title": "Base Project Revision",
+            "type": "integer"
+          },
+          "base_source_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Base Source Hash",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/DraftDocumentChange"
+            },
+            "minItems": 1,
+            "title": "Changes",
+            "type": "array"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "base_project_revision",
+          "base_source_hash",
+          "changes"
+        ],
+        "title": "CreatePlanningDraftRequest",
         "type": "object"
       },
       "CreateProjectRequest": {
@@ -340,6 +899,115 @@
           "avatar_url"
         ],
         "title": "CurrentUserResponse",
+        "type": "object"
+      },
+      "DeleteCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "element_id": {
+            "description": "삭제할 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Element Id",
+            "type": "string"
+          },
+          "operation": {
+            "const": "delete",
+            "description": "요소 삭제 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "screen_id": {
+            "description": "편집할 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Screen Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "screen_id",
+          "element_id"
+        ],
+        "title": "DeleteCompilerEdit",
+        "type": "object"
+      },
+      "DisconnectCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "handler": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompilerEditHandler"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "같은 화면 handler 경로. 화면 이동 경로면 null"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "경로에 기록할 선택적인 표시 이름",
+            "title": "Label"
+          },
+          "operation": {
+            "const": "disconnect",
+            "description": "화면 경로 연결 해제 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "outcome_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "출발 action 안의 outcome ID. 없으면 null",
+            "title": "Outcome Id"
+          },
+          "source_element_id": {
+            "description": "경로를 시작할 요소 ID",
+            "minLength": 1,
+            "title": "Source Element Id",
+            "type": "string"
+          },
+          "source_screen_id": {
+            "description": "출발 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Source Screen Id",
+            "type": "string"
+          },
+          "target_screen_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "도착 RSPDL 화면 ID. handler 경로면 null",
+            "title": "Target Screen Id"
+          }
+        },
+        "required": [
+          "source_screen_id",
+          "source_element_id",
+          "operation"
+        ],
+        "title": "DisconnectCompilerEdit",
         "type": "object"
       },
       "DocumentResponse": {
@@ -499,6 +1167,50 @@
         "title": "DocumentSummaryResponse",
         "type": "object"
       },
+      "DraftDocumentChange": {
+        "properties": {
+          "operation": {
+            "description": "upsert | delete",
+            "title": "Operation",
+            "type": "string"
+          },
+          "path": {
+            "description": "프로젝트 안의 .rspdl 경로",
+            "title": "Path",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "upsert 때 필요한 RSPDL 전문",
+            "title": "Text"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "upsert 때 필요한 표시 이름",
+            "title": "Title"
+          }
+        },
+        "required": [
+          "operation",
+          "path"
+        ],
+        "title": "DraftDocumentChange",
+        "type": "object"
+      },
       "DraftDocumentRequest": {
         "properties": {
           "instruction": {
@@ -525,6 +1237,243 @@
           "instruction"
         ],
         "title": "DraftDocumentRequest",
+        "type": "object"
+      },
+      "EditButtonElement": {
+        "additionalProperties": false,
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "버튼이 참조할 RSPDL action ID",
+            "title": "Action Id"
+          },
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "button",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "description": "버튼에 표시할 이름",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name"
+        ],
+        "title": "EditButtonElement",
+        "type": "object"
+      },
+      "EditFormElement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "form",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "EditFormElement",
+        "type": "object"
+      },
+      "EditHeaderElement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "header",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "EditHeaderElement",
+        "type": "object"
+      },
+      "EditHeadingElement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "heading",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "description": "제목에 표시할 문구",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "text"
+        ],
+        "title": "EditHeadingElement",
+        "type": "object"
+      },
+      "EditInputElement": {
+        "additionalProperties": false,
+        "properties": {
+          "field_id": {
+            "description": "입력이 참조할 RSPDL 필드 ID",
+            "minLength": 1,
+            "title": "Field Id",
+            "type": "string"
+          },
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "input",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "field_id"
+        ],
+        "title": "EditInputElement",
+        "type": "object"
+      },
+      "EditListElement": {
+        "additionalProperties": false,
+        "properties": {
+          "field_ids": {
+            "description": "목록에서 표시할 RSPDL 필드 ID",
+            "items": {
+              "type": "string"
+            },
+            "title": "Field Ids",
+            "type": "array"
+          },
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "list",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          },
+          "model_id": {
+            "description": "목록이 참조할 RSPDL 모델 ID",
+            "minLength": 1,
+            "title": "Model Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "model_id",
+          "field_ids"
+        ],
+        "title": "EditListElement",
+        "type": "object"
+      },
+      "EditPlaceholderElement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "placeholder",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "description": "자리표시 요소에 표시할 문구",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "text"
+        ],
+        "title": "EditPlaceholderElement",
+        "type": "object"
+      },
+      "EditSectionElement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "프로젝트 화면 안에서 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "section",
+            "description": "추가할 요소 종류",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "EditSectionElement",
         "type": "object"
       },
       "FindModelRequest": {
@@ -595,6 +1544,108 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "InsertCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "before_element_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이 요소 앞에 삽입. 생략하면 slot 마지막에 추가",
+            "title": "Before Element Id"
+          },
+          "element": {
+            "description": "추가할 구조화 화면 요소",
+            "discriminator": {
+              "mapping": {
+                "button": "#/components/schemas/EditButtonElement",
+                "form": "#/components/schemas/EditFormElement",
+                "header": "#/components/schemas/EditHeaderElement",
+                "heading": "#/components/schemas/EditHeadingElement",
+                "input": "#/components/schemas/EditInputElement",
+                "list": "#/components/schemas/EditListElement",
+                "placeholder": "#/components/schemas/EditPlaceholderElement",
+                "section": "#/components/schemas/EditSectionElement"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EditHeaderElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditSectionElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditFormElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditHeadingElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditInputElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditListElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditButtonElement"
+              },
+              {
+                "$ref": "#/components/schemas/EditPlaceholderElement"
+              }
+            ],
+            "title": "Element"
+          },
+          "operation": {
+            "const": "insert",
+            "description": "요소 추가 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "parent_element_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "추가 위치의 부모 요소 ID. root slot이면 생략",
+            "title": "Parent Element Id"
+          },
+          "screen_id": {
+            "description": "편집할 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Screen Id",
+            "type": "string"
+          },
+          "slot": {
+            "description": "컴파일러가 검증할 부모 안의 삽입 영역",
+            "enum": [
+              "root",
+              "children",
+              "inputs"
+            ],
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "screen_id",
+          "slot",
+          "element"
+        ],
+        "title": "InsertCompilerEdit",
+        "type": "object"
+      },
       "McpTokenResponse": {
         "description": "MCP 클라이언트가 쓸 Bearer 토큰.\n\n발급된 뒤에는 **폐기할 수 없다.** 토큰 저장소가 없으므로 `expires_at` 까지는 유효하다\n(ADR-0005). 화면이 이 사실과 만료 시각을 사용자에게 보여줄 수 있도록 함께 돌려준다.",
         "properties": {
@@ -623,6 +1674,71 @@
         "title": "McpTokenResponse",
         "type": "object"
       },
+      "MoveCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "before_element_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "이 요소 앞으로 이동. 생략하면 slot 마지막으로 이동",
+            "title": "Before Element Id"
+          },
+          "element_id": {
+            "description": "이동할 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Element Id",
+            "type": "string"
+          },
+          "operation": {
+            "const": "move",
+            "description": "요소 이동 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "parent_element_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "새 부모 요소 ID. root slot이면 생략",
+            "title": "Parent Element Id"
+          },
+          "screen_id": {
+            "description": "편집할 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Screen Id",
+            "type": "string"
+          },
+          "slot": {
+            "description": "컴파일러가 검증할 새 부모 안의 영역",
+            "enum": [
+              "root",
+              "children",
+              "inputs"
+            ],
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "screen_id",
+          "element_id",
+          "slot"
+        ],
+        "title": "MoveCompilerEdit",
+        "type": "object"
+      },
       "PasswordLoginRequest": {
         "properties": {
           "login": {
@@ -644,6 +1760,947 @@
           "password"
         ],
         "title": "PasswordLoginRequest",
+        "type": "object"
+      },
+      "PatchPlanningMetadataRequest": {
+        "properties": {
+          "design": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Design"
+          },
+          "environments": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environments"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "sample_data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Data"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "PatchPlanningMetadataRequest",
+        "type": "object"
+      },
+      "PlanningAiErrorResponse": {
+        "properties": {
+          "code": {
+            "description": "비밀이나 상류 응답을 포함하지 않는 오류 분류",
+            "enum": [
+              "config",
+              "auth",
+              "rate_limit",
+              "timeout",
+              "provider_failure",
+              "invalid_output",
+              "conflict"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "description": "사용자가 취할 수 있는 조치를 설명하는 안전한 문구",
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "description": "새 작업으로 재시도할 수 있는지",
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "title": "PlanningAiErrorResponse",
+        "type": "object"
+      },
+      "PlanningAiJobResponse": {
+        "properties": {
+          "attempt": {
+            "description": "사용자 재시도 회차",
+            "minimum": 1.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "cancel_requested": {
+            "description": "실행 중 취소 요청 여부",
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "created_at": {
+            "description": "enqueue 시각",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanningAiErrorResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "정제된 실패 정보"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "종료 시각",
+            "title": "Finished At"
+          },
+          "frozen_planning_revision": {
+            "description": "작업이 읽은 기획 상태 revision",
+            "title": "Frozen Planning Revision",
+            "type": "integer"
+          },
+          "frozen_project_revision": {
+            "description": "작업이 읽은 원문 revision",
+            "title": "Frozen Project Revision",
+            "type": "integer"
+          },
+          "frozen_source_hash": {
+            "description": "작업이 읽은 원문 hash",
+            "title": "Frozen Source Hash",
+            "type": "string"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "마지막 worker heartbeat 시각",
+            "title": "Heartbeat At"
+          },
+          "id": {
+            "description": "AI 작업 ID",
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "작업 종류",
+            "enum": [
+              "interview",
+              "generate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_attempts": {
+            "description": "최대 사용자 재시도 회차",
+            "minimum": 1.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/PlanningAiProgressResponse",
+            "description": "영속 진행률"
+          },
+          "project_id": {
+            "description": "작업 프로젝트",
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "request": {
+            "additionalProperties": true,
+            "description": "원래 지시",
+            "title": "Request",
+            "type": "object"
+          },
+          "request_id": {
+            "description": "enqueue 중복 제거 요청 ID",
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "성공 결과. stale 결과도 보존",
+            "title": "Result"
+          },
+          "retry_of_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "재시도 원본 작업",
+            "title": "Retry Of Job Id"
+          },
+          "source_draft_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기준 저장 초안",
+            "title": "Source Draft Id"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "최초 worker 시작 시각",
+            "title": "Started At"
+          },
+          "status": {
+            "description": "작업 상태",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "request_id",
+          "kind",
+          "status",
+          "request",
+          "frozen_planning_revision",
+          "frozen_project_revision",
+          "frozen_source_hash",
+          "source_draft_id",
+          "retry_of_job_id",
+          "attempt",
+          "max_attempts",
+          "progress",
+          "result",
+          "error",
+          "cancel_requested",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "heartbeat_at"
+        ],
+        "title": "PlanningAiJobResponse",
+        "type": "object"
+      },
+      "PlanningAiProgressResponse": {
+        "properties": {
+          "completed": {
+            "description": "완료 단위 수",
+            "minimum": 0.0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "사용자에게 표시할 진행 설명",
+            "title": "Message"
+          },
+          "stage": {
+            "description": "현재 실행 단계",
+            "title": "Stage",
+            "type": "string"
+          },
+          "total": {
+            "description": "전체 단위 수",
+            "minimum": 1.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stage",
+          "completed",
+          "total",
+          "message"
+        ],
+        "title": "PlanningAiProgressResponse",
+        "type": "object"
+      },
+      "PlanningAiSubject": {
+        "properties": {
+          "id": {
+            "description": "선택 대상의 안정 식별자",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "선택 대상 종류",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "화면 표시 이름",
+            "title": "Label"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "compiler 소스 경로",
+            "title": "Source Path"
+          },
+          "stable_id": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "compiler 안정 ID",
+            "title": "Stable Id"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "PlanningAiSubject",
+        "type": "object"
+      },
+      "PlanningAnalysisResponse": {
+        "properties": {
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RSPDL SDK 결과 원본",
+            "title": "Result"
+          },
+          "rspdl_version": {
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "wire_schema_version": {
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "result"
+        ],
+        "title": "PlanningAnalysisResponse",
+        "type": "object"
+      },
+      "PlanningDecisionResolutionEventResponse": {
+        "properties": {
+          "from_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "변경 전 결정 상태",
+            "title": "From Status"
+          },
+          "previous_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "변경 전 근거",
+            "title": "Previous Rationale"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "새 근거",
+            "title": "Rationale"
+          },
+          "resolved_at": {
+            "description": "이 상태 변경이 기록된 시각",
+            "format": "date-time",
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "to_status": {
+            "description": "변경 후 결정 상태",
+            "title": "To Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_status",
+          "to_status",
+          "previous_rationale",
+          "rationale",
+          "resolved_at"
+        ],
+        "title": "PlanningDecisionResolutionEventResponse",
+        "type": "object"
+      },
+      "PlanningDecisionResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "rationale",
+          "status",
+          "created_at"
+        ],
+        "title": "PlanningDecisionResponse",
+        "type": "object"
+      },
+      "PlanningDraftResponse": {
+        "properties": {
+          "applied_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Revision"
+          },
+          "base_project_revision": {
+            "title": "Base Project Revision",
+            "type": "integer"
+          },
+          "base_source_hash": {
+            "title": "Base Source Hash",
+            "type": "string"
+          },
+          "candidate_documents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Candidate Documents",
+            "type": "array"
+          },
+          "candidate_source_hash": {
+            "title": "Candidate Source Hash",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "rspdl_version": {
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "wire_schema_version": {
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "base_project_revision",
+          "base_source_hash",
+          "candidate_source_hash",
+          "changes",
+          "candidate_documents",
+          "summary",
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "result",
+          "applied_revision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PlanningDraftResponse",
+        "type": "object"
+      },
+      "PlanningDraftSummaryResponse": {
+        "properties": {
+          "applied_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Revision"
+          },
+          "base_project_revision": {
+            "title": "Base Project Revision",
+            "type": "integer"
+          },
+          "base_source_hash": {
+            "title": "Base Source Hash",
+            "type": "string"
+          },
+          "candidate_source_hash": {
+            "title": "Candidate Source Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "rspdl_version": {
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "wire_schema_version": {
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "base_project_revision",
+          "base_source_hash",
+          "candidate_source_hash",
+          "summary",
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "applied_revision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PlanningDraftSummaryResponse",
+        "type": "object"
+      },
+      "PlanningMessageResponse": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "description": "user | assistant",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content",
+          "created_at"
+        ],
+        "title": "PlanningMessageResponse",
+        "type": "object"
+      },
+      "PlanningMetadata": {
+        "properties": {
+          "design": {
+            "additionalProperties": true,
+            "title": "Design",
+            "type": "object"
+          },
+          "environments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Environments",
+            "type": "array"
+          },
+          "sample_data": {
+            "additionalProperties": true,
+            "title": "Sample Data",
+            "type": "object"
+          }
+        },
+        "title": "PlanningMetadata",
+        "type": "object"
+      },
+      "PlanningMetadataMutationResponse": {
+        "properties": {
+          "metadata": {
+            "$ref": "#/components/schemas/PlanningMetadata"
+          },
+          "metadata_revision": {
+            "description": "갱신된 메타데이터 hydration token",
+            "title": "Metadata Revision",
+            "type": "integer"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "metadata_revision",
+          "metadata"
+        ],
+        "title": "PlanningMetadataMutationResponse",
+        "type": "object"
+      },
+      "PlanningMetadataRevisionResponse": {
+        "properties": {
+          "author_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PlanningMetadata"
+          },
+          "revision": {
+            "description": "이 메타데이터 전문을 저장한 당시 기획 상태 revision",
+            "title": "Revision",
+            "type": "integer"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "revision",
+          "metadata",
+          "author_id",
+          "summary",
+          "created_at"
+        ],
+        "title": "PlanningMetadataRevisionResponse",
+        "type": "object"
+      },
+      "PlanningStateResponse": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PlanningMetadata"
+          },
+          "metadata_revision": {
+            "description": "메시지·결정 변경과 독립적으로 증가하는 메타데이터 hydration token",
+            "title": "Metadata Revision",
+            "type": "integer"
+          },
+          "project_revision": {
+            "description": "확정 RSPDL 원문 변경 묶음 버전",
+            "title": "Project Revision",
+            "type": "integer"
+          },
+          "proposals": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Proposals",
+            "type": "array"
+          },
+          "revision": {
+            "description": "대화·결정·메타데이터의 독립 optimistic revision",
+            "title": "Revision",
+            "type": "integer"
+          },
+          "source_hash": {
+            "description": "현재 확정 원문의 canonical workspace hash",
+            "title": "Source Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "metadata_revision",
+          "project_revision",
+          "source_hash",
+          "messages",
+          "decisions",
+          "proposals",
+          "metadata"
+        ],
+        "title": "PlanningStateResponse",
         "type": "object"
       },
       "ProjectCompileResponse": {
@@ -764,8 +2821,23 @@
             "title": "Name",
             "type": "string"
           },
+          "revision": {
+            "description": "원문 변경 묶음 버전",
+            "title": "Revision",
+            "type": "integer"
+          },
           "slug": {
             "title": "Slug",
+            "type": "string"
+          },
+          "snapshot_version": {
+            "description": "원문과 기획 상태를 함께 고정한 최신 버전",
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
+          "source_hash": {
+            "description": "canonical 문서 목록의 내용 해시",
+            "title": "Source Hash",
             "type": "string"
           },
           "updated_at": {
@@ -780,11 +2852,384 @@
           "name",
           "description",
           "default_rspdl_version",
+          "revision",
+          "source_hash",
+          "snapshot_version",
           "created_at",
           "updated_at",
           "archived_at"
         ],
         "title": "ProjectResponse",
+        "type": "object"
+      },
+      "ProjectSnapshotResponse": {
+        "properties": {
+          "author_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Id"
+          },
+          "change_kind": {
+            "description": "baseline | apply | restore",
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "documents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "planning_revision": {
+            "title": "Planning Revision",
+            "type": "integer"
+          },
+          "planning_state": {
+            "additionalProperties": true,
+            "title": "Planning State",
+            "type": "object"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_revision": {
+            "title": "Project Revision",
+            "type": "integer"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "해당 버전에서 저장한 RSPDL SDK 결과 원본",
+            "title": "Result"
+          },
+          "rspdl_version": {
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "snapshot_version": {
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
+          "source_hash": {
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "wire_schema_version": {
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "snapshot_version",
+          "project_revision",
+          "planning_revision",
+          "source_hash",
+          "documents",
+          "planning_state",
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "result",
+          "change_kind",
+          "summary",
+          "author_id",
+          "created_at"
+        ],
+        "title": "ProjectSnapshotResponse",
+        "type": "object"
+      },
+      "ProjectSnapshotSummaryResponse": {
+        "properties": {
+          "author_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Id"
+          },
+          "change_kind": {
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "planning_revision": {
+            "title": "Planning Revision",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_revision": {
+            "title": "Project Revision",
+            "type": "integer"
+          },
+          "rspdl_version": {
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "snapshot_version": {
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
+          "source_hash": {
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "wire_schema_version": {
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "snapshot_version",
+          "project_revision",
+          "planning_revision",
+          "source_hash",
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "change_kind",
+          "summary",
+          "author_id",
+          "created_at"
+        ],
+        "title": "ProjectSnapshotSummaryResponse",
+        "type": "object"
+      },
+      "ProposePlanningEditRequest": {
+        "properties": {
+          "base_project_revision": {
+            "description": "후보가 기준으로 삼은 프로젝트 리비전",
+            "minimum": 0.0,
+            "title": "Base Project Revision",
+            "type": "integer"
+          },
+          "base_source_hash": {
+            "description": "후보가 기준으로 삼은 프로젝트 원문 해시",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Base Source Hash",
+            "type": "string"
+          },
+          "document_id": {
+            "description": "현재 확정 원문을 읽을 저장 문서 ID",
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "edit": {
+            "description": "컴파일러가 적용·검증할 구조화 편집",
+            "discriminator": {
+              "mapping": {
+                "connect": "#/components/schemas/ConnectCompilerEdit",
+                "delete": "#/components/schemas/DeleteCompilerEdit",
+                "disconnect": "#/components/schemas/DisconnectCompilerEdit",
+                "insert": "#/components/schemas/InsertCompilerEdit",
+                "move": "#/components/schemas/MoveCompilerEdit",
+                "update": "#/components/schemas/UpdateCompilerEdit"
+              },
+              "propertyName": "operation"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InsertCompilerEdit"
+              },
+              {
+                "$ref": "#/components/schemas/DeleteCompilerEdit"
+              },
+              {
+                "$ref": "#/components/schemas/MoveCompilerEdit"
+              },
+              {
+                "$ref": "#/components/schemas/UpdateCompilerEdit"
+              },
+              {
+                "$ref": "#/components/schemas/ConnectCompilerEdit"
+              },
+              {
+                "$ref": "#/components/schemas/DisconnectCompilerEdit"
+              }
+            ],
+            "title": "Edit"
+          },
+          "expected_source_hash": {
+            "description": "문서 원문 UTF-8 바이트의 소문자 SHA-256",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Expected Source Hash",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "초안 변경 요약",
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "document_id",
+          "base_project_revision",
+          "base_source_hash",
+          "expected_source_hash",
+          "edit"
+        ],
+        "title": "ProposePlanningEditRequest",
+        "type": "object"
+      },
+      "ProposePlanningEditResponse": {
+        "properties": {
+          "compiler_response": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RSPDL edit SDK 응답 원본. applied/rejected와 candidate, compilation, tombstones, id_remap을 재작성하지 않는다",
+            "title": "Compiler Response"
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanningDraftResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "applied 후보를 프로젝트 전체로 다시 컴파일해 보관한 초안"
+          },
+          "locale": {
+            "description": "구조화 편집 locale",
+            "title": "Locale",
+            "type": "string"
+          },
+          "rspdl_version": {
+            "description": "구조화 편집을 시도한 RSPDL 버전",
+            "title": "Rspdl Version",
+            "type": "string"
+          },
+          "supported": {
+            "description": "활성 RSPDL 런타임이 구조화 편집을 지원하는지",
+            "title": "Supported",
+            "type": "boolean"
+          },
+          "unsupported_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "지원하지 않을 때의 명시적 사유. 지원되면 null",
+            "title": "Unsupported Reason"
+          },
+          "wire_schema_version": {
+            "description": "활성 RSPDL 결과 wire schema 버전",
+            "title": "Wire Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "supported",
+          "unsupported_reason",
+          "rspdl_version",
+          "wire_schema_version",
+          "locale",
+          "compiler_response",
+          "draft"
+        ],
+        "title": "ProposePlanningEditResponse",
         "type": "object"
       },
       "RegisterRequest": {
@@ -825,6 +3270,217 @@
           "display_name"
         ],
         "title": "RegisterRequest",
+        "type": "object"
+      },
+      "ResolvePlanningDecisionRequest": {
+        "properties": {
+          "expected_revision": {
+            "description": "현재 기획 상태 optimistic revision",
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "채택·보류 근거",
+            "title": "Rationale"
+          },
+          "status": {
+            "description": "decided | deferred",
+            "pattern": "^(decided|deferred)$",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "status"
+        ],
+        "title": "ResolvePlanningDecisionRequest",
+        "type": "object"
+      },
+      "ResolvePlanningDecisionResponse": {
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/ResolvedPlanningDecisionResponse"
+          },
+          "revision": {
+            "description": "갱신된 기획 상태 revision",
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item",
+          "revision"
+        ],
+        "title": "ResolvePlanningDecisionResponse",
+        "type": "object"
+      },
+      "ResolvePlanningProposalRequest": {
+        "properties": {
+          "expected_revision": {
+            "description": "현재 기획 상태 revision",
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "채택 또는 보류 이유",
+            "title": "Rationale"
+          },
+          "status": {
+            "description": "정책 제안을 명시적으로 채택하거나 보류",
+            "enum": [
+              "adopted",
+              "deferred"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "status"
+        ],
+        "title": "ResolvePlanningProposalRequest",
+        "type": "object"
+      },
+      "ResolvePlanningProposalResponse": {
+        "properties": {
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "채택 시 생성된 결정. 보류면 null",
+            "title": "Decision"
+          },
+          "item": {
+            "additionalProperties": true,
+            "description": "갱신된 정책 제안",
+            "title": "Item",
+            "type": "object"
+          },
+          "revision": {
+            "description": "갱신된 기획 상태 revision",
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item",
+          "decision",
+          "revision"
+        ],
+        "title": "ResolvePlanningProposalResponse",
+        "type": "object"
+      },
+      "ResolvedPlanningDecisionResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "resolution_history": {
+            "description": "이 결정 ID에 누적된 상태 변경 이력",
+            "items": {
+              "$ref": "#/components/schemas/PlanningDecisionResolutionEventResponse"
+            },
+            "title": "Resolution History",
+            "type": "array"
+          },
+          "resolved_at": {
+            "description": "가장 최근 상태 변경 시각",
+            "format": "date-time",
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "rationale",
+          "status",
+          "created_at",
+          "resolved_at",
+          "resolution_history"
+        ],
+        "title": "ResolvedPlanningDecisionResponse",
+        "type": "object"
+      },
+      "RestoreProjectSnapshotRequest": {
+        "properties": {
+          "expected_planning_revision": {
+            "minimum": 0.0,
+            "title": "Expected Planning Revision",
+            "type": "integer"
+          },
+          "expected_project_revision": {
+            "minimum": 0.0,
+            "title": "Expected Project Revision",
+            "type": "integer"
+          },
+          "expected_source_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Expected Source Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_project_revision",
+          "expected_source_hash",
+          "expected_planning_revision"
+        ],
+        "title": "RestoreProjectSnapshotRequest",
         "type": "object"
       },
       "ReviseDocumentRequest": {
@@ -894,6 +3550,61 @@
         "title": "SourceIn",
         "type": "object"
       },
+      "UndoPlanningMetadataRequest": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "target_revision": {
+            "minimum": 0.0,
+            "title": "Target Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "target_revision"
+        ],
+        "title": "UndoPlanningMetadataRequest",
+        "type": "object"
+      },
+      "UpdateCompilerEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "element_id": {
+            "description": "변경할 안정적인 요소 ID",
+            "minLength": 1,
+            "title": "Element Id",
+            "type": "string"
+          },
+          "operation": {
+            "const": "update",
+            "description": "요소 속성 변경 편집",
+            "title": "Operation",
+            "type": "string"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/CompilerEditPatch",
+            "description": "요소 종류에 허용된 속성 변경"
+          },
+          "screen_id": {
+            "description": "편집할 RSPDL 화면 ID",
+            "minLength": 1,
+            "title": "Screen Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "screen_id",
+          "element_id",
+          "patch"
+        ],
+        "title": "UpdateCompilerEdit",
+        "type": "object"
+      },
       "UpdateDocumentRequest": {
         "properties": {
           "summary": {
@@ -918,6 +3629,47 @@
           "text"
         ],
         "title": "UpdateDocumentRequest",
+        "type": "object"
+      },
+      "UpdatePlanningStateRequest": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PlanningMetadata"
+          },
+          "proposals": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Proposals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "UpdatePlanningStateRequest",
         "type": "object"
       },
       "ValidationError": {
@@ -1833,6 +4585,134 @@
         ]
       }
     },
+    "/api/planning/drafts/{draft_id}": {
+      "get": {
+        "operationId": "get_planning_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Planning Draft",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/planning/drafts/{draft_id}/apply": {
+      "post": {
+        "operationId": "apply_planning_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyPlanningDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyPlanningDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Planning Draft",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
     "/api/projects": {
       "get": {
         "description": "내가 멤버인 프로젝트 목록. 한 사용자가 여러 프로젝트를 가질 수 있다.",
@@ -2389,6 +5269,1598 @@
         "summary": "Add Project Member",
         "tags": [
           "workspace"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning": {
+      "get": {
+        "operationId": "get_planning_state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningStateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Planning State",
+        "tags": [
+          "planning"
+        ]
+      },
+      "put": {
+        "operationId": "update_planning_state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePlanningStateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningStateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Planning State",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/ai-jobs": {
+      "get": {
+        "operationId": "list_planning_ai_jobs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlanningAiJobResponse"
+                  },
+                  "title": "Response List Planning Ai Jobs",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Planning Ai Jobs",
+        "tags": [
+          "planning"
+        ]
+      },
+      "post": {
+        "operationId": "create_planning_ai_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlanningAiJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningAiJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Planning Ai Job",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/ai-jobs/{job_id}": {
+      "get": {
+        "operationId": "get_planning_ai_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningAiJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Planning Ai Job",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/ai-jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_planning_ai_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningAiJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Planning Ai Job",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/ai-jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "retry_planning_ai_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningAiJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Planning Ai Job",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/decisions": {
+      "post": {
+        "operationId": "append_planning_decision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppendPlanningDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppendPlanningDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Append Planning Decision",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/decisions/{decision_id}": {
+      "patch": {
+        "operationId": "resolve_planning_decision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Decision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolvePlanningDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvePlanningDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Planning Decision",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/drafts": {
+      "get": {
+        "operationId": "list_planning_drafts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlanningDraftSummaryResponse"
+                  },
+                  "title": "Response List Planning Drafts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Planning Drafts",
+        "tags": [
+          "planning"
+        ]
+      },
+      "post": {
+        "operationId": "create_planning_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlanningDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Planning Draft",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/edit-proposals": {
+      "post": {
+        "description": "구조화 편집을 컴파일하고 검토 가능한 초안으로 만든다. 확정 원문은 바꾸지 않는다.",
+        "operationId": "propose_planning_edit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposePlanningEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposePlanningEditResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Propose Planning Edit",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/handoff": {
+      "get": {
+        "operationId": "get_project_handoff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Handoff",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/messages": {
+      "post": {
+        "operationId": "append_planning_message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppendPlanningMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppendPlanningMessageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Append Planning Message",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/metadata": {
+      "patch": {
+        "operationId": "patch_planning_metadata",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchPlanningMetadataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningMetadataMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Planning Metadata",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/metadata/history": {
+      "get": {
+        "operationId": "list_planning_metadata_history",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_revision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Revision"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlanningMetadataRevisionResponse"
+                  },
+                  "title": "Response List Planning Metadata History",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Planning Metadata History",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/metadata/undo": {
+      "post": {
+        "operationId": "undo_planning_metadata",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UndoPlanningMetadataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningMetadataMutationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo Planning Metadata",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/proposals/{proposal_id}": {
+      "patch": {
+        "operationId": "resolve_planning_proposal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolvePlanningProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvePlanningProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Planning Proposal",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/snapshots": {
+      "get": {
+        "operationId": "list_project_snapshots",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectSnapshotSummaryResponse"
+                  },
+                  "title": "Response List Project Snapshots",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Project Snapshots",
+        "tags": [
+          "planning"
+        ]
+      },
+      "post": {
+        "operationId": "capture_project_snapshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureProjectSnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Capture Project Snapshot",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/snapshots/{revision}/restore": {
+      "post": {
+        "operationId": "restore_project_snapshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreProjectSnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Project Snapshot",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/snapshots/{snapshot_version}": {
+      "get": {
+        "operationId": "get_project_snapshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_version",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Snapshot",
+        "tags": [
+          "planning"
         ]
       }
     },

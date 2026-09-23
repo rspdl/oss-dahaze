@@ -133,6 +133,14 @@ describe('renderDiagnosticMessage', () => {
     ).toBe('컴파일러가 렌더링한 문구')
   })
 
+  it.each([
+    ['semantic.layout.required_input_without_slot', { screen_id: 'booking.lookup', field_id: 'booking.reservation.contact' }, '화면 booking.lookup이(가) 입력한다고 선언한 필수 필드 booking.reservation.contact을(를) 채울 자리가 어떤 화면에도 없습니다.'],
+    ['semantic.outcome.handler_missing', { screen_id: 'booking.lookup', element_id: 'lookup', outcome_id: 'booking.lookup.not_found' }, 'booking.lookup.lookup 버튼의 결과 booking.lookup.not_found을(를) 처리하는 경로가 없습니다.'],
+    ['semantic.recovery.target_invalid', { outcome_id: 'booking.lookup.not_found' }, '결과 booking.lookup.not_found의 복구 대상이 정확한 화면 버튼 또는 경로와 연결되지 않습니다.'],
+  ])('컴파일러의 outcome 관련 문구 %s를 그대로 재현한다', (messageKey, arguments_, expected) => {
+    expect(renderDiagnosticMessage(diagnostic({ message_key: messageKey, arguments: arguments_ }))).toBe(expected)
+  })
+
   it('아는 키라도 컴파일러가 문장을 주면 그 문장이 이긴다', () => {
     expect(
       renderDiagnosticMessage(

@@ -21,7 +21,13 @@ from dahaze_api.domain.entities import (
     User,
 )
 from dahaze_api.domain.llm import EbnfGrammar
-from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlRuntime, RspdlSource
+from dahaze_api.domain.planning import DecisionResolutionOutcome
+from dahaze_api.domain.rspdl import (
+    AnalysisOutcome,
+    RspdlEditOutcome,
+    RspdlRuntime,
+    RspdlSource,
+)
 
 
 class RspdlCompilerPort(Protocol):
@@ -37,15 +43,17 @@ class RspdlCompilerPort(Protocol):
         """이 컴파일러의 정체. 산출물마다 함께 기록된다."""
         ...
 
-    async def compile(self, sources: Sequence[RspdlSource]) -> AnalysisOutcome:
+    async def capabilities(self) -> frozenset[str]:
+        """실제 compiler 결과로 증명한 선택 기능."""
         ...
+
+    async def compile(self, sources: Sequence[RspdlSource]) -> AnalysisOutcome: ...
 
     async def check(
         self,
         sources: Sequence[RspdlSource],
         data: Mapping[str, Any],
-    ) -> AnalysisOutcome:
-        ...
+    ) -> AnalysisOutcome: ...
 
     async def find_model(
         self,
@@ -53,18 +61,25 @@ class RspdlCompilerPort(Protocol):
         *,
         scope_per_model: int | None = None,
         timeout_ms: int | None = None,
-    ) -> AnalysisOutcome:
+    ) -> AnalysisOutcome: ...
+
+    async def edit(
+        self,
+        source: RspdlSource,
+        *,
+        expected_source_hash: str,
+        edit: Mapping[str, Any],
+    ) -> RspdlEditOutcome:
+        """컴파일러 소유의 구조화 편집으로 저장되지 않은 후보 원문을 만든다."""
         ...
 
 
 class AnalysisCachePort(Protocol):
     """컴파일 결과 캐시. 저장된 것은 전부 버리고 다시 만들 수 있다 (ADR-0003)."""
 
-    async def get(self, cache_key: str) -> AnalysisOutcome | None:
-        ...
+    async def get(self, cache_key: str) -> AnalysisOutcome | None: ...
 
-    async def put(self, cache_key: str, outcome: AnalysisOutcome) -> None:
-        ...
+    async def put(self, cache_key: str, outcome: AnalysisOutcome) -> None: ...
 
 
 class OAuthProviderPort(Protocol):
@@ -75,14 +90,11 @@ class OAuthProviderPort(Protocol):
     """
 
     @property
-    def provider(self) -> str:
-        ...
+    def provider(self) -> str: ...
 
-    def authorize_url(self, *, state: str, redirect_uri: str) -> str:
-        ...
+    def authorize_url(self, *, state: str, redirect_uri: str) -> str: ...
 
-    async def exchange_code(self, *, code: str, redirect_uri: str) -> ExternalIdentity:
-        ...
+    async def exchange_code(self, *, code: str, redirect_uri: str) -> ExternalIdentity: ...
 
 
 class LlmPort(Protocol):
@@ -107,6 +119,7 @@ class LlmPort(Protocol):
         current_text: str | None,
         diagnostics: Sequence[Mapping[str, Any]],
         grammar: EbnfGrammar,
+        system_prompt: str | None = None,
     ) -> str:
         """지시, 현재 진단과 EBNF 문법을 받아 RSPDL 소스 전문을 돌려준다.
 
@@ -124,15 +137,25 @@ class LlmPort(Protocol):
         ...
 
 
+class PlanningLlmPort(Protocol):
+    """자연어 인터뷰와 소스 생성 계획을 구조화해 돌려주는 LLM 경계."""
+
+    @property
+    def model(self) -> str: ...
+
+    async def interview_project(self, *, context: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
+    async def plan_project_changes(self, *, context: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
+    async def close(self) -> None: ...
+
 
 class UserRepositoryPort(Protocol):
     """사용자와 외부 신원."""
 
-    async def get(self, user_id: UUID) -> User | None:
-        ...
+    async def get(self, user_id: UUID) -> User | None: ...
 
-    async def find_by_identity(self, *, provider: str, provider_user_id: str) -> User | None:
-        ...
+    async def find_by_identity(self, *, provider: str, provider_user_id: str) -> User | None: ...
 
     async def create_from_identity(self, identity: ExternalIdentity) -> User:
         """신원으로 사용자를 새로 만든다. 같은 사람이 다른 벤더로 로그인하면
@@ -176,8 +199,7 @@ class PasswordHasherPort(Protocol):
     전체를 그 시간만큼 멈춘다. port 를 async 로 두면 구현체가 그 사실을 잊기 어렵다.
     """
 
-    async def hash(self, password: str) -> str:
-        ...
+    async def hash(self, password: str) -> str: ...
 
     async def verify(self, *, password: str, hashed: str) -> bool:
         """맞으면 `True`. 저장된 해시를 읽을 수 없어도 예외가 아니라 `False`."""
@@ -199,19 +221,15 @@ class ProjectRepositoryPort(Protocol):
         name: str,
         description: str | None,
         default_rspdl_version: str,
-    ) -> Project:
-        ...
+    ) -> Project: ...
 
-    async def get(self, project_id: UUID) -> Project | None:
-        ...
+    async def get(self, project_id: UUID) -> Project | None: ...
 
-    async def get_by_slug(self, slug: str) -> Project | None:
-        ...
+    async def get_by_slug(self, slug: str) -> Project | None: ...
 
     async def list_for_user(
         self, user_id: UUID, *, include_archived: bool = False
-    ) -> list[Project]:
-        ...
+    ) -> list[Project]: ...
 
     async def membership_of(self, *, project_id: UUID, user_id: UUID) -> ProjectMembership | None:
         """접근 검사의 유일한 진입점. 없으면 그 사용자는 프로젝트를 볼 수 없다."""
@@ -219,14 +237,11 @@ class ProjectRepositoryPort(Protocol):
 
     async def add_member(
         self, *, project_id: UUID, user_id: UUID, role: ProjectRole
-    ) -> ProjectMembership:
-        ...
+    ) -> ProjectMembership: ...
 
-    async def list_members(self, project_id: UUID) -> list[ProjectMembership]:
-        ...
+    async def list_members(self, project_id: UUID) -> list[ProjectMembership]: ...
 
-    async def archive(self, project_id: UUID) -> Project | None:
-        ...
+    async def archive(self, project_id: UUID) -> Project | None: ...
 
 
 class DocumentRepositoryPort(Protocol):
@@ -244,14 +259,11 @@ class DocumentRepositoryPort(Protocol):
         text: str,
         target_rspdl_version: str,
         author_id: UUID | None,
-    ) -> Document:
-        ...
+    ) -> Document: ...
 
-    async def get(self, document_id: UUID) -> Document | None:
-        ...
+    async def get(self, document_id: UUID) -> Document | None: ...
 
-    async def list_for_project(self, project_id: UUID) -> list[Document]:
-        ...
+    async def list_for_project(self, project_id: UUID) -> list[Document]: ...
 
     async def update_text(
         self,
@@ -264,8 +276,203 @@ class DocumentRepositoryPort(Protocol):
         """본문을 바꾸고 리비전을 남긴다. 텍스트가 그대로면 리비전을 만들지 않는다."""
         ...
 
-    async def soft_delete(self, document_id: UUID) -> bool:
-        ...
+    async def soft_delete(self, document_id: UUID) -> bool: ...
 
-    async def list_revisions(self, document_id: UUID) -> list[DocumentRevision]:
-        ...
+    async def list_revisions(self, document_id: UUID) -> list[DocumentRevision]: ...
+
+
+class PlanningRepositoryPort(Protocol):
+    """프로젝트 기획 상태와 원자적 변경 묶음 저장소."""
+
+    async def get_state(self, project_id: UUID) -> Mapping[str, Any]: ...
+    async def update_state(
+        self,
+        project_id: UUID,
+        *,
+        actor_id: UUID,
+        expected_revision: int,
+        messages: Sequence[Mapping[str, Any]],
+        decisions: Sequence[Mapping[str, Any]],
+        proposals: Sequence[Mapping[str, Any]],
+        metadata: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None: ...
+    async def append_message(
+        self,
+        project_id: UUID,
+        *,
+        expected_revision: int,
+        role: str,
+        content: str,
+    ) -> Mapping[str, Any] | None: ...
+    async def append_decision(
+        self,
+        project_id: UUID,
+        *,
+        expected_revision: int,
+        title: str,
+        rationale: str | None,
+        status: str,
+    ) -> Mapping[str, Any] | None: ...
+    async def resolve_decision(
+        self,
+        project_id: UUID,
+        *,
+        decision_id: UUID,
+        expected_revision: int,
+        status: str,
+        rationale: str | None,
+    ) -> DecisionResolutionOutcome: ...
+    async def resolve_proposal(
+        self,
+        project_id: UUID,
+        *,
+        proposal_id: UUID,
+        expected_revision: int,
+        status: str,
+        rationale: str | None,
+    ) -> Mapping[str, Any] | None: ...
+    async def patch_metadata(
+        self,
+        project_id: UUID,
+        *,
+        actor_id: UUID,
+        expected_revision: int,
+        patch: Mapping[str, Any],
+        summary: str | None,
+    ) -> Mapping[str, Any] | None: ...
+    async def list_metadata_revisions(
+        self,
+        project_id: UUID,
+        *,
+        limit: int,
+        before_revision: int | None,
+    ) -> list[Mapping[str, Any]]: ...
+    async def undo_metadata(
+        self,
+        project_id: UUID,
+        *,
+        actor_id: UUID,
+        expected_revision: int,
+        target_revision: int,
+    ) -> Mapping[str, Any] | None: ...
+    async def create_draft(
+        self,
+        *,
+        project_id: UUID,
+        base_project_revision: int,
+        base_source_hash: str,
+        changes: Sequence[Mapping[str, Any]],
+        candidate_documents: Sequence[Mapping[str, Any]],
+        candidate_source_hash: str,
+        summary: str | None,
+        rspdl_version: str,
+        wire_schema_version: int,
+        locale: str,
+        result: Mapping[str, Any] | None,
+        base_result: Mapping[str, Any] | None,
+    ) -> Mapping[str, Any]: ...
+    async def get_draft(self, draft_id: UUID) -> Mapping[str, Any] | None: ...
+    async def list_drafts(self, project_id: UUID) -> list[Mapping[str, Any]]: ...
+    async def apply_draft(
+        self,
+        *,
+        draft_id: UUID,
+        actor_id: UUID,
+        expected_project_revision: int,
+        expected_source_hash: str,
+    ) -> Mapping[str, Any] | None: ...
+    async def list_snapshots(self, project_id: UUID) -> list[Mapping[str, Any]]: ...
+    async def capture_snapshot(
+        self,
+        *,
+        project_id: UUID,
+        actor_id: UUID,
+        expected_project_revision: int,
+        expected_source_hash: str,
+        expected_planning_revision: int,
+        summary: str | None,
+        compiled_source_hash: str,
+        rspdl_version: str,
+        wire_schema_version: int,
+        locale: str,
+        result: Mapping[str, Any] | None,
+    ) -> Mapping[str, Any] | None: ...
+    async def get_snapshot(self, project_id: UUID, revision: int) -> Mapping[str, Any] | None: ...
+    async def restore_snapshot(
+        self,
+        *,
+        project_id: UUID,
+        revision: int,
+        actor_id: UUID,
+        expected_project_revision: int,
+        expected_source_hash: str,
+        expected_planning_revision: int,
+    ) -> Mapping[str, Any] | None: ...
+
+
+class PlanningAiJobRepositoryPort(Protocol):
+    """영속 AI 작업 큐. lease token이 모든 worker 쓰기의 fencing token이다."""
+
+    async def enqueue(
+        self,
+        *,
+        project_id: UUID,
+        actor_id: UUID,
+        request_id: UUID,
+        kind: str,
+        instruction: str,
+        expected_planning_revision: int,
+        frozen_project_revision: int,
+        frozen_source_hash: str,
+        context: Mapping[str, Any],
+        source_draft_id: UUID | None,
+        retry_of_job_id: UUID | None,
+        attempt: int,
+        max_attempts: int,
+        append_user_message: bool = True,
+    ) -> Mapping[str, Any] | None: ...
+
+    async def get(self, job_id: UUID) -> Mapping[str, Any] | None: ...
+    async def get_by_request(
+        self, *, project_id: UUID, actor_id: UUID, request_id: UUID
+    ) -> Mapping[str, Any] | None: ...
+    async def get_retry(self, job_id: UUID) -> Mapping[str, Any] | None: ...
+    async def list(self, project_id: UUID, *, limit: int) -> list[Mapping[str, Any]]: ...
+    async def request_cancel(self, job_id: UUID) -> Mapping[str, Any] | None: ...
+    async def claim(self, *, lease_seconds: int) -> Mapping[str, Any] | None: ...
+    async def heartbeat(
+        self,
+        job_id: UUID,
+        *,
+        lease_token: UUID,
+        lease_seconds: int,
+        progress: Mapping[str, Any],
+    ) -> bool: ...
+    async def renew_lease(self, job_id: UUID, *, lease_token: UUID, lease_seconds: int) -> bool: ...
+    async def checkpoint(
+        self,
+        job_id: UUID,
+        *,
+        lease_token: UUID,
+        checkpoints: Mapping[str, Any],
+        progress: Mapping[str, Any],
+    ) -> bool: ...
+    async def cancelled(self, job_id: UUID, *, lease_token: UUID) -> bool: ...
+    async def finish_cancelled(self, job_id: UUID, *, lease_token: UUID) -> bool: ...
+    async def finish_failed(
+        self, job_id: UUID, *, lease_token: UUID, error: Mapping[str, Any]
+    ) -> bool: ...
+    async def finish_interview(
+        self, job_id: UUID, *, lease_token: UUID, result: Mapping[str, Any]
+    ) -> bool: ...
+    async def finish_generation(
+        self, job_id: UUID, *, lease_token: UUID, result: Mapping[str, Any]
+    ) -> bool: ...
+    async def finish_generation_draft(
+        self,
+        job_id: UUID,
+        *,
+        lease_token: UUID,
+        draft: Mapping[str, Any],
+        result: Mapping[str, Any],
+    ) -> bool: ...

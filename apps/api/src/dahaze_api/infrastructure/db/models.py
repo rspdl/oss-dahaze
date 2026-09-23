@@ -118,6 +118,11 @@ class ProjectRow(TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text)
     # 새 문서가 기본으로 삼을 RSPDL 버전.
     default_rspdl_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    snapshot_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     members: Mapped[list[ProjectMemberRow]] = relationship(
@@ -134,9 +139,7 @@ class ProjectMemberRow(TimestampMixin, Base):
     """
 
     __tablename__ = "project_members"
-    __table_args__ = (
-        UniqueConstraint("project_id", "user_id", name="uq_member_project_user"),
-    )
+    __table_args__ = (UniqueConstraint("project_id", "user_id", name="uq_member_project_user"),)
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     project_id: Mapped[UUID] = mapped_column(
@@ -232,3 +235,142 @@ class CompilationRow(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     hits: Mapped[int] = mapped_column(BigInteger, server_default="0", nullable=False)
+
+
+class PlanningStateRow(TimestampMixin, Base):
+    __tablename__ = "planning_states"
+
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    metadata_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    messages: Mapped[list[object]] = mapped_column(JsonB, nullable=False, default=list)
+    decisions: Mapped[list[object]] = mapped_column(JsonB, nullable=False, default=list)
+    proposals: Mapped[list[object]] = mapped_column(JsonB, nullable=False, default=list)
+    metadata_: Mapped[dict[str, object]] = mapped_column(
+        "metadata", JsonB, nullable=False, default=dict
+    )
+
+
+class PlanningDraftRow(TimestampMixin, Base):
+    __tablename__ = "planning_drafts"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    base_project_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    base_source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    changes: Mapped[list[object]] = mapped_column(JsonB, nullable=False)
+    candidate_documents: Mapped[list[object]] = mapped_column(JsonB, nullable=False)
+    candidate_source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text)
+    rspdl_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    wire_schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    locale: Mapped[str] = mapped_column(String(20), nullable=False)
+    result: Mapped[dict[str, object] | None] = mapped_column(JsonB)
+    base_result: Mapped[dict[str, object] | None] = mapped_column(JsonB)
+    applied_revision: Mapped[int | None] = mapped_column(Integer)
+
+
+class PlanningAiJobRow(TimestampMixin, Base):
+    """HTTP 연결과 독립적으로 실행되는 프로젝트 AI 작업."""
+
+    __tablename__ = "planning_ai_jobs"
+    __table_args__ = (
+        UniqueConstraint("project_id", "actor_id", "request_id", name="uq_planning_ai_job_request"),
+        UniqueConstraint("retry_of_job_id", name="uq_planning_ai_job_retry"),
+        Index("ix_planning_ai_jobs_claim", "status", "lease_expires_at", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    actor_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    request_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    request: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
+    context: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
+    frozen_planning_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    frozen_project_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    frozen_source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_draft_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("planning_drafts.id", ondelete="SET NULL")
+    )
+    retry_of_job_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("planning_ai_jobs.id", ondelete="SET NULL")
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    max_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3, server_default="3"
+    )
+    run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    progress: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False, default=dict)
+    checkpoints: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False, default=dict)
+    result: Mapped[dict[str, object] | None] = mapped_column(JsonB)
+    error: Mapped[dict[str, object] | None] = mapped_column(JsonB)
+    cancel_requested: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
+    )
+    lease_token: Mapped[UUID | None] = mapped_column(Uuid)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PlanningMetadataRevisionRow(Base):
+    __tablename__ = "planning_metadata_revisions"
+    __table_args__ = (
+        UniqueConstraint("project_id", "revision", name="uq_planning_metadata_revision"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    metadata_: Mapped[dict[str, object]] = mapped_column("metadata", JsonB, nullable=False)
+    author_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    summary: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ProjectSnapshotRow(Base):
+    __tablename__ = "project_snapshots"
+    __table_args__ = (
+        UniqueConstraint("project_id", "snapshot_version", name="uq_snapshot_project_version"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    snapshot_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    project_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    planning_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    documents: Mapped[list[object]] = mapped_column(JsonB, nullable=False)
+    planning_state: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
+    rspdl_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    wire_schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    locale: Mapped[str] = mapped_column(String(20), nullable=False)
+    result: Mapped[dict[str, object] | None] = mapped_column(JsonB)
+    change_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text)
+    author_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

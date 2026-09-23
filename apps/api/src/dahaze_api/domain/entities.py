@@ -66,6 +66,9 @@ class Project:
     description: str | None
     # 이 프로젝트의 새 문서가 기본으로 삼는 RSPDL 버전.
     default_rspdl_version: str
+    revision: int
+    source_hash: str
+    snapshot_version: int
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None = None

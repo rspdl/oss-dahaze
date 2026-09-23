@@ -7,7 +7,8 @@ from importlib import resources
 
 from dahaze_api.domain.llm import EbnfGrammar
 
-GRAMMAR_RSPDL_VERSION = "0.1.2"
+GRAMMAR_RSPDL_VERSION = "0.1.4"
+PLANNING_GRAMMAR_CAPABILITY = "rspdl.planning-contracts.v1"
 
 
 @lru_cache
@@ -26,4 +27,21 @@ def load_rspdl_grammar() -> EbnfGrammar:
     )
 
 
-__all__ = ["GRAMMAR_RSPDL_VERSION", "load_rspdl_grammar"]
+@lru_cache
+def load_planning_rspdl_grammar() -> EbnfGrammar:
+    """compiler probe로 planning capability가 확인된 runtime의 저작 문법을 읽는다."""
+
+    definition = resources.files(__package__).joinpath("rspdl.ebnf").read_text(encoding="utf-8")
+    return EbnfGrammar(
+        name="rspdl-planning-contracts-v1",
+        start_rule="planning_document",
+        definition=definition,
+    )
+
+
+__all__ = [
+    "GRAMMAR_RSPDL_VERSION",
+    "PLANNING_GRAMMAR_CAPABILITY",
+    "load_planning_rspdl_grammar",
+    "load_rspdl_grammar",
+]

@@ -57,6 +57,34 @@ class AnalysisOutcome:
     result: Mapping[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class RspdlEditOutcome:
+    """구조화 편집 SDK 호출 결과.
+
+    지원되는 런타임에서는 ``response`` 가 SDK 응답 전문이다. dahaze 는 그 값을 다시
+    구성하지 않고, 후보 원문을 초안으로 넘기는 데 필요한 최소 필드만 읽는다. 현재 런타임이
+    편집 SDK 를 제공하지 않으면 ``supported`` 가 거짓이고 응답은 없다.
+    """
+
+    runtime: RspdlRuntime
+    supported: bool
+    response: Mapping[str, Any] | None
+    unsupported_reason: str | None = None
+
+
+class InvalidRspdlEditRequest(ValueError):
+    """구조화 편집 요청 envelope가 SDK 계약에 맞지 않는다."""
+
+
+def source_fingerprint(text: str) -> str:
+    """원문 UTF-8 바이트의 소문자 SHA-256.
+
+    컴파일러 편집 계약의 ``source_hash`` 와 같은 알고리즘이다. 줄바꿈이나 유니코드를
+    정규화하지 않는다. 저장된 원문과 사용자가 검토한 원문이 정확히 같은지 확인하는 값이다.
+    """
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def workspace_hash(
     sources: Sequence[RspdlSource],
     *,
@@ -74,10 +102,18 @@ def workspace_hash(
     payload = {
         "locale": locale,
         "sources": [
-            {"path": s.path, "text": s.text}
-            for s in sorted(sources, key=lambda s: s.path)
+            {"path": s.path, "text": s.text} for s in sorted(sources, key=lambda s: s.path)
         ],
         "extra": dict(sorted((extra or {}).items())),
     }
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def project_source_hash(sources: Sequence[RspdlSource]) -> str:
+    """프로젝트 원문 집합의 canonical hash.
+
+    컴파일 캐시와 같은 직렬화 규칙을 재사용하되 locale 은 원문 정체의 일부가 아니므로
+    빈 값으로 고정한다. 적용 경쟁 검사가 별도의 해시 구현과 어긋나지 않게 한다.
+    """
+    return workspace_hash(sources, locale="")
