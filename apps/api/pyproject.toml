@@ -8,7 +8,7 @@ dependencies = [
     # 정확한 버전으로 고정한다. RSPDL은 0.x 이고 문법·IR·진단이 minor 릴리스에서 바뀔 수 있다.
     # 이 핀을 올리는 것은 의존성 갱신이 아니라 제품 변경이다.
     # 절차: .agents/skills/upgrade-rspdl/SKILL.md
-    "rspdl==0.1.2",
+    "rspdl==0.1.4",
 
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",

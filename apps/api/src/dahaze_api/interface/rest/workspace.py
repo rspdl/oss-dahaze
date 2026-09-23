@@ -18,6 +18,7 @@ from dahaze_api.domain.entities import (
     ProjectMembership,
     ProjectRole,
 )
+from dahaze_api.domain.rspdl import source_fingerprint
 from dahaze_api.interface.rest.dependencies import (
     CurrentUser,
     ProjectCompiler,
@@ -47,6 +48,9 @@ def _project(project: Project) -> ProjectResponse:
         name=project.name,
         description=project.description,
         default_rspdl_version=project.default_rspdl_version,
+        revision=project.revision,
+        source_hash=project.source_hash,
+        snapshot_version=project.snapshot_version,
         created_at=project.created_at,
         updated_at=project.updated_at,
         archived_at=project.archived_at,
@@ -107,9 +111,7 @@ async def list_projects(
     include_archived: bool = Query(default=False),
 ) -> list[ProjectResponse]:
     """내가 멤버인 프로젝트 목록. 한 사용자가 여러 프로젝트를 가질 수 있다."""
-    projects = await workspace.list_projects(
-        actor_id=user.id, include_archived=include_archived
-    )
+    projects = await workspace.list_projects(actor_id=user.id, include_archived=include_archived)
     return [_project(p) for p in projects]
 
 
@@ -131,9 +133,7 @@ async def create_project(
 
 
 @router.get("/projects/{project_id}", name="get_project")
-async def get_project(
-    project_id: UUID, user: CurrentUser, workspace: Workspace
-) -> ProjectResponse:
+async def get_project(project_id: UUID, user: CurrentUser, workspace: Workspace) -> ProjectResponse:
     try:
         project = await workspace.get_project(actor_id=user.id, project_id=project_id)
     except NotFound as exc:
@@ -146,9 +146,7 @@ async def archive_project(
     project_id: UUID, user: CurrentUser, workspace: Workspace
 ) -> ProjectResponse:
     try:
-        project = await workspace.archive_project(
-            actor_id=user.id, project_id=project_id
-        )
+        project = await workspace.archive_project(actor_id=user.id, project_id=project_id)
     except NotFound as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except AccessDenied as exc:
@@ -184,14 +182,13 @@ async def compile_project(
         rspdl_version=compilation.runtime.rspdl_version,
         wire_schema_version=compilation.runtime.wire_schema_version,
         locale=compilation.runtime.locale,
-        result=(
-            None if compilation.outcome is None else dict(compilation.outcome.result)
-        ),
+        result=(None if compilation.outcome is None else dict(compilation.outcome.result)),
         documents=[
             CompiledDocumentRef(
                 id=d.id,
                 path=d.path,
                 title=d.title,
+                source_hash=source_fingerprint(d.text),
                 target_rspdl_version=d.target_rspdl_version,
                 updated_at=d.updated_at,
             )
@@ -250,9 +247,7 @@ async def list_documents(
     project_id: UUID, user: CurrentUser, workspace: Workspace
 ) -> list[DocumentSummaryResponse]:
     try:
-        documents = await workspace.list_documents(
-            actor_id=user.id, project_id=project_id
-        )
+        documents = await workspace.list_documents(actor_id=user.id, project_id=project_id)
     except NotFound as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return [_summary(d) for d in documents]
@@ -291,9 +286,7 @@ async def get_document(
     document_id: UUID, user: CurrentUser, workspace: Workspace
 ) -> DocumentResponse:
     try:
-        document = await workspace.get_document(
-            actor_id=user.id, document_id=document_id
-        )
+        document = await workspace.get_document(actor_id=user.id, document_id=document_id)
     except NotFound as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return _document(document)
@@ -326,9 +319,7 @@ async def update_document(
     name="delete_document",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def delete_document(
-    document_id: UUID, user: CurrentUser, workspace: Workspace
-) -> None:
+async def delete_document(document_id: UUID, user: CurrentUser, workspace: Workspace) -> None:
     try:
         await workspace.delete_document(actor_id=user.id, document_id=document_id)
     except NotFound as exc:
@@ -343,9 +334,7 @@ async def list_document_revisions(
 ) -> list[DocumentRevisionResponse]:
     """편집 이력. 본문은 싣지 않는다 — 개별 리비전 본문은 별도 조회 대상이다."""
     try:
-        revisions = await workspace.list_revisions(
-            actor_id=user.id, document_id=document_id
-        )
+        revisions = await workspace.list_revisions(actor_id=user.id, document_id=document_id)
     except NotFound as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return [_revision(r) for r in revisions]

@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
+from dataclasses import dataclass
 
 from dahaze_api.domain.llm import EbnfGrammar
 
@@ -16,6 +18,80 @@ _RULE_NAME = re.compile(r"(?:[a-z][a-z0-9_]*|[A-Z][A-Z0-9_]*)\Z")
 
 class EbnfConversionError(ValueError):
     """지원하는 EBNF 부분집합이 아니어서 공급자 문법으로 바꿀 수 없다."""
+
+
+BASELINE_AUTHORING_PROFILE = "rspdl-0.1.2"
+PLANNING_AUTHORING_PROFILE = "planning-contracts-v1"
+PLANNING_CONTRACTS_CAPABILITY = "rspdl.planning-contracts.v1"
+
+
+@dataclass(frozen=True)
+class AuthoringContract:
+    """한 compiler capability에 맞춰 함께 움직이는 prompt와 출력 문법."""
+
+    profile: str
+    grammar: EbnfGrammar
+    system_prompt: str
+    required_capabilities: frozenset[str]
+
+
+class UnsupportedAuthoringProfile(ValueError):
+    """실행 중인 compiler가 요청한 저작 계약을 증명하지 못했다."""
+
+
+def select_authoring_contract(
+    *,
+    rspdl_version: str,
+    wire_schema_version: int,
+    capabilities: Collection[str],
+    requested_profile: str | None = None,
+) -> AuthoringContract:
+    """compiler가 증명한 capability에 맞는 prompt/grammar 한 쌍을 고른다.
+
+    planning compiler는 아직 공개된 package version과 같은 ``0.1.3``을 쓸 수 있다. 따라서
+    version 문자열로 확장 문법을 추측하지 않는다. infrastructure/rspdl의 실제 compile probe가
+    capability를 보고한 경우에만 명시적 planning profile을 선택할 수 있다.
+    """
+
+    from dahaze_api.infrastructure.llm.grammars import (
+        load_planning_rspdl_grammar,
+        load_rspdl_grammar,
+    )
+    from dahaze_api.infrastructure.llm.prompts import (
+        PLANNING_SYSTEM_PROMPT,
+        SYSTEM_PROMPT,
+    )
+
+    if wire_schema_version != 1:
+        raise UnsupportedAuthoringProfile(
+            f"지원하지 않는 rspdl wire schema: {wire_schema_version}"
+        )
+
+    profile = requested_profile or BASELINE_AUTHORING_PROFILE
+    if profile == BASELINE_AUTHORING_PROFILE:
+        return AuthoringContract(
+            profile=profile,
+            grammar=load_rspdl_grammar(),
+            system_prompt=SYSTEM_PROMPT,
+            required_capabilities=frozenset(),
+        )
+    if profile != PLANNING_AUTHORING_PROFILE:
+        raise UnsupportedAuthoringProfile(f"알 수 없는 저작 profile: {profile}")
+
+    required = frozenset({PLANNING_CONTRACTS_CAPABILITY})
+    missing = required.difference(capabilities)
+    if missing:
+        missing_text = ", ".join(sorted(missing))
+        raise UnsupportedAuthoringProfile(
+            f"rspdl {rspdl_version} compiler가 planning 저작 capability를 증명하지 못했다: "
+            f"{missing_text}"
+        )
+    return AuthoringContract(
+        profile=profile,
+        grammar=load_planning_rspdl_grammar(),
+        system_prompt=PLANNING_SYSTEM_PROMPT,
+        required_capabilities=required,
+    )
 
 
 def ebnf_to_lark(grammar: EbnfGrammar) -> str:

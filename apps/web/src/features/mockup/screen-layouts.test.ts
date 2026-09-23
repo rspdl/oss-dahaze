@@ -64,7 +64,7 @@ describe('collectScreenMockups', () => {
     const section = screen?.elements[1]
     const children = section?.kind === 'section' ? section.children : []
 
-    expect(children[1]).toEqual({ kind: 'placeholder', text: '시설 위치 지도' })
+    expect(children[1]).toEqual({ kind: 'placeholder', id: null, text: '시설 위치 지도' })
     expect(children[2]).toMatchObject({ kind: 'button', name: '예약 신청', id: 'apply' })
   })
 
@@ -128,13 +128,13 @@ describe('모르는 모양을 조용히 지우지 않는다', () => {
 
   it('어휘 밖의 요소를 표시용 자리로 남긴다', () => {
     expect(elements([{ kind: '탭바' }])).toEqual([
-      { kind: 'unrecognized', rawKind: '탭바', reason: 'unknown-kind' },
+      { kind: 'unrecognized', id: null, rawKind: '탭바', reason: 'unknown-kind' },
     ])
   })
 
   it('아는 어휘인데 값이 빠진 요소를 다른 이유로 구분한다', () => {
     expect(elements([{ kind: 'button', id: 'a' }])).toEqual([
-      { kind: 'unrecognized', rawKind: 'button', reason: 'missing-data' },
+      { kind: 'unrecognized', id: 'a', rawKind: 'button', reason: 'missing-data' },
     ])
   })
 
@@ -142,6 +142,7 @@ describe('모르는 모양을 조용히 지우지 않는다', () => {
     const [input] = elements([{ kind: 'input', field_id: 'a.b.없는필드' }])
     expect(input).toEqual({
       kind: 'input',
+      id: null,
       field: {
         id: 'a.b.없는필드',
         name: 'a.b.없는필드',
@@ -151,6 +152,11 @@ describe('모르는 모양을 조용히 지우지 않는다', () => {
         resolved: false,
       },
     })
+  })
+
+  it('모든 요소 종류의 명시적 ID를 보존한다', () => {
+    const [heading] = elements([{ kind: 'heading', id: 'title', text: '제목' }])
+    expect(heading).toMatchObject({ kind: 'heading', id: 'title' })
   })
 })
 

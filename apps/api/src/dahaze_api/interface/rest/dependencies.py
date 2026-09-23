@@ -19,6 +19,8 @@ from dahaze_api.application.auth import (
     SignInWithProvider,
 )
 from dahaze_api.application.authoring import DraftRspdlDocument
+from dahaze_api.application.planning import PlanningService
+from dahaze_api.application.planning_ai import PlanningAiService
 from dahaze_api.application.workspace import WorkspaceService
 from dahaze_api.config import Settings, get_settings
 from dahaze_api.domain.entities import User
@@ -33,6 +35,8 @@ from dahaze_api.infrastructure.auth.password import ScryptPasswordHasher
 from dahaze_api.infrastructure.auth.registry import build_providers
 from dahaze_api.infrastructure.auth.session import InvalidToken, SessionTokens
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
+from dahaze_api.infrastructure.db.planning_ai_repository import SqlPlanningAiJobRepository
+from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
 from dahaze_api.infrastructure.db.repositories import (
     SqlDocumentRepository,
     SqlPasswordCredentialRepository,
@@ -126,6 +130,31 @@ Analyzer = Annotated[AnalyzeWorkspace, Depends(get_analyzer)]
 Workspace = Annotated[WorkspaceService, Depends(get_workspace)]
 
 
+def get_planning(
+    workspace: Workspace, analyzer: Analyzer, compiler: Compiler, session: DbSession
+) -> PlanningService:
+    return PlanningService(
+        workspace=workspace,
+        store=SqlPlanningRepository(session),
+        analyzer=analyzer,
+        compiler=compiler,
+    )
+
+
+Planning = Annotated[PlanningService, Depends(get_planning)]
+
+
+def get_planning_ai(workspace: Workspace, session: DbSession) -> PlanningAiService:
+    return PlanningAiService(
+        workspace=workspace,
+        planning=SqlPlanningRepository(session),
+        jobs=SqlPlanningAiJobRepository(session),
+    )
+
+
+PlanningAi = Annotated[PlanningAiService, Depends(get_planning_ai)]
+
+
 def get_project_compiler(
     workspace: Workspace, analyzer: Analyzer, compiler: Compiler
 ) -> CompileProject:
@@ -172,7 +201,10 @@ def get_llm() -> LlmPort:
     settings = get_settings()
     try:
         return OpenAiLlm(
-            api_key=settings.openai_api_key, model=settings.openai_model
+            api_key=settings.openai_api_key,
+            model=settings.openai_model,
+            planning_timeout_s=settings.openai_planning_timeout_s,
+            planning_reasoning_effort=settings.openai_planning_reasoning_effort,
         )
     except LlmNotConfigured as exc:
         raise HTTPException(
@@ -191,9 +223,7 @@ def get_authoring_grammar() -> EbnfGrammar:
 AuthoringGrammar = Annotated[EbnfGrammar, Depends(get_authoring_grammar)]
 
 
-def get_drafter(
-    llm: Llm, analyzer: Analyzer, grammar: AuthoringGrammar
-) -> DraftRspdlDocument:
+def get_drafter(llm: Llm, analyzer: Analyzer, grammar: AuthoringGrammar) -> DraftRspdlDocument:
     """저작 루프는 분석 유스케이스를 그대로 재사용한다.
 
     컴파일 게이트가 REST 분석 경로와 같아야 LLM 출력이 사람 출력과 같은 검사를 받는다.

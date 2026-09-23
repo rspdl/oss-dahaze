@@ -1,0 +1,183 @@
+{
+  "environments": [
+    {
+      "id": "customer-desktop",
+      "name": "고객 PC · 1440×900",
+      "width": 1440,
+      "height": 900,
+      "screenMode": "selected",
+      "screenKeys": [
+        "airline-planning.rspdl:planning_airline.search_screen",
+        "airline-planning.rspdl:planning_airline.search_results",
+        "airline-planning.rspdl:planning_airline.desktop_booking",
+        "airline-planning.rspdl:planning_airline.booking_complete",
+        "airline-planning.rspdl:planning_airline.customer_lookup",
+        "airline-planning.rspdl:planning_airline.customer_detail"
+      ]
+    },
+    {
+      "id": "customer-mobile",
+      "name": "고객 모바일 · 390×844",
+      "width": 390,
+      "height": 844,
+      "screenMode": "selected",
+      "screenKeys": [
+        "airline-planning.rspdl:planning_airline.search_screen",
+        "airline-planning.rspdl:planning_airline.search_results",
+        "airline-planning.rspdl:planning_airline.mobile_passenger",
+        "airline-planning.rspdl:planning_airline.mobile_contact",
+        "airline-planning.rspdl:planning_airline.mobile_payment",
+        "airline-planning.rspdl:planning_airline.booking_complete",
+        "airline-planning.rspdl:planning_airline.customer_lookup",
+        "airline-planning.rspdl:planning_airline.customer_detail"
+      ]
+    },
+    {
+      "id": "backoffice-desktop",
+      "name": "운영자 PC · 1440×1024",
+      "width": 1440,
+      "height": 1024,
+      "screenMode": "selected",
+      "screenKeys": [
+        "airline-planning.rspdl:planning_airline.ops_dashboard",
+        "airline-planning.rspdl:planning_airline.ops_booking_search",
+        "airline-planning.rspdl:planning_airline.ops_booking_detail",
+        "airline-planning.rspdl:planning_airline.ops_payment_recovery",
+        "airline-planning.rspdl:planning_airline.ops_booking_cancel",
+        "airline-planning.rspdl:planning_airline.ops_flight_registration"
+      ]
+    }
+  ],
+  "design": {},
+  "sample_data": {
+    "models": {
+      "planning_airline.search_query": {
+        "normal": [
+          {
+            "id": "search-normal",
+            "values": {
+              "planning_airline.search_query.origin": "서울별빛공항",
+              "planning_airline.search_query.destination": "별빛섬공항",
+              "planning_airline.search_query.departure_date": "2026-10-18"
+            }
+          }
+        ],
+        "empty": [],
+        "long": [
+          {
+            "id": "search-long",
+            "values": {
+              "planning_airline.search_query.origin": "서울 북부 국제여객·연구비행 복합터미널",
+              "planning_airline.search_query.destination": "별빛군도 동쪽 해상교통 통합관제공항",
+              "planning_airline.search_query.departure_date": "2026-12-31"
+            }
+          }
+        ],
+        "many": [
+          { "id": "search-1", "values": { "planning_airline.search_query.origin": "서울별빛공항", "planning_airline.search_query.destination": "별빛섬공항", "planning_airline.search_query.departure_date": "2026-10-18" } },
+          { "id": "search-2", "values": { "planning_airline.search_query.origin": "새벽항공항", "planning_airline.search_query.destination": "구름호수공항", "planning_airline.search_query.departure_date": "2026-10-19" } },
+          { "id": "search-3", "values": { "planning_airline.search_query.origin": "은하도시공항", "planning_airline.search_query.destination": "달그림자공항", "planning_airline.search_query.departure_date": "2026-10-20" } },
+          { "id": "search-4", "values": { "planning_airline.search_query.origin": "바람언덕공항", "planning_airline.search_query.destination": "별빛섬공항", "planning_airline.search_query.departure_date": "2026-10-21" } }
+        ]
+      },
+      "planning_airline.flight": {
+        "normal": [
+          {
+            "id": "flight-normal",
+            "values": {
+              "planning_airline.flight.number": "ST 407",
+              "planning_airline.flight.origin_name": "서울별빛공항",
+              "planning_airline.flight.destination_name": "별빛섬공항",
+              "planning_airline.flight.departure_time": "2026-10-18T09:40",
+              "planning_airline.flight.fare_amount": 128000
+            }
+          }
+        ],
+        "empty": [],
+        "long": [
+          {
+            "id": "flight-long",
+            "values": {
+              "planning_airline.flight.number": "ST RESEARCH-DEMONSTRATION 2047",
+              "planning_airline.flight.origin_name": "서울 북부 국제여객·연구비행 복합터미널",
+              "planning_airline.flight.destination_name": "별빛군도 동쪽 해상교통 통합관제공항",
+              "planning_airline.flight.departure_time": "2026-12-31T23:55",
+              "planning_airline.flight.fare_amount": 987654
+            }
+          }
+        ],
+        "many": [
+          { "id": "flight-1", "values": { "planning_airline.flight.number": "ST 101", "planning_airline.flight.origin_name": "서울별빛공항", "planning_airline.flight.destination_name": "별빛섬공항", "planning_airline.flight.departure_time": "2026-10-18T06:10", "planning_airline.flight.fare_amount": 89000 } },
+          { "id": "flight-2", "values": { "planning_airline.flight.number": "ST 203", "planning_airline.flight.origin_name": "서울별빛공항", "planning_airline.flight.destination_name": "별빛섬공항", "planning_airline.flight.departure_time": "2026-10-18T08:25", "planning_airline.flight.fare_amount": 103000 } },
+          { "id": "flight-3", "values": { "planning_airline.flight.number": "ST 407", "planning_airline.flight.origin_name": "서울별빛공항", "planning_airline.flight.destination_name": "별빛섬공항", "planning_airline.flight.departure_time": "2026-10-18T09:40", "planning_airline.flight.fare_amount": 128000 } },
+          { "id": "flight-4", "values": { "planning_airline.flight.number": "ST 511", "planning_airline.flight.origin_name": "서울별빛공항", "planning_airline.flight.destination_name": "별빛섬공항", "planning_airline.flight.departure_time": "2026-10-18T12:05", "planning_airline.flight.fare_amount": 117000 } },
+          { "id": "flight-5", "values": { "planning_airline.flight.number": "ST 709", "planning_airline.flight.origin_name": "서울별빛공항", "planning_airline.flight.destination_name": "별빛섬공항", "planning_airline.flight.departure_time": "2026-10-18T17:30", "planning_airline.flight.fare_amount": 142000 } },
+          { "id": "flight-6", "values": { "planning_airline.flight.number": "ST 811", "planning_airline.flight.origin_name": "서울별빛공항", "planning_airline.flight.destination_name": "별빛섬공항", "planning_airline.flight.departure_time": "2026-10-18T21:15", "planning_airline.flight.fare_amount": 96000 } }
+        ]
+      },
+      "planning_airline.booking": {
+        "normal": [
+          { "id": "booking-normal", "values": { "planning_airline.booking.contact": "010-2468-1357" } }
+        ],
+        "empty": [],
+        "long": [
+          { "id": "booking-long", "values": { "planning_airline.booking.contact": "국제 로밍 중에는 문자 수신이 늦을 수 있어 보조 연락처 +82-10-2468-1357 사용" } }
+        ],
+        "many": [
+          { "id": "booking-1", "values": { "planning_airline.booking.contact": "010-1000-1001" } },
+          { "id": "booking-2", "values": { "planning_airline.booking.contact": "010-1000-1002" } },
+          { "id": "booking-3", "values": { "planning_airline.booking.contact": "010-1000-1003" } },
+          { "id": "booking-4", "values": { "planning_airline.booking.contact": "010-1000-1004" } },
+          { "id": "booking-5", "values": { "planning_airline.booking.contact": "010-1000-1005" } }
+        ]
+      },
+      "planning_airline.passenger": {
+        "normal": [
+          { "id": "passenger-normal", "values": { "planning_airline.passenger.name": "하늘봄", "planning_airline.passenger.birth_date": "1992-04-07" } }
+        ],
+        "empty": [],
+        "long": [
+          { "id": "passenger-long", "values": { "planning_airline.passenger.name": "알렉산드리아 마리나 별하늘-긴이름 검증용 승객", "planning_airline.passenger.birth_date": "1988-12-31" } }
+        ],
+        "many": [
+          { "id": "passenger-1", "values": { "planning_airline.passenger.name": "하늘봄", "planning_airline.passenger.birth_date": "1992-04-07" } },
+          { "id": "passenger-2", "values": { "planning_airline.passenger.name": "은하수", "planning_airline.passenger.birth_date": "1989-11-12" } },
+          { "id": "passenger-3", "values": { "planning_airline.passenger.name": "구름빛", "planning_airline.passenger.birth_date": "2014-02-22" } },
+          { "id": "passenger-4", "values": { "planning_airline.passenger.name": "바람결", "planning_airline.passenger.birth_date": "2016-07-19" } },
+          { "id": "passenger-5", "values": { "planning_airline.passenger.name": "별이든", "planning_airline.passenger.birth_date": "1958-09-03" } }
+        ]
+      },
+      "planning_airline.payment": {
+        "normal": [
+          { "id": "payment-normal", "values": { "planning_airline.payment.method_token": "card_demo_4242", "planning_airline.payment.amount": 128000 } }
+        ],
+        "empty": [],
+        "long": [
+          { "id": "payment-long", "values": { "planning_airline.payment.method_token": "wallet_demo_cross_border_token_with_a_deliberately_long_display_value_2047", "planning_airline.payment.amount": 987654 } }
+        ],
+        "many": [
+          { "id": "payment-1", "values": { "planning_airline.payment.method_token": "card_demo_1001", "planning_airline.payment.amount": 89000 } },
+          { "id": "payment-2", "values": { "planning_airline.payment.method_token": "card_demo_1002", "planning_airline.payment.amount": 103000 } },
+          { "id": "payment-3", "values": { "planning_airline.payment.method_token": "wallet_demo_1003", "planning_airline.payment.amount": 128000 } },
+          { "id": "payment-4", "values": { "planning_airline.payment.method_token": "card_demo_1004", "planning_airline.payment.amount": 117000 } },
+          { "id": "payment-5", "values": { "planning_airline.payment.method_token": "wallet_demo_1005", "planning_airline.payment.amount": 142000 } }
+        ]
+      },
+      "planning_airline.member": {
+        "normal": [
+          { "id": "member-normal", "values": { "planning_airline.member.member_contact": "010-2468-1357" } }
+        ],
+        "empty": [],
+        "long": [
+          { "id": "member-long", "values": { "planning_airline.member.member_contact": "회원 프로필의 해외 체류용 보조 연락처 +82-10-2468-1357" } }
+        ],
+        "many": [
+          { "id": "member-1", "values": { "planning_airline.member.member_contact": "010-2000-2001" } },
+          { "id": "member-2", "values": { "planning_airline.member.member_contact": "010-2000-2002" } },
+          { "id": "member-3", "values": { "planning_airline.member.member_contact": "010-2000-2003" } },
+          { "id": "member-4", "values": { "planning_airline.member.member_contact": "010-2000-2004" } }
+        ]
+      }
+    }
+  }
+}

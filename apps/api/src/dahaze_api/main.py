@@ -12,7 +12,7 @@ from fastapi.routing import APIRoute
 
 from dahaze_api.config import get_settings
 from dahaze_api.interface.mcp import mount_mcp
-from dahaze_api.interface.rest import analysis, auth, authoring, workspace
+from dahaze_api.interface.rest import analysis, auth, authoring, planning, workspace
 from dahaze_api.interface.rest.dependencies import get_compiler
 from dahaze_api.interface.rest.schemas import HealthResponse
 
@@ -49,6 +49,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(workspace.router)
+    app.include_router(planning.router)
     app.include_router(analysis.router)
     app.include_router(authoring.router)
 

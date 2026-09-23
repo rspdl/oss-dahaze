@@ -24,6 +24,8 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 
 from dahaze_api.application.analysis import AnalyzeWorkspace
+from dahaze_api.application.planning import PlanningService
+from dahaze_api.application.planning_ai import PlanningAiService
 from dahaze_api.application.workspace import WorkspaceService
 from dahaze_api.domain.entities import (
     Document,
@@ -34,9 +36,11 @@ from dahaze_api.domain.entities import (
     User,
 )
 from dahaze_api.domain.ports import RspdlCompilerPort
-from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlSource
+from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlSource, source_fingerprint
 from dahaze_api.infrastructure.auth.session import SessionTokens
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
+from dahaze_api.infrastructure.db.planning_ai_repository import SqlPlanningAiJobRepository
+from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
 from dahaze_api.infrastructure.db.repositories import (
     SqlDocumentRepository,
     SqlProjectRepository,
@@ -92,6 +96,8 @@ class _Actor:
     user: User
     workspace: WorkspaceService
     analyzer: AnalyzeWorkspace
+    planning: PlanningService
+    planning_ai: PlanningAiService
 
 
 def _project_payload(project: Project) -> dict[str, Any]:
@@ -101,6 +107,9 @@ def _project_payload(project: Project) -> dict[str, Any]:
         "name": project.name,
         "description": project.description,
         "default_rspdl_version": project.default_rspdl_version,
+        "revision": project.revision,
+        "source_hash": project.source_hash,
+        "snapshot_version": project.snapshot_version,
         "is_archived": project.is_archived,
     }
 
@@ -116,6 +125,7 @@ def _document_payload(document: Document, *, include_text: bool) -> dict[str, An
     }
     if include_text:
         payload["text"] = document.text
+        payload["source_hash"] = source_fingerprint(document.text)
     return payload
 
 
@@ -157,6 +167,24 @@ def _analysis_payload(outcome: AnalysisOutcome) -> dict[str, Any]:
         "locale": outcome.runtime.locale,
         "result": dict(outcome.result),
     }
+
+
+def _planning_ai_job_payload(job: Mapping[str, Any]) -> dict[str, Any]:
+    """REST 작업 DTO와 같은 공개 필드만 MCP에 싣는다.
+
+    frozen context와 checkpoint에는 원문과 아직 공개하면 안 되는 LLM 중간 산출물이
+    들어갈 수 있다. MCP도 응답 경계에서 이를 노출하지 않는다.
+    """
+    hidden = {
+        "actor_id",
+        "context",
+        "checkpoints",
+        "run_count",
+        "lease_token",
+        "lease_expires_at",
+        "updated_at",
+    }
+    return {key: value for key, value in job.items() if key not in hidden}
 
 
 def _role(value: str) -> ProjectRole:
@@ -348,6 +376,51 @@ class McpTools:
             )
             return [_revision_payload(r) for r in revisions]
 
+    async def resolve_planning_decision(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        decision_id: str,
+        expected_revision: int,
+        status: str,
+        rationale: str | None = None,
+    ) -> dict[str, Any]:
+        if status not in {"decided", "deferred"}:
+            raise ValueError("status는 decided 또는 deferred여야 한다")
+        async with self._acting(headers) as actor:
+            result = await actor.planning.resolve_decision(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                decision_id=_uuid(decision_id, field="decision_id"),
+                expected_revision=expected_revision,
+                status=status,
+                rationale=rationale,
+            )
+            return dict(result)
+
+    async def resolve_planning_proposal(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        proposal_id: str,
+        expected_revision: int,
+        status: str,
+        rationale: str | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            return dict(
+                await actor.planning.resolve_proposal(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    proposal_id=_uuid(proposal_id, field="proposal_id"),
+                    expected_revision=expected_revision,
+                    status=status,
+                    rationale=rationale,
+                )
+            )
+
     async def rspdl_runtime(self, headers: Mapping[str, str] | None) -> dict[str, Any]:
         """이 서버가 돌리는 컴파일러의 정체.
 
@@ -397,6 +470,131 @@ class McpTools:
             )
             return _analysis_payload(outcome)
 
+    async def propose_planning_edit(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        document_id: str,
+        base_project_revision: int,
+        base_source_hash: str,
+        expected_source_hash: str,
+        edit: dict[str, Any],
+        summary: str | None = None,
+    ) -> dict[str, Any]:
+        """구조화 편집 후보를 검증·보관하되 확정 문서는 바꾸지 않는다."""
+        async with self._acting(headers) as actor:
+            result = await actor.planning.propose_edit(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                document_id=_uuid(document_id, field="document_id"),
+                base_project_revision=base_project_revision,
+                base_source_hash=base_source_hash,
+                expected_source_hash=expected_source_hash,
+                edit=edit,
+                summary=summary,
+            )
+            return dict(result)
+
+    async def get_project_handoff(
+        self, headers: Mapping[str, str] | None, *, project_id: str, snapshot_version: int
+    ) -> dict[str, Any]:
+        """저장된 전체 프로젝트 버전을 재컴파일 없이 그대로 읽는다."""
+        async with self._acting(headers) as actor:
+            snapshot = await actor.planning.handoff(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                revision=snapshot_version,
+            )
+            return dict(snapshot)
+
+    async def create_planning_ai_job(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        request_id: str,
+        kind: str,
+        instruction: str,
+        expected_planning_revision: int,
+        source_draft_id: str | None = None,
+        selected_subject: dict[str, Any] | None = None,
+        base_project_revision: int | None = None,
+        base_source_hash: str | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            return _planning_ai_job_payload(
+                await actor.planning_ai.enqueue(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    request_id=_uuid(request_id, field="request_id"),
+                    kind=kind,
+                    instruction=instruction,
+                    expected_planning_revision=expected_planning_revision,
+                    base_project_revision=base_project_revision,
+                    base_source_hash=base_source_hash,
+                    selected_subject=selected_subject,
+                    source_draft_id=(
+                        None
+                        if source_draft_id is None
+                        else _uuid(source_draft_id, field="source_draft_id")
+                    ),
+                )
+            )
+
+    async def get_planning_ai_job(
+        self, headers: Mapping[str, str] | None, *, project_id: str, job_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            return _planning_ai_job_payload(
+                await actor.planning_ai.get(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    job_id=_uuid(job_id, field="job_id"),
+                )
+            )
+
+    async def list_planning_ai_jobs(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        async with self._acting(headers) as actor:
+            return [
+                _planning_ai_job_payload(item)
+                for item in await actor.planning_ai.list(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    limit=limit,
+                )
+            ]
+
+    async def cancel_planning_ai_job(
+        self, headers: Mapping[str, str] | None, *, project_id: str, job_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            return _planning_ai_job_payload(
+                await actor.planning_ai.cancel(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    job_id=_uuid(job_id, field="job_id"),
+                )
+            )
+
+    async def retry_planning_ai_job(
+        self, headers: Mapping[str, str] | None, *, project_id: str, job_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            return _planning_ai_job_payload(
+                await actor.planning_ai.retry(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    job_id=_uuid(job_id, field="job_id"),
+                )
+            )
+
     # ------------------------------------------------------------------- 내부
 
     @asynccontextmanager
@@ -412,15 +610,26 @@ class McpTools:
             if user is None:
                 # 서명은 맞는데 사용자가 사라진 경우. 만료된 토큰과 같게 취급한다.
                 raise McpAuthError("MCP 토큰이 유효하지 않다")
+            workspace = WorkspaceService(
+                projects=SqlProjectRepository(session),
+                documents=SqlDocumentRepository(session),
+                compiler=self._compiler,
+            )
+            analyzer = AnalyzeWorkspace(compiler=self._compiler, cache=SqlAnalysisCache(session))
             yield _Actor(
                 user=user,
-                workspace=WorkspaceService(
-                    projects=SqlProjectRepository(session),
-                    documents=SqlDocumentRepository(session),
+                workspace=workspace,
+                analyzer=analyzer,
+                planning=PlanningService(
+                    workspace=workspace,
+                    store=SqlPlanningRepository(session),
+                    analyzer=analyzer,
                     compiler=self._compiler,
                 ),
-                analyzer=AnalyzeWorkspace(
-                    compiler=self._compiler, cache=SqlAnalysisCache(session)
+                planning_ai=PlanningAiService(
+                    workspace=workspace,
+                    planning=SqlPlanningRepository(session),
+                    jobs=SqlPlanningAiJobRepository(session),
                 ),
             )
 
@@ -601,6 +810,123 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         return await tools.list_document_revisions(ctx.headers, document_id=document_id)
 
     @mcp.tool(
+        name="resolve_planning_decision",
+        description=(
+            "기존 결정의 안정적인 decision_id를 유지한 채 status를 decided 또는 deferred로 "
+            "바꾼다. title로 대상을 추측하지 않는다. expected_revision이 최신 기획 상태와 "
+            "다르면 충돌하고, 없는 ID는 실패한다. 이전 상태와 근거는 resolution_history에 남는다."
+        ),
+    )
+    async def resolve_planning_decision(
+        project_id: str,
+        decision_id: str,
+        expected_revision: int,
+        status: str,
+        ctx: Context,
+        rationale: str | None = None,
+    ) -> dict[str, Any]:
+        return await tools.resolve_planning_decision(
+            ctx.headers,
+            project_id=project_id,
+            decision_id=decision_id,
+            expected_revision=expected_revision,
+            status=status,
+            rationale=rationale,
+        )
+
+    @mcp.tool(
+        name="resolve_planning_proposal",
+        description=(
+            "AI 정책 제안을 stable proposal_id로 채택(adopted)하거나 보류(deferred)한다. "
+            "채택하면 연결된 decided 결정이 생기지만 RSPDL 원문은 아직 바뀌지 않는다."
+        ),
+    )
+    async def resolve_planning_proposal(
+        project_id: str,
+        proposal_id: str,
+        expected_revision: int,
+        status: str,
+        ctx: Context,
+        rationale: str | None = None,
+    ) -> dict[str, Any]:
+        return await tools.resolve_planning_proposal(
+            ctx.headers,
+            project_id=project_id,
+            proposal_id=proposal_id,
+            expected_revision=expected_revision,
+            status=status,
+            rationale=rationale,
+        )
+
+    @mcp.tool(
+        name="create_planning_ai_job",
+        description=(
+            "프로젝트 인터뷰 또는 여러 문서 생성 작업을 영속 큐에 넣는다. request_id는 UUID이며 "
+            "같은 요청 재전송을 중복 제거한다. generate도 확정 원문을 바꾸지 않고 compiler를 거친 "
+            "초안만 만든다. source_draft_id를 주면 저장 초안을 기준으로 검토·수정한다."
+        ),
+    )
+    async def create_planning_ai_job(
+        project_id: str,
+        request_id: str,
+        kind: str,
+        instruction: str,
+        expected_planning_revision: int,
+        ctx: Context,
+        source_draft_id: str | None = None,
+        selected_subject: dict[str, Any] | None = None,
+        base_project_revision: int | None = None,
+        base_source_hash: str | None = None,
+    ) -> dict[str, Any]:
+        return await tools.create_planning_ai_job(
+            ctx.headers,
+            project_id=project_id,
+            request_id=request_id,
+            kind=kind,
+            instruction=instruction,
+            expected_planning_revision=expected_planning_revision,
+            source_draft_id=source_draft_id,
+            selected_subject=selected_subject,
+            base_project_revision=base_project_revision,
+            base_source_hash=base_source_hash,
+        )
+
+    @mcp.tool(
+        name="get_planning_ai_job",
+        description="영속 AI 작업 하나의 진행률, 정제된 오류, 성공 또는 stale 결과를 읽는다.",
+    )
+    async def get_planning_ai_job(project_id: str, job_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.get_planning_ai_job(ctx.headers, project_id=project_id, job_id=job_id)
+
+    @mcp.tool(
+        name="list_planning_ai_jobs",
+        description="프로젝트 AI 작업을 최신순으로 읽어 재접속 뒤 진행과 결과를 복원한다.",
+    )
+    async def list_planning_ai_jobs(
+        project_id: str, ctx: Context, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        return await tools.list_planning_ai_jobs(ctx.headers, project_id=project_id, limit=limit)
+
+    @mcp.tool(
+        name="cancel_planning_ai_job",
+        description=(
+            "queued 또는 running AI 작업의 취소를 요청한다. 완료 결과나 확정 원문은 지우지 않는다."
+        ),
+    )
+    async def cancel_planning_ai_job(project_id: str, job_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.cancel_planning_ai_job(ctx.headers, project_id=project_id, job_id=job_id)
+
+    @mcp.tool(
+        name="retry_planning_ai_job",
+        description=(
+            "실패하거나 취소된 AI 작업을 같은 frozen 맥락과 checkpoint로 새 작업에 재시도한다. "
+            "최신 맥락이 필요하면 새 create 작업을 만든다."
+        ),
+    )
+    async def retry_planning_ai_job(project_id: str, job_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.retry_planning_ai_job(ctx.headers, project_id=project_id, job_id=job_id)
+
+    @mcp.tool(
         name="delete_document",
         description=(
             "문서를 삭제한다. **사람이 명시적으로 삭제를 요청했을 때만 부른다.** 정리나 "
@@ -627,14 +953,12 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         name="compile_rspdl",
         description=(
             "RSPDL 소스를 컴파일해 Canonical IR 과 진단을 얻는다. `sources` 는 "
-            "`{\"path\": ..., \"text\": ...}` 목록이며, 서로를 참조하는 문서는 한 번에 "
+            '`{"path": ..., "text": ...}` 목록이며, 서로를 참조하는 문서는 한 번에 '
             "넘겨야 한다. 문법·의미 오류는 실패가 아니라 `result` 안의 진단으로 돌아온다. "
             "진단은 컴파일러가 준 그대로 사람에게 보여라 — 요약하거나 원인을 지어내지 마라."
         ),
     )
-    async def compile_rspdl(
-        sources: list[dict[str, str]], ctx: Context
-    ) -> dict[str, Any]:
+    async def compile_rspdl(sources: list[dict[str, str]], ctx: Context) -> dict[str, Any]:
         return await tools.compile_rspdl(ctx.headers, sources=sources)
 
     @mcp.tool(
@@ -675,6 +999,52 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
             timeout_ms=timeout_ms,
         )
 
+    @mcp.tool(
+        name="propose_planning_edit",
+        description=(
+            "저장된 RSPDL 화면에 구조화 편집(insert/delete/move/update/connect/disconnect)을 "
+            "제안한다. 컴파일러가 원문 hash와 요소 ID·slot을 검증하고, applied 후보만 "
+            "프로젝트 전체로 다시 컴파일해 기획 초안으로 보관한다. 이 도구는 확정 문서를 "
+            "절대 적용하지 않는다. rejected 응답과 semantic diagnostics를 그대로 사람에게 "
+            "보여 주고, 적용은 별도의 사람 요청으로 수행한다."
+        ),
+    )
+    async def propose_planning_edit(
+        project_id: str,
+        document_id: str,
+        base_project_revision: int,
+        base_source_hash: str,
+        expected_source_hash: str,
+        edit: dict[str, Any],
+        ctx: Context,
+        summary: str | None = None,
+    ) -> dict[str, Any]:
+        return await tools.propose_planning_edit(
+            ctx.headers,
+            project_id=project_id,
+            document_id=document_id,
+            base_project_revision=base_project_revision,
+            base_source_hash=base_source_hash,
+            expected_source_hash=expected_source_hash,
+            edit=edit,
+            summary=summary,
+        )
+
+    @mcp.tool(
+        name="get_project_handoff",
+        description=(
+            "프로젝트의 immutable 전체 스냅샷을 snapshot_version 에 고정해 읽는다. "
+            "저장 당시 원문·기획 메타데이터·컴파일러 버전·결과를 그대로 돌려주며 "
+            "현재 컴파일러로 조용히 재검증하지 않는다."
+        ),
+    )
+    async def get_project_handoff(
+        project_id: str, snapshot_version: int, ctx: Context
+    ) -> dict[str, Any]:
+        return await tools.get_project_handoff(
+            ctx.headers, project_id=project_id, snapshot_version=snapshot_version
+        )
+
     return mcp
 
 
@@ -696,9 +1066,7 @@ def create_mcp_app(tools: McpTools | None = None, *, path: str = MCP_PATH) -> St
         streamable_http_path=path,
         json_response=True,
         stateless_http=True,
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=False
-        ),
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     )
     # 인증 게이트는 개별 라우트가 아니라 앱 전체를 감싼다. 나중에 경로가 늘어도 무인증
     # 구멍이 생기지 않는다.
@@ -706,9 +1074,7 @@ def create_mcp_app(tools: McpTools | None = None, *, path: str = MCP_PATH) -> St
     return app
 
 
-def mount_mcp(
-    app: FastAPI, *, path: str = MCP_PATH, tools: McpTools | None = None
-) -> Starlette:
+def mount_mcp(app: FastAPI, *, path: str = MCP_PATH, tools: McpTools | None = None) -> Starlette:
     """FastAPI 앱에 MCP 를 붙인다. `main.py` 가 부르는 유일한 함수다.
 
     `app.mount()` 를 쓰지 않는 이유가 둘 있다.
