@@ -109,6 +109,11 @@ def test_probed_capability_selects_prompt_and_grammar_atomically() -> None:
     assert "사용자 입력을 대신하는 용도로 쓰지 않는다" in contract.system_prompt
     assert "업무 완료 데이터를 충족하려고 조회를 지어내지 않는다" in contract.system_prompt
     assert "이것만으로 행동의 `조회 결과`" in contract.system_prompt
+    assert "원래의 별도 기획 결정에 그대로 남겨 둔다" in contract.system_prompt
+    assert "compiler가 검증했다고 주장하지 않는다" in contract.system_prompt
+    assert "확인하는 정적\n분석이다" in contract.system_prompt
+    assert "실제 값이 비어 있지 않은지" in contract.system_prompt
+    assert "먼저 예약 등록 화면에서 연락처를 입력해 예약을 만들고" in contract.system_prompt
 
 
 def test_authoring_contract_hash_changes_atomically_with_prompt_and_grammar() -> None:
