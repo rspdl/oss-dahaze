@@ -7,7 +7,7 @@ from importlib import resources
 
 from dahaze_api.domain.llm import EbnfGrammar
 
-GRAMMAR_RSPDL_VERSION = "0.1.2"
+GRAMMAR_RSPDL_VERSION = "0.1.4"
 PLANNING_GRAMMAR_CAPABILITY = "rspdl.planning-contracts.v1"
 
 

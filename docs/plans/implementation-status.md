@@ -2,7 +2,7 @@
 
 목표와 합의: [구현 계획](planning-workspace.md). 추적 이슈: [#20](https://github.com/rspdl/oss-dahaze/issues/20).
 
-## CURRENT — 2026-09-23
+## CURRENT — 2026-09-24
 
 이 절이 현재 상태의 기준이다. 아래 절은 구현 과정의 검수 기록이며, 당시의 `진행 중`,
 `추가 확인`, `아직`이라는 표현을 현재 미완료 목록으로 해석하지 않는다.
@@ -43,9 +43,21 @@
 - 이전 작업 `359ad62e`는 compiler error 0건이어도 원문에 없는 lookup을 발명해 반려했던
   역사적 실패 사례다. 최신 프롬프트의 위 종단간 검수가 이 결과를 대체한다.
 
+### 정식 compiler 승격 검수 완료
+
+- core #39의 `rspdl-v0.1.4`를 정식 PyPI 패키지로 확인했다. 기존 게시 작업의 환경 대기를
+  core #40의 검증된 복구 경로로 해결했다. 보호 설정을 변경하지 않았다.
+- 공개 Apple Silicon wheel의 SHA-256이 검수한 릴리스 산출물과 일치했고 Linux x86_64
+  glibc wheel을 포함한 4개 지원 플랫폼 패키지를 확인했다.
+- 의존성 핀·잠금 파일·prompt/grammar 버전을 0.1.4로 맞췄다. 대표 문서 2개와 운영 저장
+  문서 1개의 0.1.2 → 0.1.4 재컴파일에서 진단·wire schema 변경 및 회귀가 없었다.
+- 정식 패키지로 일반 `./scripts/check.sh` 전체 통과: API 216개/2 skip, web 201개,
+  editor 46개와 경계·린트·타입·마이그레이션·OpenAPI·codegen·빌드. 별도 경쟁 8개와
+  worker 복구 5개도 주 검수자가 확인했다. 자세한 기록은 완료 감사 문서를 따른다.
+
 ### 아직 완료하지 않은 배포 작업
 
-- 위 compiler 작업의 정식 릴리스와 dahaze 의존성 핀 승격은 하지 않았다.
+- 위 승격 커밋의 원격 CI와 develop → main 릴리스가 남아 있다.
 - production migration·API·worker 배포와 배포 후 canary 검증은 하지 않았다.
 - 따라서 이 문서는 로컬 구현·검수 상태를 기록하며 production 완료 보고가 아니다.
 

@@ -17,7 +17,7 @@ from typing import Any
 
 # 이 프롬프트가 설명하는 문법의 rspdl 버전. 컴파일러 핀을 올릴 때 이 값도 함께 올리고,
 # 올리기 전에 위 `.md` 들이 새 문법을 설명하는지 확인한다.
-PROMPT_RSPDL_VERSION = "0.1.2"
+PROMPT_RSPDL_VERSION = "0.1.4"
 PLANNING_PROMPT_CAPABILITY = "rspdl.planning-contracts.v1"
 _PLANNING_SECTION = "<!-- planning-contracts-v1 -->"
 
