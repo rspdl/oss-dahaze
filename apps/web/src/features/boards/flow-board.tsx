@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   Controls,
@@ -12,10 +12,11 @@ import {
   type Edge,
   type Node,
   type NodeProps,
+  type ReactFlowInstance,
 } from '@xyflow/react'
 import { cn } from '@dahaze/ui'
 
-import { DEFAULT_VIEWPORT_DIMENSIONS, ScreenMockupFrame, type MockupViewport, type ScreenMockupFrameProps } from '@/features/mockup/screen-mockup'
+import { DEFAULT_VIEWPORT_DIMENSIONS, ScreenMockupFrame, type MockupViewport, type ScreenMockupFrameProps } from '../mockup/screen-mockup'
 import type { FlowGraph, FlowNode } from './flow-graph'
 
 /**
@@ -90,6 +91,32 @@ function EmptyScreenBox({
 
 const nodeTypes = { screen: ScreenNodeCard }
 
+/** 선택만 바뀌면 나머지 노드 객체를 그대로 보존해 ReactFlow의 node update 범위를 제한한다. */
+export function applyFlowNodeSelection(
+  nodes: ScreenFlowNode[],
+  selectedId: string | null,
+): ScreenFlowNode[] {
+  return nodes.map((node) => {
+    const selected = node.id === selectedId
+    const detailed = node.data.detailed || selected
+    if (node.data.selected === selected && node.data.detailed === detailed) return node
+    return { ...node, data: { ...node.data, selected, detailed } }
+  })
+}
+
+export function fitSelectedFlowNode(
+  instance: Pick<ReactFlowInstance<ScreenFlowNode, Edge>, 'fitView'>,
+  selectedId: string | null,
+): void {
+  if (selectedId === null) return
+  void instance.fitView({
+    nodes: [{ id: selectedId }],
+    padding: 0.18,
+    maxZoom: 0.9,
+    duration: 200,
+  })
+}
+
 export function FlowBoard({
   graph,
   viewport,
@@ -110,15 +137,18 @@ export function FlowBoard({
   onPositionChange?: (screenKey: string, position: { x: number; y: number }) => void
 }) {
   const [zoom, setZoom] = useState(1)
-  const { nodes, edges } = useMemo(() => {
-    const visibleNodes = prototype.mode === 'experience' && selectedId !== null ? graph.nodes.filter((node) => node.id === selectedId) : graph.nodes
-    const nodes: ScreenFlowNode[] = visibleNodes.map((node) => ({
+  const instanceRef = useRef<ReactFlowInstance<ScreenFlowNode, Edge> | null>(null)
+  const fittedSelectionRef = useRef<string | null>(null)
+  const experienceSelectedId = prototype.mode === 'experience' ? selectedId : null
+  const { baseNodes, edges } = useMemo(() => {
+    const visibleNodes = experienceSelectedId === null ? graph.nodes : graph.nodes.filter((node) => node.id === experienceSelectedId)
+    const baseNodes: ScreenFlowNode[] = visibleNodes.map((node) => ({
       id: node.id,
       type: 'screen',
       position: prototype.mode === 'experience' ? { x: 0, y: 0 } : node.position,
-      data: { node, viewport, selected: node.id === selectedId, detailed: prototype.mode === 'experience' || node.id === selectedId || zoom >= 0.35, prototype: prototypeForNode?.(node) ?? prototype },
+      data: { node, viewport, selected: false, detailed: prototype.mode === 'experience' || zoom >= 0.35, prototype: prototypeForNode?.(node) ?? prototype },
     }))
-    const visibleIds = new Set(nodes.map((node) => node.id))
+    const visibleIds = new Set(baseNodes.map((node) => node.id))
     const edges: Edge[] = graph.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)).map((edge) => ({
       id: edge.id,
       source: edge.source,
@@ -132,8 +162,21 @@ export function FlowBoard({
       style: { stroke: 'var(--color-accent)', strokeWidth: 1.5 },
       ariaLabel: `${edge.path.sourceElementId}에서 출발: ${edge.label}`,
     }))
-    return { nodes, edges }
-  }, [graph, viewport, selectedId, prototype, prototypeForNode, zoom])
+    return { baseNodes, edges }
+  }, [experienceSelectedId, graph, prototype, prototypeForNode, viewport, zoom])
+  const nodes = useMemo(
+    () => applyFlowNodeSelection(baseNodes, selectedId),
+    [baseNodes, selectedId],
+  )
+  const fitSelection = useCallback((instance: ReactFlowInstance<ScreenFlowNode, Edge>) => {
+    const token = `${prototype.mode ?? 'edit'}:${selectedId ?? 'all'}`
+    if (fittedSelectionRef.current === token) return
+    fittedSelectionRef.current = token
+    fitSelectedFlowNode(instance, selectedId)
+  }, [prototype.mode, selectedId])
+  useEffect(() => {
+    if (instanceRef.current !== null) fitSelection(instanceRef.current)
+  }, [fitSelection])
 
   return (
     <section
@@ -141,13 +184,12 @@ export function FlowBoard({
       className="relative min-h-0 flex-1 overflow-hidden rounded-lg border bg-surface-raised/30"
     >
       <ReactFlow<ScreenFlowNode, Edge>
-        key={`${prototype.mode ?? 'edit'}:${selectedId ?? 'all'}`}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.15, maxZoom: 0.9 }}
-        onInit={(instance) => { const selectedNode = nodes.find((node) => node.id === selectedId); if (selectedNode) void instance.fitView({ nodes: [selectedNode], padding: 0.18, maxZoom: 0.9, duration: 200 }) }}
+        onInit={(instance) => { instanceRef.current = instance; fitSelection(instance) }}
         minZoom={0.05}
         maxZoom={1.4}
         nodesConnectable={false}
