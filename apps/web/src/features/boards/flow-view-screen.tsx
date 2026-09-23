@@ -216,6 +216,9 @@ function FlowView({ projectId }: { projectId: string }) {
     onOutcomeDismiss: () => setActiveAction(null),
   }), [activeAction, data.documentsByPath, prototype, screenOutcomes, selectedOutcomeIdByScreen])
   const environmentHasNoScreens = data.board.screens.length > 0 && graph.nodes.length === 0
+  const isViewportPresetSelected = (candidate: MockupViewport) =>
+    dimensions.width === DEFAULT_VIEWPORT_DIMENSIONS[candidate].width
+    && dimensions.height === DEFAULT_VIEWPORT_DIMENSIONS[candidate].height
   const interviewSubject: PlanningSubject | null = selected === null ? null : selectedElement?.screenKey === selected.id && selectedElement.elementId !== undefined
     ? elementPlanningSubject({ screenKey: selectedElement.screenKey, elementId: selectedElement.elementId, sourcePath: selected.screen.path, label: selectedElement.name ?? selectedElement.text ?? selectedElement.elementId })
     : { kind: 'screen', id: selected.screen.id, stableId: selected.screen.id, sourcePath: selected.screen.path, label: selected.screen.name }
@@ -268,11 +271,11 @@ function FlowView({ projectId }: { projectId: string }) {
                 <button
                   key={entry.id}
                   type="button"
-                  aria-pressed={dimensions.width === DEFAULT_VIEWPORT_DIMENSIONS[entry.id].width && dimensions.height === DEFAULT_VIEWPORT_DIMENSIONS[entry.id].height}
+                  aria-pressed={isViewportPresetSelected(entry.id)}
                   onClick={() => { setViewport(entry.id); setDimensions(DEFAULT_VIEWPORT_DIMENSIONS[entry.id]) }}
                   className={cn(
                     'rounded-control px-2.5 py-1 text-xs font-medium transition-colors duration-200 ease-out-expo',
-                    viewport === entry.id
+                    isViewportPresetSelected(entry.id)
                       ? 'bg-accent-subtle text-text'
                       : 'text-text-muted hover:text-text',
                   )}
