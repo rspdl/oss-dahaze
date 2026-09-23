@@ -153,8 +153,8 @@ def test_planning_ebnf_converts_with_a_separate_start_rule() -> None:
     assert "action_input_declaration:" in lark
 
 
-async def test_planning_examples_compile_when_runtime_proves_capability() -> None:
-    """현재 pin에서는 skip하고 capability runtime을 넣은 승격 검증에서는 실제로 검사한다."""
+async def test_pinned_runtime_proves_and_compiles_planning_authoring_contract() -> None:
+    """공식 pin이 planning 계약을 실제 compiler 결과로 증명해야 한다."""
 
     examples = _planning_prompt_examples()
     assert len(examples) == 3
@@ -165,8 +165,11 @@ async def test_planning_examples_compile_when_runtime_proves_capability() -> Non
     assert "기존 `예약`" not in examples[-1]
     assert "제공 데이터:" not in examples[-1]
     compiler = LocalRspdlCompiler()
-    if PLANNING_CONTRACTS_CAPABILITY not in await compiler.capabilities():
-        pytest.skip("installed rspdl compiler does not prove planning-contracts-v1")
+    capabilities = await compiler.capabilities()
+    assert PLANNING_CONTRACTS_CAPABILITY in capabilities, (
+        f"pinned rspdl {compiler.runtime.rspdl_version} does not prove "
+        f"{PLANNING_CONTRACTS_CAPABILITY}"
+    )
 
     for index, source in enumerate(examples, start=1):
         outcome = await compiler.compile(

@@ -31,6 +31,18 @@ PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
 DOCUMENT_ID = UUID("00000000-0000-0000-0000-000000000003")
 SOURCE = "@모듈 예약(booking)\n"
 CANDIDATE = "@모듈 예약(booking)\n\n"
+EDITABLE_SOURCE = """---
+모듈: 상품(catalog)
+화면:
+  상품 입력 화면:
+    레이아웃:
+      - 제목: { id: title, 글: "상품 입력" }
+---
+
+상품(product)은 다음 필드들로 구성되어 있다.
+    이름(name): 필수 문자열
+상품 입력 화면(product_form)에서는 `상품`을 생성할 수 있다.
+"""
 
 
 class FakeWorkspace:
@@ -286,18 +298,31 @@ async def test_unsupported_runtime_is_explicit_and_does_not_guess_edit() -> None
     assert store.created == []
 
 
-async def test_pinned_rspdl_without_edit_api_reports_unsupported() -> None:
+async def test_pinned_rspdl_applies_native_structured_edit() -> None:
     compiler = LocalRspdlCompiler()
 
     result = await compiler.edit(
-        RspdlSource(path="booking.rspdl", text=SOURCE),
-        expected_source_hash=source_fingerprint(SOURCE),
-        edit={"operation": "delete", "screen_id": "x", "element_id": "y"},
+        RspdlSource(path="catalog.rspdl", text=EDITABLE_SOURCE),
+        expected_source_hash=source_fingerprint(EDITABLE_SOURCE),
+        edit={
+            "operation": "update",
+            "screen_id": "catalog.product_form",
+            "element_id": "title",
+            "patch": {"text": "새 상품"},
+        },
     )
 
-    assert result.supported is False
-    assert result.response is None
-    assert "does not provide structured editing" in cast(str, result.unsupported_reason)
+    assert result.supported is True
+    assert result.unsupported_reason is None
+    response = cast(Mapping[str, Any], result.response)
+    assert response["outcome"]["status"] == "applied"
+    assert response["rspdl_version"] == compiler.runtime.rspdl_version
+    assert response["wire_schema_version"] == compiler.runtime.wire_schema_version
+    assert response["locale"] == compiler.runtime.locale
+    assert response["source_hash"] == source_fingerprint(EDITABLE_SOURCE)
+    assert "새 상품" in response["candidate_text"]
+    assert response["candidate_source_hash"] == source_fingerprint(response["candidate_text"])
+    assert response["compilation"]["files"][0]["diagnostics"] == []
 
 
 async def test_malformed_native_edit_request_is_a_client_error(
