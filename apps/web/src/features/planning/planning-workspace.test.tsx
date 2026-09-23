@@ -94,6 +94,28 @@ describe('PlanningWorkspace', () => {
     expect(markup).toContain('저장 명세는 바뀌지 않습니다')
   })
 
+  it('AI 제안 근거와 사용자의 판단 이유를 이전 판단과 확정 정책에 함께 남긴다', () => {
+    const markup = renderToStaticMarkup(<PlanningWorkspace model={{
+      ...base,
+      acceptedDecisions: [{ id: 'decision', title: '결제 실패는 같은 화면에서 재시도한다', detail: '사용자가 입력을 유지할 수 있다.', resolutionRationale: '고객센터 문의를 줄인다.' }],
+      proposals: [{ id: 'proposal', title: '외부 결제 연결', detail: '결제사가 확정되지 않았다.', resolutionRationale: '운영팀 계약 뒤 결정한다.', status: 'deferred' }],
+    }} />)
+
+    expect(markup).toContain('사용자가 입력을 유지할 수 있다.')
+    expect(markup).toContain('판단 이유 · 고객센터 문의를 줄인다.')
+    expect(markup).toContain('결제사가 확정되지 않았다.')
+    expect(markup).toContain('판단 이유 · 운영팀 계약 뒤 결정한다.')
+  })
+
+  it('요약 없이 확인 질문만 반환한 생성 작업도 보관된 결과를 보여 준다', () => {
+    const markup = renderToStaticMarkup(<PlanningWorkspace model={{ ...base, jobs: [
+      { id: 'questions', kind: 'generate', status: 'succeeded', resultItems: ['환불 시점을 먼저 정해 주세요.'], retryable: false, createdAt: '' },
+    ] }} />)
+
+    expect(markup).toContain('보관된 결과')
+    expect(markup).toContain('환불 시점을 먼저 정해 주세요.')
+  })
+
   it('진행 중인 작업과 stale 결과, 재시도 가능한 실패를 숨기지 않는다', () => {
     const markup = renderToStaticMarkup(<PlanningWorkspace model={{ ...base, jobs: [
       { id: 'running', kind: 'interview', status: 'running', stage: '질문 정리', completed: 1, total: 3, message: '정책 후보를 정리하고 있습니다.', retryable: false, createdAt: '' },

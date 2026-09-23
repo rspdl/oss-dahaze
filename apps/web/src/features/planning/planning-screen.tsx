@@ -216,7 +216,7 @@ function toDraft(raw: PlanningDraftResponse): PlanningDraft {
 }
 
 function diagnostics(result: unknown): PlanningItem[] { if (!isRecord(result) || !Array.isArray(result.files)) return []; const items: PlanningItem[] = []; for (const file of result.files) { if (!isRecord(file) || !Array.isArray(file.diagnostics)) continue; const path = string(file.path); for (const diagnostic of file.diagnostics) if (isDiagnostic(diagnostic)) items.push({ id: `${path}:${items.length}`, title: renderDiagnosticTitle(diagnostic), detail: renderDiagnosticMessage(diagnostic), sourcePath: path ?? undefined }); } return items }
-function toItem(raw: Record<string, unknown>, index = 0): PlanningItem { return { id: string(raw.id) ?? `item-${index}`, title: string(raw.title) ?? string(raw.question) ?? string(raw.content) ?? '제목 없음', detail: string(raw.rationale) ?? string(raw.detail) ?? string(raw.reason) ?? undefined, sourcePath: string(raw.source_path) ?? undefined } }
+function toItem(raw: Record<string, unknown>, index = 0): PlanningItem { return { id: string(raw.id) ?? `item-${index}`, title: string(raw.title) ?? string(raw.question) ?? string(raw.content) ?? '제목 없음', detail: string(raw.rationale) ?? string(raw.detail) ?? string(raw.reason) ?? undefined, resolutionRationale: string(raw.resolution_rationale) ?? undefined, sourcePath: string(raw.source_path) ?? undefined } }
 function toProposal(raw: Record<string, unknown>, index = 0): PlanningProposal { return { ...toItem(raw, index), status: proposalStatus(raw), rationale: string(raw.rationale) ?? undefined } }
 function proposalStatus(raw: Record<string, unknown>): PlanningProposal['status'] { return raw.status === 'adopted' || raw.status === 'deferred' ? raw.status : 'open' }
 export function toAiJob(value: unknown): PlanningAiJob | null {
@@ -238,7 +238,7 @@ export function toAiJob(value: unknown): PlanningAiJob | null {
     errorMessage: string(error?.message) ?? undefined,
     retryable: (value.status === 'failed' || value.status === 'cancelled') && error?.retryable !== false && attempt < maxAttempts,
     disposition: result?.disposition === 'stale' ? 'stale' : result?.disposition === 'current' ? 'current' : undefined,
-    conflictMessage: conflict === null ? undefined : `기준 기획 리비전 ${number(conflict.frozen_planning_revision) ?? '?'}에서 만든 결과이며 현재 리비전은 ${number(conflict.current_planning_revision) ?? '?'}입니다.`,
+    conflictMessage: staleConflictMessage(conflict),
     draftId: string(result?.draft_id) ?? undefined,
     resultMessage: string(result?.assistant_message) ?? string(result?.summary) ?? undefined,
     resultItems: aiResultItems(result),
@@ -247,9 +247,20 @@ export function toAiJob(value: unknown): PlanningAiJob | null {
 }
 function aiResultItems(result: Record<string, unknown> | null): string[] | undefined {
   if (result === null) return undefined
-  const entries = [...(Array.isArray(result.proposals) ? result.proposals : []), ...(Array.isArray(result.policy_first_questions) ? result.policy_first_questions : []), ...(Array.isArray(result.unsupported) ? result.unsupported : [])]
+  const entries = [...(Array.isArray(result.proposals) ? result.proposals : []), ...(Array.isArray(result.policy_first_questions) ? result.policy_first_questions : []), ...(Array.isArray(result.unsupported) ? result.unsupported : []), ...(Array.isArray(result.questions) ? result.questions : [])]
   const items = entries.flatMap((entry) => { if (typeof entry === 'string') return [entry]; const raw = isRecord(entry) ? entry : null; const title = string(raw?.title) ?? string(raw?.question) ?? string(raw?.content); return title === null ? [] : [title] })
-  return items.length === 0 ? undefined : items
+  const unique = [...new Set(items)]
+  return unique.length === 0 ? undefined : unique
+}
+function staleConflictMessage(conflict: Record<string, unknown> | null): string | undefined {
+  if (conflict === null) return undefined
+  const frozenPlanning = number(conflict.frozen_planning_revision)
+  const currentPlanning = number(conflict.current_planning_revision)
+  if (frozenPlanning !== null && currentPlanning !== null && frozenPlanning !== currentPlanning) return `기준 기획 리비전 ${frozenPlanning}에서 만든 결과이며 현재 리비전은 ${currentPlanning}입니다.`
+  const reasons = Array.isArray(conflict.reasons) ? conflict.reasons : []
+  if (reasons.includes('project_revision_changed') || reasons.includes('source_hash_changed')) return '작업 중 저장 명세가 바뀌어 결과가 현재 상태에 자동 반영되지 않았습니다.'
+  if (reasons.includes('planning_revision_changed')) return '작업 중 기획 판단이 바뀌어 결과가 현재 상태에 자동 반영되지 않았습니다.'
+  return '작업 중 프로젝트가 바뀌어 결과가 현재 상태에 자동 반영되지 않았습니다.'
 }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
 function string(value: unknown): string | null { return typeof value === 'string' ? value : null }

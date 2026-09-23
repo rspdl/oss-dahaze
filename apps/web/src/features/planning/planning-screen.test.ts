@@ -102,13 +102,13 @@ describe('planning AI review model', () => {
     const model = toModel(state({ proposals: [
       { id: 'question', kind: 'question', status: 'open', title: '연락처 출처는 무엇인가요?' },
       { id: 'policy', kind: 'policy', status: 'open', title: '결제 실패는 같은 화면에서 재시도한다' },
-      { id: 'deferred', kind: 'policy', status: 'deferred', title: '나중에 정할 정책', rationale: '운영팀 확인 필요' },
+      { id: 'deferred', kind: 'policy', status: 'deferred', title: '나중에 정할 정책', rationale: '외부 시스템 연동이 필요하다', resolution_rationale: '운영팀 확인 필요' },
     ] }), [], [], null, inputs())
 
     expect(model.questions).toEqual([expect.objectContaining({ id: 'question' })])
     expect(model.proposals).toEqual([
       expect.objectContaining({ id: 'policy', status: 'open' }),
-      expect.objectContaining({ id: 'deferred', status: 'deferred', rationale: '운영팀 확인 필요' }),
+      expect.objectContaining({ id: 'deferred', status: 'deferred', rationale: '외부 시스템 연동이 필요하다', resolutionRationale: '운영팀 확인 필요' }),
     ])
     expect(model.acceptedDecisions).toEqual([])
   })
@@ -118,6 +118,9 @@ describe('planning AI review model', () => {
     expect(toAiJob({ id: 'job-2', kind: 'generate', status: 'failed', error: { code: 'invalid_output', message: '출력을 검증하지 못했습니다.', retryable: true }, attempt: 1, max_attempts: 3, created_at: 'now' })).toMatchObject({ errorMessage: '출력을 검증하지 못했습니다.', retryable: true })
     expect(toAiJob({ id: 'job-3', kind: 'interview', status: 'succeeded', result: { disposition: 'stale', conflict: { frozen_planning_revision: 2, current_planning_revision: 4 } }, attempt: 1, max_attempts: 3, created_at: 'now' })).toMatchObject({ disposition: 'stale', conflictMessage: '기준 기획 리비전 2에서 만든 결과이며 현재 리비전은 4입니다.' })
     expect(toAiJob({ id: 'job-3b', kind: 'interview', status: 'succeeded', result: { assistant_message: '확인 결과', policy_first_questions: [{ question: '연락처 출처는 무엇인가요?' }], proposals: [{ title: '실패 시 재시도' }], unsupported: ['외부 결제 실행'] }, attempt: 1, max_attempts: 3, created_at: 'now' })).toMatchObject({ resultMessage: '확인 결과', resultItems: ['실패 시 재시도', '연락처 출처는 무엇인가요?', '외부 결제 실행'] })
+    expect(toAiJob({ id: 'job-3c', kind: 'interview', status: 'succeeded', result: { assistant_message: '확인 결과', proposals: [{ kind: 'question', title: '환불 시점은 언제인가요?' }], policy_first_questions: [{ question: '환불 시점은 언제인가요?' }] }, attempt: 1, max_attempts: 3, created_at: 'now' })).toMatchObject({ resultItems: ['환불 시점은 언제인가요?'] })
+    expect(toAiJob({ id: 'job-3d', kind: 'generate', status: 'succeeded', result: { disposition: 'current', summary: '', questions: ['환불 시점을 먼저 정해 주세요.'], changes: [] }, attempt: 1, max_attempts: 3, created_at: 'now' })).toMatchObject({ resultItems: ['환불 시점을 먼저 정해 주세요.'] })
+    expect(toAiJob({ id: 'job-3e', kind: 'generate', status: 'succeeded', result: { disposition: 'stale', conflict: { reasons: ['source_hash_changed'] } }, attempt: 1, max_attempts: 3, created_at: 'now' })).toMatchObject({ conflictMessage: '작업 중 저장 명세가 바뀌어 결과가 현재 상태에 자동 반영되지 않았습니다.' })
     expect(toAiJob({ id: 'job-4', kind: 'generate', status: 'failed', error: { retryable: true }, attempt: 3, max_attempts: 3, created_at: 'now' })?.retryable).toBe(false)
   })
 })

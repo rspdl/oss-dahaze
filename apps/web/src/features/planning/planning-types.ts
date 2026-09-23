@@ -1,5 +1,5 @@
 export type PlanningMessage = { id: string; role: 'user' | 'assistant'; content: string; createdAt: string }
-export type PlanningItem = { id: string; title: string; detail?: string; sourcePath?: string }
+export type PlanningItem = { id: string; title: string; detail?: string; resolutionRationale?: string; sourcePath?: string }
 export type PlanningProposal = PlanningItem & { status: 'open' | 'adopted' | 'deferred'; rationale?: string }
 export type PlanningSubject = { kind: 'question' | 'diagnostic' | 'proposal' | 'draft' | 'screen' | 'element'; id: string; label: string; sourcePath?: string; stableId?: string }
 export type PlanningAiJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
