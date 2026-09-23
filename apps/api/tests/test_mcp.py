@@ -53,6 +53,18 @@ VALID_TEXT = (
     "    이름(name): 필수 문자열\n"
     "    수량(quantity): 필수 정수\n"
 )
+EDITABLE_TEXT = """---
+모듈: 상품(catalog)
+화면:
+  상품 입력 화면:
+    레이아웃:
+      - 제목: { id: title, 글: "상품 입력" }
+---
+
+상품(product)은 다음 필드들로 구성되어 있다.
+    이름(name): 필수 문자열
+상품 입력 화면(product_form)에서는 `상품`을 생성할 수 있다.
+"""
 
 
 @pytest.fixture
@@ -328,9 +340,9 @@ async def test_structured_edit_tool_never_auto_saves_document(
     document = await tools.create_document(
         headers,
         project_id=str(project.id),
-        path="inventory.rspdl",
-        title="재고",
-        text=VALID_TEXT,
+        path="catalog.rspdl",
+        title="상품",
+        text=EDITABLE_TEXT,
     )
     current = await tools.get_project(headers, project_id=str(project.id))
     read = await tools.read_document(headers, document_id=document["id"])
@@ -343,15 +355,25 @@ async def test_structured_edit_tool_never_auto_saves_document(
         base_source_hash=current["source_hash"],
         expected_source_hash=read["source_hash"],
         edit={
-            "operation": "delete",
-            "screen_id": "inventory.list",
-            "element_id": "quantity",
+            "operation": "update",
+            "screen_id": "catalog.product_form",
+            "element_id": "title",
+            "patch": {"text": "새 상품"},
         },
     )
 
-    assert result["supported"] is False
-    assert result["draft"] is None
-    assert (await tools.read_document(headers, document_id=document["id"]))["text"] == VALID_TEXT
+    assert result["supported"] is True
+    assert result["unsupported_reason"] is None
+    assert result["compiler_response"]["outcome"]["status"] == "applied"
+    assert "새 상품" in result["compiler_response"]["candidate_text"]
+    assert result["draft"] is not None
+    assert len(result["draft"]["candidate_documents"]) == 1
+    candidate = result["draft"]["candidate_documents"][0]
+    assert candidate["id"] == document["id"]
+    assert candidate["path"] == "catalog.rspdl"
+    assert candidate["title"] == "상품"
+    assert candidate["text"] == result["compiler_response"]["candidate_text"]
+    assert (await tools.read_document(headers, document_id=document["id"]))["text"] == EDITABLE_TEXT
 
 
 async def test_decision_resolution_tool_updates_existing_id(

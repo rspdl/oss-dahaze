@@ -23,6 +23,18 @@ VALID_B = (
     "@모듈 주문(order)\n\n"
     "주문 항목(item)은 다음 필드들로 구성되어 있다.\n    번호(number): 필수 문자열\n"
 )
+EDITABLE_TEXT = """---
+모듈: 상품(catalog)
+화면:
+  상품 입력 화면:
+    레이아웃:
+      - 제목: { id: title, 글: "상품 입력" }
+---
+
+상품(product)은 다음 필드들로 구성되어 있다.
+    이름(name): 필수 문자열
+상품 입력 화면(product_form)에서는 `상품`을 생성할 수 있다.
+"""
 
 
 async def _project(client: httpx.AsyncClient, slug: str) -> dict[str, object]:
@@ -68,14 +80,14 @@ async def test_error_bearing_draft_is_persisted_but_not_applied(client: httpx.As
     assert (await client.get(f"/api/projects/{project['id']}/documents")).json() == []
 
 
-async def test_structured_edit_is_explicitly_unsupported_without_saving(
+async def test_structured_edit_creates_reviewable_draft_without_saving(
     client: httpx.AsyncClient,
 ) -> None:
-    project = await _project(client, "unsupported-edit")
+    project = await _project(client, "native-edit")
     document = (
         await client.post(
             f"/api/projects/{project['id']}/documents",
-            json={"path": "a.rspdl", "title": "A", "text": VALID_A},
+            json={"path": "catalog.rspdl", "title": "상품", "text": EDITABLE_TEXT},
         )
     ).json()
     current = (await client.get(f"/api/projects/{project['id']}")).json()
@@ -86,24 +98,33 @@ async def test_structured_edit_is_explicitly_unsupported_without_saving(
             "document_id": document["id"],
             "base_project_revision": current["revision"],
             "base_source_hash": current["source_hash"],
-            "expected_source_hash": source_fingerprint(VALID_A),
+            "expected_source_hash": source_fingerprint(EDITABLE_TEXT),
             "edit": {
-                "operation": "delete",
-                "screen_id": "inventory.list",
-                "element_id": "quantity",
+                "operation": "update",
+                "screen_id": "catalog.product_form",
+                "element_id": "title",
+                "patch": {"text": "새 상품"},
             },
-            "summary": "수량 삭제",
+            "summary": "화면 제목 변경",
         },
     )
 
     assert response.status_code == 200, response.text
-    assert response.json()["supported"] is False
-    assert response.json()["compiler_response"] is None
-    assert response.json()["draft"] is None
-    assert (await client.get(f"/api/documents/{document['id']}")).json()["text"] == VALID_A
-    assert (
-        await client.get(f"/api/projects/{project['id']}/planning/drafts")
-    ).json() == []
+    result = response.json()
+    assert result["supported"] is True
+    assert result["unsupported_reason"] is None
+    assert result["compiler_response"]["outcome"]["status"] == "applied"
+    assert "새 상품" in result["compiler_response"]["candidate_text"]
+    assert result["draft"]["summary"] == "화면 제목 변경"
+    assert len(result["draft"]["candidate_documents"]) == 1
+    candidate = result["draft"]["candidate_documents"][0]
+    assert candidate["id"] == document["id"]
+    assert candidate["path"] == "catalog.rspdl"
+    assert candidate["title"] == "상품"
+    assert candidate["text"] == result["compiler_response"]["candidate_text"]
+    assert (await client.get(f"/api/documents/{document['id']}")).json()["text"] == EDITABLE_TEXT
+    drafts = (await client.get(f"/api/projects/{project['id']}/planning/drafts")).json()
+    assert [draft["id"] for draft in drafts] == [result["draft"]["id"]]
 
 
 async def test_structured_edit_request_rejects_unknown_operation(
