@@ -11,7 +11,7 @@ import { DEFAULT_VIEWPORT_DIMENSIONS, type MockupViewport } from '@/features/moc
 import { parseModelSamples } from '@/features/mockup/sample-data'
 import { designBindingKey, type DesignBinding, type ElementDesign, type ElementSelection, type PrototypeAction, type PrototypeMode, type SampleVariant, type SemanticProposal } from '@/features/mockup/prototype-contract'
 import { parsePlanningEnvironments, visibleScreenKeys } from '@/features/planning/environments'
-import { planningSubjectHref } from '@/features/planning/planning-subject'
+import { elementPlanningSubject, planningSubjectHref } from '@/features/planning/planning-subject'
 import type { PlanningSubject } from '@/features/planning/planning-types'
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
 import { errorMessage } from '@/shared/api/errors'
@@ -217,7 +217,7 @@ function FlowView({ projectId }: { projectId: string }) {
   }), [activeAction, data.documentsByPath, prototype, screenOutcomes, selectedOutcomeIdByScreen])
   const environmentHasNoScreens = data.board.screens.length > 0 && graph.nodes.length === 0
   const interviewSubject: PlanningSubject | null = selected === null ? null : selectedElement?.screenKey === selected.id && selectedElement.elementId !== undefined
-    ? { kind: 'element', id: selectedElement.elementId, stableId: selectedElement.elementId, sourcePath: selected.screen.path, label: selectedElement.name ?? selectedElement.text ?? selectedElement.elementId }
+    ? elementPlanningSubject({ screenKey: selectedElement.screenKey, elementId: selectedElement.elementId, sourcePath: selected.screen.path, label: selectedElement.name ?? selectedElement.text ?? selectedElement.elementId })
     : { kind: 'screen', id: selected.screen.id, stableId: selected.screen.id, sourcePath: selected.screen.path, label: selected.screen.name }
 
   return (

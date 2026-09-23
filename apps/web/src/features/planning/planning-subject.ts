@@ -2,6 +2,16 @@ import type { PlanningSubject } from './planning-types'
 
 const SUBJECT_KINDS = new Set<PlanningSubject['kind']>(['question', 'diagnostic', 'proposal', 'draft', 'screen', 'element'])
 
+export function elementPlanningSubject(input: { screenKey: string; elementId: string; sourcePath: string; label: string }): PlanningSubject {
+  return {
+    kind: 'element',
+    id: `${input.screenKey}:stable:${input.elementId}`,
+    stableId: input.elementId,
+    sourcePath: input.sourcePath,
+    label: input.label,
+  }
+}
+
 export function planningSubjectHref(projectId: string, subject: PlanningSubject): string {
   const query = new URLSearchParams({ subjectKind: subject.kind, subjectId: subject.id, subjectLabel: subject.label })
   if (subject.sourcePath !== undefined) query.set('subjectPath', subject.sourcePath)
