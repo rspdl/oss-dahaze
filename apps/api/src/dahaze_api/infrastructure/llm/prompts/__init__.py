@@ -18,6 +18,8 @@ from typing import Any
 # 이 프롬프트가 설명하는 문법의 rspdl 버전. 컴파일러 핀을 올릴 때 이 값도 함께 올리고,
 # 올리기 전에 위 `.md` 들이 새 문법을 설명하는지 확인한다.
 PROMPT_RSPDL_VERSION = "0.1.2"
+PLANNING_PROMPT_CAPABILITY = "rspdl.planning-contracts.v1"
+_PLANNING_SECTION = "<!-- planning-contracts-v1 -->"
 
 # 진단을 몇 개까지 프롬프트에 실을지. 문법이 깨진 초안은 진단을 수백 개 낼 수 있고,
 # 그걸 전부 넣으면 정작 고쳐야 할 첫 오류가 컨텍스트 뒤로 밀린다.
@@ -28,7 +30,23 @@ def _read(name: str) -> str:
     return resources.files(__package__).joinpath(name).read_text(encoding="utf-8")
 
 
-SYSTEM_PROMPT = f"{_read('system_ko.md')}\n\n{_read('examples_ko.md')}"
+def _profile_text(name: str, *, planning: bool) -> str:
+    baseline, marker, extension = _read(name).partition(_PLANNING_SECTION)
+    if not marker:
+        raise RuntimeError(f"prompt resource에 planning 구분자가 없다: {name}")
+    if planning:
+        return f"{baseline.rstrip()}\n\n{extension.strip()}"
+    return baseline.rstrip()
+
+
+SYSTEM_PROMPT = (
+    f"{_profile_text('system_ko.md', planning=False)}\n\n"
+    f"{_profile_text('examples_ko.md', planning=False)}"
+)
+PLANNING_SYSTEM_PROMPT = (
+    f"{_profile_text('system_ko.md', planning=True)}\n\n"
+    f"{_profile_text('examples_ko.md', planning=True)}"
+)
 
 
 def build_user_prompt(
