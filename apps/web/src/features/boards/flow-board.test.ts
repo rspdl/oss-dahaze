@@ -40,17 +40,35 @@ describe('FlowBoard selection lifecycle', () => {
   })
 
   it('fits the selected node through the existing flow instance', () => {
-    const fitView = vi.fn(async () => true)
+    const fitBounds = vi.fn(async () => true)
+    const getInternalNode = vi.fn(() => ({
+      measured: { width: 1444, height: 950 },
+      internals: { positionAbsolute: { x: 3200, y: 1800 } },
+    }))
 
-    fitSelectedFlowNode({ fitView }, 'b')
-    fitSelectedFlowNode({ fitView }, null)
+    expect(fitSelectedFlowNode({ fitBounds, getInternalNode } as never, 'b', { width: 1440, height: 900 })).toBe(true)
+    expect(fitSelectedFlowNode({ fitBounds, getInternalNode } as never, null, { width: 1440, height: 900 })).toBe(false)
 
-    expect(fitView).toHaveBeenCalledOnce()
-    expect(fitView).toHaveBeenCalledWith({
-      nodes: [{ id: 'b' }],
+    expect(fitBounds).toHaveBeenCalledOnce()
+    expect(fitBounds).toHaveBeenCalledWith({
+      x: 3200,
+      y: 1800,
+      width: 1444,
+      height: 950,
+    }, {
       padding: 0.18,
-      maxZoom: 0.9,
       duration: 200,
     })
+  })
+
+  it('does not fit a selected node until its detailed dimensions are measured', () => {
+    const fitBounds = vi.fn(async () => true)
+    const getInternalNode = vi.fn(() => ({
+      measured: { width: 288, height: 112 },
+      internals: { positionAbsolute: { x: 3200, y: 1800 } },
+    }))
+
+    expect(fitSelectedFlowNode({ fitBounds, getInternalNode } as never, 'b', { width: 1440, height: 900 })).toBe(false)
+    expect(fitBounds).not.toHaveBeenCalled()
   })
 })

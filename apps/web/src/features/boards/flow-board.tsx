@@ -105,16 +105,27 @@ export function applyFlowNodeSelection(
 }
 
 export function fitSelectedFlowNode(
-  instance: Pick<ReactFlowInstance<ScreenFlowNode, Edge>, 'fitView'>,
+  instance: Pick<ReactFlowInstance<ScreenFlowNode, Edge>, 'fitBounds' | 'getInternalNode'>,
   selectedId: string | null,
-): void {
-  if (selectedId === null) return
-  void instance.fitView({
-    nodes: [{ id: selectedId }],
+  minimumDimensions: { width: number; height: number },
+): boolean {
+  if (selectedId === null) return false
+  const selectedNode = instance.getInternalNode(selectedId)
+  const width = selectedNode?.measured.width
+  const height = selectedNode?.measured.height
+  if (selectedNode === undefined || width === undefined || height === undefined
+    || width < minimumDimensions.width || height < minimumDimensions.height) return false
+
+  void instance.fitBounds({
+    x: selectedNode.internals.positionAbsolute.x,
+    y: selectedNode.internals.positionAbsolute.y,
+    width,
+    height,
+  }, {
     padding: 0.18,
-    maxZoom: 0.9,
     duration: 200,
   })
+  return true
 }
 
 export function FlowBoard({
@@ -178,20 +189,28 @@ export function FlowBoard({
     if (selectedId === null || selectedGraphNode === undefined) return
 
     const position = prototype.mode === 'experience' ? { x: 0, y: 0 } : selectedGraphNode.position
-    void instance.setCenter(
-      position.x + selectedDimensions.width / 2,
-      position.y + selectedDimensions.height / 2,
-      { zoom: Math.min(instance.getZoom(), 0.2), duration: 0 },
-    )
+    const minimumDimensions = { width: selectedDimensions.width, height: selectedDimensions.height }
 
-    // onlyRenderVisibleElements인 먼 노드는 먼저 viewport 안에 들어와야 상세 카드가 mount되고
-    // ResizeObserver가 실제 크기를 기록한다. 두 frame 뒤 그 측정값으로 맞춘다.
-    fitFrameRef.current = requestAnimationFrame(() => {
-      fitFrameRef.current = requestAnimationFrame(() => {
+    // 가상화된 먼 노드는 아직 내부 노드나 측정값이 없다. 알려진 레이아웃 사각형을 먼저
+    // 맞춰 mount시킨 뒤, 상세 카드의 새 크기가 측정되었을 때만 실제 경계로 보정한다.
+    // fitView는 측정되지 않은 단일 노드를 전체 그래프로 fallback하므로 이 경로에서 쓰지 않는다.
+    void instance.fitBounds({
+      x: position.x,
+      y: position.y,
+      width: selectedDimensions.width + 2,
+      height: selectedDimensions.height + 48,
+    }, { padding: 0.18, duration: 0 })
+
+    let remainingFrames = 12
+    const refineMeasuredBounds = () => {
+      if (fitSelectedFlowNode(instance, selectedId, minimumDimensions) || remainingFrames === 0) {
         fitFrameRef.current = null
-        fitSelectedFlowNode(instance, selectedId)
-      })
-    })
+        return
+      }
+      remainingFrames -= 1
+      fitFrameRef.current = requestAnimationFrame(refineMeasuredBounds)
+    }
+    fitFrameRef.current = requestAnimationFrame(refineMeasuredBounds)
   }, [prototype.mode, selectedDimensions.height, selectedDimensions.width, selectedGraphNode, selectedId])
   useEffect(() => {
     if (instanceRef.current !== null) fitSelection(instanceRef.current)
