@@ -6,7 +6,7 @@ import type { PlanningWorkspaceModel } from './planning-types'
 import { PlanningWorkspace } from './planning-workspace'
 
 const base: PlanningWorkspaceModel = {
-  revision: 2, projectRevision: 4, sourceHash: 'abc', messages: [], acceptedDecisions: [], unresolvedDecisions: [], questions: [], unsupported: [],
+  revision: 2, projectRevision: 4, sourceHash: 'abc', messages: [], acceptedDecisions: [], unresolvedDecisions: [], questions: [], proposals: [], unsupported: [], jobs: [],
   compiler: { state: 'not-run', source: { kind: 'current', documents: [] }, diagnostics: [] }, drafts: [], selectedDraftId: null, snapshots: [],
 }
 
@@ -82,5 +82,30 @@ describe('PlanningWorkspace', () => {
     expect(failed).toContain('network down')
     expect(unsupported).toContain('지원하지 않는 결과')
     expect(unsupported).toContain('현재 화면이 알지 못하는 컴파일 결과 모양')
+  })
+
+  it('AI 정책 제안은 채택 전 상태로 분리하고 명세 작성은 별도 행동으로 둔다', () => {
+    const markup = renderToStaticMarkup(<PlanningWorkspace model={{ ...base, proposals: [{ id: 'p1', title: '결제 실패는 같은 화면에서 재시도한다', status: 'open' }] }} onResolveProposal={async () => true} onGenerateDraft={() => undefined} />)
+
+    expect(markup).toContain('AI 정책 제안')
+    expect(markup).toContain('채택 전 미정')
+    expect(markup).toContain('정책으로 채택')
+    expect(markup).toContain('명세·IA 초안 작성')
+    expect(markup).toContain('저장 명세는 바뀌지 않습니다')
+  })
+
+  it('진행 중인 작업과 stale 결과, 재시도 가능한 실패를 숨기지 않는다', () => {
+    const markup = renderToStaticMarkup(<PlanningWorkspace model={{ ...base, jobs: [
+      { id: 'running', kind: 'interview', status: 'running', stage: '질문 정리', completed: 1, total: 3, message: '정책 후보를 정리하고 있습니다.', retryable: false, createdAt: '' },
+      { id: 'stale', kind: 'generate', status: 'succeeded', disposition: 'stale', conflictMessage: '기준 프로젝트 버전이 달라졌습니다.', retryable: true, createdAt: '' },
+      { id: 'failed', kind: 'generate', status: 'failed', errorMessage: '응답 형식을 검증하지 못했습니다.', retryable: true, createdAt: '' },
+    ] }} onCancelJob={() => undefined} onRetryJob={() => undefined} />)
+
+    expect(markup).toContain('AI 작업 상태')
+    expect(markup).toContain('정책 후보를 정리하고 있습니다')
+    expect(markup).toContain('기준 프로젝트 버전이 달라졌습니다')
+    expect(markup).toContain('응답 형식을 검증하지 못했습니다')
+    expect(markup).toContain('다시 시도')
+    expect(markup).toContain('취소')
   })
 })
