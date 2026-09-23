@@ -107,6 +107,8 @@ def test_probed_capability_selects_prompt_and_grammar_atomically() -> None:
     assert "`정보구조`는 화면 레이아웃과 별개의 탐색 트리" in contract.system_prompt
     assert "사용자가 화면에 직접 입력하는 데이터는 제출 버튼에" in contract.system_prompt
     assert "사용자 입력을 대신하는 용도로 쓰지 않는다" in contract.system_prompt
+    assert "업무 완료 데이터를 충족하려고 조회를 지어내지 않는다" in contract.system_prompt
+    assert "이것만으로 행동의 `조회 결과`" in contract.system_prompt
 
 
 def test_authoring_contract_hash_changes_atomically_with_prompt_and_grammar() -> None:
@@ -154,6 +156,9 @@ async def test_planning_examples_compile_when_runtime_proves_capability() -> Non
     assert "정보구조:" in examples[-1]
     assert "획득:" in examples[-1]
     assert "초기 데이터:" not in examples[-1]
+    assert "조회 결과:" not in examples[-1]
+    assert "기존 `예약`" not in examples[-1]
+    assert "제공 데이터:" not in examples[-1]
     compiler = LocalRspdlCompiler()
     if PLANNING_CONTRACTS_CAPABILITY not in await compiler.capabilities():
         pytest.skip("installed rspdl compiler does not prove planning-contracts-v1")
@@ -162,4 +167,13 @@ async def test_planning_examples_compile_when_runtime_proves_capability() -> Non
         outcome = await compiler.compile(
             [RspdlSource(path=f"planning-example-{index}.rspdl", text=source)]
         )
-        assert outcome.result["files"][0]["diagnostics"] == []
+        compiled_file = outcome.result["files"][0]
+        assert compiled_file["diagnostics"] == []
+        if index == 3:
+            module = compiled_file["module"]
+            assert not module.get("lookup_results")
+            success = next(
+                item for item in module["action_outcomes"] if item["kind"] == "success"
+            )
+            assert not success.get("provided_data")
+            assert module["workflows"][0]["acquisitions"]
