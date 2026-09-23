@@ -16,8 +16,8 @@
 - 최종 검수 커밋 `b920651`에서 전체 하네스가 통과했다: API 215개 통과·3개 skip,
   web 201개, editor 46개. 타입 검사, lint, build, 아키텍처 경계, OpenAPI drift/codegen
   검사도 통과했다.
-- AI 작업 경쟁 조건 8개와 worker 복구·lease fencing 시나리오 5개를 주 에이전트가 별도로
-  실행해 모두 통과했다.
+- AI 작업 경쟁 조건 8개와 worker 복구·lease fencing 시나리오 5개는 담당 에이전트가 별도
+  DB에서 실행해 통과했고, 주 에이전트가 테스트와 결과를 검수했다.
 - compiler 계약 구현은 로컬 `533a542`, 검수한 저장소 head는 `1387144`다. 해당 head의
   core workspace, Node SDK, 라이선스, Python Linux wheel CI가 통과했다.
 
@@ -27,7 +27,7 @@
   실제 실행했다. 첫 생성 작업 `233eca`의 후보 `9aa9`에는 compiler가 중복 ID `LINK003`과
   중복 operation `DATA004`를 보고했다. 오류 후보를 확정 원문으로 취급하지 않고 인터뷰
   `3732`로 manual-only 범위와 제거 방식을 설명받았다.
-- AI 정책 제안 `2893`을 사용자가 명시적으로 채택했다. 채택 뒤에도 AI가 제안한 정책 본문과
+- AI 정책 제안 `2893`을 검수자가 실제 UI에서 명시적으로 채택했다. 채택 뒤에도 AI가 제안한 정책 본문과
   근거, 사용자의 판단 이유가 각각 보존됐다.
 - 해당 오류 후보를 기준으로 실행한 생성 작업 `ce733b15`는 약 13초 만에 성공했다. 새 초안
   `a618e2d2`는 compiler 진단 0건이었고 이전 반려 사유였던 invented lookup이 없었다. 컴파일
