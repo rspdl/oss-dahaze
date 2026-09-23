@@ -385,6 +385,36 @@ async def test_decision_resolution_tool_updates_existing_id(
     assert len(result["state"]["decisions"]) == 1
 
 
+async def test_planning_ai_tool_never_exposes_frozen_source_or_checkpoints(
+    tools: McpTools, tokens: SessionTokens, user: User, project: Project
+) -> None:
+    headers = auth(tokens.issue_mcp(user.id))
+    created = await tools.create_planning_ai_job(
+        headers,
+        project_id=str(project.id),
+        request_id=str(uuid4()),
+        kind="interview",
+        instruction="정책을 검토해 주세요.",
+        expected_planning_revision=0,
+        selected_subject={
+            "kind": "screen",
+            "id": "inventory.list",
+            "source_path": "inventory.rspdl",
+            "stable_id": "inventory.list",
+        },
+    )
+
+    fetched = await tools.get_planning_ai_job(
+        headers, project_id=str(project.id), job_id=str(created["id"])
+    )
+    listed = await tools.list_planning_ai_jobs(headers, project_id=str(project.id))
+    for payload in (created, fetched, listed[0]):
+        assert "context" not in payload
+        assert "checkpoints" not in payload
+        assert "lease_token" not in payload
+        assert "lease_expires_at" not in payload
+
+
 @pytest.mark.parametrize("bad_id", ["not-a-uuid", "", "123"])
 async def test_malformed_id_is_a_clear_error(
     tools: McpTools, tokens: SessionTokens, user: User, bad_id: str
@@ -787,6 +817,12 @@ async def test_tools_are_advertised_over_http(
         "find_bounded_model",
         "propose_planning_edit",
         "resolve_planning_decision",
+        "resolve_planning_proposal",
+        "create_planning_ai_job",
+        "get_planning_ai_job",
+        "list_planning_ai_jobs",
+        "cancel_planning_ai_job",
+        "retry_planning_ai_job",
         "get_project_handoff",
     }
     # 설명이 LLM 에게는 유일한 인터페이스다. 비어 있으면 도구가 없는 것과 같다.

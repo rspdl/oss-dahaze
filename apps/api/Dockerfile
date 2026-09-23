@@ -53,5 +53,6 @@ USER dahaze
 
 EXPOSE 8400
 
-# PORT 를 셸이 확장해야 하므로 exec 형식 대신 sh -c 를 쓴다.
-CMD ["sh", "-c", "uvicorn dahaze_api.main:app --host 0.0.0.0 --port ${PORT:-8400}"]
+# 같은 이미지를 API와 영속 AI worker가 공유한다. 운영 compose는 두 서비스를 띄우고 worker에
+# DAHAZE_PROCESS=worker를 준다. PORT를 셸이 확장해야 하므로 exec 형식 대신 sh -c를 쓴다.
+CMD ["sh", "-c", "if [ \"${DAHAZE_PROCESS:-api}\" = worker ]; then exec python -m dahaze_api.worker; else exec uvicorn dahaze_api.main:app --host 0.0.0.0 --port ${PORT:-8400}; fi"]

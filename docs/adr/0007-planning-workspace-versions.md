@@ -46,6 +46,11 @@ owners:
 변경안은 기준 원문 리비전/hash, 문서별 추가·수정·삭제, 후보 원문 전체, 컴파일 결과와
 그 결과의 런타임 정체를 보관한다. 오류가 있는 후보의 보관은 확정 원문의 변경이 아니다.
 
+AI 작업은 enqueue 시점의 기획 revision, 기준 원문 revision/hash, 선택 대상의 source path와
+compiler stable ID를 frozen context로 보관한다. source draft를 고쳐 만든 초안은 그 draft의
+원래 기준 revision/hash를 이어받는다. 작업 중 확정 원문이나 기획 상태가 바뀌면 결과를 버리지
+않고 stale 검토 결과로 남기며, 최신 상태 위에 적용 가능한 것처럼 표시하지 않는다.
+
 적용은 별도의 명시적 사용자 요청이다. 기준이 달라졌으면 충돌을 반환한다. compiler의
 error 진단이 있으면 원문은 그대로 두고 미적용 상태와 원래 결과를 정상 응답으로 반환한다.
 warning/info만으로 적용을 막지 않는다. 알 수 없는 결과 구조나 런타임 불일치를 검증 성공으로

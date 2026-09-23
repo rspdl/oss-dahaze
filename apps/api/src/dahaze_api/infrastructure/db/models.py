@@ -276,6 +276,56 @@ class PlanningDraftRow(TimestampMixin, Base):
     applied_revision: Mapped[int | None] = mapped_column(Integer)
 
 
+class PlanningAiJobRow(TimestampMixin, Base):
+    """HTTP 연결과 독립적으로 실행되는 프로젝트 AI 작업."""
+
+    __tablename__ = "planning_ai_jobs"
+    __table_args__ = (
+        UniqueConstraint("project_id", "actor_id", "request_id", name="uq_planning_ai_job_request"),
+        UniqueConstraint("retry_of_job_id", name="uq_planning_ai_job_retry"),
+        Index("ix_planning_ai_jobs_claim", "status", "lease_expires_at", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    actor_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    request_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    request: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
+    context: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
+    frozen_planning_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    frozen_project_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    frozen_source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_draft_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("planning_drafts.id", ondelete="SET NULL")
+    )
+    retry_of_job_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("planning_ai_jobs.id", ondelete="SET NULL")
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    max_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3, server_default="3"
+    )
+    run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    progress: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False, default=dict)
+    checkpoints: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False, default=dict)
+    result: Mapped[dict[str, object] | None] = mapped_column(JsonB)
+    error: Mapped[dict[str, object] | None] = mapped_column(JsonB)
+    cancel_requested: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
+    )
+    lease_token: Mapped[UUID | None] = mapped_column(Uuid)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class PlanningMetadataRevisionRow(Base):
     __tablename__ = "planning_metadata_revisions"
     __table_args__ = (

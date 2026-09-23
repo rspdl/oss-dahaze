@@ -677,6 +677,97 @@
         "title": "CreateDocumentRequest",
         "type": "object"
       },
+      "CreatePlanningAiJobRequest": {
+        "properties": {
+          "base_project_revision": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기대 원문 revision",
+            "title": "Base Project Revision"
+          },
+          "base_source_hash": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기대 원문 hash",
+            "title": "Base Source Hash"
+          },
+          "expected_planning_revision": {
+            "description": "사용자 메시지 기준 revision",
+            "minimum": 0.0,
+            "title": "Expected Planning Revision",
+            "type": "integer"
+          },
+          "instruction": {
+            "description": "인터뷰 답변 또는 생성 지시",
+            "maxLength": 12000,
+            "minLength": 1,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "kind": {
+            "description": "대화 또는 소스 생성 작업",
+            "enum": [
+              "interview",
+              "generate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "enqueue 재전송을 중복 제거하는 클라이언트 요청 ID",
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "selected_subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanningAiSubject"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "선택한 대화 대상"
+          },
+          "source_draft_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "검토·수정할 저장 초안",
+            "title": "Source Draft Id"
+          }
+        },
+        "required": [
+          "request_id",
+          "kind",
+          "expected_planning_revision",
+          "instruction"
+        ],
+        "title": "CreatePlanningAiJobRequest",
+        "type": "object"
+      },
       "CreatePlanningDraftRequest": {
         "properties": {
           "base_project_revision": {
@@ -1734,6 +1825,350 @@
           "expected_revision"
         ],
         "title": "PatchPlanningMetadataRequest",
+        "type": "object"
+      },
+      "PlanningAiErrorResponse": {
+        "properties": {
+          "code": {
+            "description": "비밀이나 상류 응답을 포함하지 않는 오류 분류",
+            "enum": [
+              "config",
+              "auth",
+              "rate_limit",
+              "timeout",
+              "provider_failure",
+              "invalid_output",
+              "conflict"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "description": "사용자가 취할 수 있는 조치를 설명하는 안전한 문구",
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "description": "새 작업으로 재시도할 수 있는지",
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "title": "PlanningAiErrorResponse",
+        "type": "object"
+      },
+      "PlanningAiJobResponse": {
+        "properties": {
+          "attempt": {
+            "description": "사용자 재시도 회차",
+            "minimum": 1.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "cancel_requested": {
+            "description": "실행 중 취소 요청 여부",
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "created_at": {
+            "description": "enqueue 시각",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanningAiErrorResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "정제된 실패 정보"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "종료 시각",
+            "title": "Finished At"
+          },
+          "frozen_planning_revision": {
+            "description": "작업이 읽은 기획 상태 revision",
+            "title": "Frozen Planning Revision",
+            "type": "integer"
+          },
+          "frozen_project_revision": {
+            "description": "작업이 읽은 원문 revision",
+            "title": "Frozen Project Revision",
+            "type": "integer"
+          },
+          "frozen_source_hash": {
+            "description": "작업이 읽은 원문 hash",
+            "title": "Frozen Source Hash",
+            "type": "string"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "마지막 worker heartbeat 시각",
+            "title": "Heartbeat At"
+          },
+          "id": {
+            "description": "AI 작업 ID",
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "작업 종류",
+            "enum": [
+              "interview",
+              "generate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_attempts": {
+            "description": "최대 사용자 재시도 회차",
+            "minimum": 1.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/PlanningAiProgressResponse",
+            "description": "영속 진행률"
+          },
+          "project_id": {
+            "description": "작업 프로젝트",
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "request": {
+            "additionalProperties": true,
+            "description": "원래 지시",
+            "title": "Request",
+            "type": "object"
+          },
+          "request_id": {
+            "description": "enqueue 중복 제거 요청 ID",
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "성공 결과. stale 결과도 보존",
+            "title": "Result"
+          },
+          "retry_of_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "재시도 원본 작업",
+            "title": "Retry Of Job Id"
+          },
+          "source_draft_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "기준 저장 초안",
+            "title": "Source Draft Id"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "최초 worker 시작 시각",
+            "title": "Started At"
+          },
+          "status": {
+            "description": "작업 상태",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "request_id",
+          "kind",
+          "status",
+          "request",
+          "frozen_planning_revision",
+          "frozen_project_revision",
+          "frozen_source_hash",
+          "source_draft_id",
+          "retry_of_job_id",
+          "attempt",
+          "max_attempts",
+          "progress",
+          "result",
+          "error",
+          "cancel_requested",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "heartbeat_at"
+        ],
+        "title": "PlanningAiJobResponse",
+        "type": "object"
+      },
+      "PlanningAiProgressResponse": {
+        "properties": {
+          "completed": {
+            "description": "완료 단위 수",
+            "minimum": 0.0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "사용자에게 표시할 진행 설명",
+            "title": "Message"
+          },
+          "stage": {
+            "description": "현재 실행 단계",
+            "title": "Stage",
+            "type": "string"
+          },
+          "total": {
+            "description": "전체 단위 수",
+            "minimum": 1.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stage",
+          "completed",
+          "total",
+          "message"
+        ],
+        "title": "PlanningAiProgressResponse",
+        "type": "object"
+      },
+      "PlanningAiSubject": {
+        "properties": {
+          "id": {
+            "description": "선택 대상의 안정 식별자",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "선택 대상 종류",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "화면 표시 이름",
+            "title": "Label"
+          },
+          "source_path": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "compiler 소스 경로",
+            "title": "Source Path"
+          },
+          "stable_id": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "compiler 안정 ID",
+            "title": "Stable Id"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "PlanningAiSubject",
         "type": "object"
       },
       "PlanningAnalysisResponse": {
@@ -2888,6 +3323,79 @@
           "revision"
         ],
         "title": "ResolvePlanningDecisionResponse",
+        "type": "object"
+      },
+      "ResolvePlanningProposalRequest": {
+        "properties": {
+          "expected_revision": {
+            "description": "현재 기획 상태 revision",
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "채택 또는 보류 이유",
+            "title": "Rationale"
+          },
+          "status": {
+            "description": "정책 제안을 명시적으로 채택하거나 보류",
+            "enum": [
+              "adopted",
+              "deferred"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "status"
+        ],
+        "title": "ResolvePlanningProposalRequest",
+        "type": "object"
+      },
+      "ResolvePlanningProposalResponse": {
+        "properties": {
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "채택 시 생성된 결정. 보류면 null",
+            "title": "Decision"
+          },
+          "item": {
+            "additionalProperties": true,
+            "description": "갱신된 정책 제안",
+            "title": "Item",
+            "type": "object"
+          },
+          "revision": {
+            "description": "갱신된 기획 상태 revision",
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item",
+          "decision",
+          "revision"
+        ],
+        "title": "ResolvePlanningProposalResponse",
         "type": "object"
       },
       "ResolvedPlanningDecisionResponse": {
@@ -4890,6 +5398,355 @@
         ]
       }
     },
+    "/api/projects/{project_id}/planning/ai-jobs": {
+      "get": {
+        "operationId": "list_planning_ai_jobs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlanningAiJobResponse"
+                  },
+                  "title": "Response List Planning Ai Jobs",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Planning Ai Jobs",
+        "tags": [
+          "planning"
+        ]
+      },
+      "post": {
+        "operationId": "create_planning_ai_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlanningAiJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningAiJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Planning Ai Job",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/ai-jobs/{job_id}": {
+      "get": {
+        "operationId": "get_planning_ai_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningAiJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Planning Ai Job",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/ai-jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_planning_ai_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningAiJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Planning Ai Job",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/ai-jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "retry_planning_ai_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningAiJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Planning Ai Job",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
     "/api/projects/{project_id}/planning/decisions": {
       "post": {
         "operationId": "append_planning_decision",
@@ -5624,6 +6481,85 @@
           }
         },
         "summary": "Undo Planning Metadata",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/planning/proposals/{proposal_id}": {
+      "patch": {
+        "operationId": "resolve_planning_proposal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolvePlanningProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvePlanningProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Planning Proposal",
         "tags": [
           "planning"
         ]

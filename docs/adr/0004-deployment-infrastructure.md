@@ -56,6 +56,12 @@ Store 가 소유한다 — 인스턴스 ID·계정 ID·IAM 정책·nginx 설정�
 로컬 개발용 compose 는 인프라가 아니라 개발 도구다. 그게 없으면 기여자가 테스트를 돌릴 수
 없으므로 공개 저장소에 남긴다.
 
+API 이미지 하나를 HTTP API와 기획 AI worker가 공유한다. 기본값은 API이며 worker 서비스는
+`DAHAZE_PROCESS=worker`로 `python -m dahaze_api.worker`를 실행한다. 프로덕션 compose는
+마이그레이션을 먼저 끝낸 뒤 API와 worker를 각각 최소 한 프로세스 띄운다. worker를 띄우지
+않으면 enqueue된 작업은 DB에 안전하게 남지만 진행되지 않는다. 두 서비스는 같은
+`DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`과 compiler 이미지를 사용해야 한다.
+
 인스턴스는 비공개 저장소를 clone 하지 않는다. deploy key 를 인스턴스에 두면 위의 "시크릿을
 인스턴스에 밀어 넣지 않는다"가 무너지기 때문이다. 대신 롤아웃 스크립트·프로덕션 compose·
 nginx 설정 세 파일을 운영자가 부트스트랩 때 한 번 놓고, 배포는 이미 놓인 스크립트를 SSM 으로

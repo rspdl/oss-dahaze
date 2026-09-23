@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from dahaze_api.application.errors import AccessDenied, Conflict, NotFound
 from dahaze_api.domain.rspdl import InvalidRspdlEditRequest
-from dahaze_api.interface.rest.dependencies import CurrentUser, Planning
+from dahaze_api.interface.rest.dependencies import CurrentUser, Planning, PlanningAi
 from dahaze_api.interface.rest.schemas import (
     AppendPlanningDecisionRequest,
     AppendPlanningDecisionResponse,
@@ -16,8 +16,10 @@ from dahaze_api.interface.rest.schemas import (
     ApplyPlanningDraftRequest,
     ApplyPlanningDraftResponse,
     CaptureProjectSnapshotRequest,
+    CreatePlanningAiJobRequest,
     CreatePlanningDraftRequest,
     PatchPlanningMetadataRequest,
+    PlanningAiJobResponse,
     PlanningDraftResponse,
     PlanningDraftSummaryResponse,
     PlanningMetadataMutationResponse,
@@ -29,6 +31,8 @@ from dahaze_api.interface.rest.schemas import (
     ProposePlanningEditResponse,
     ResolvePlanningDecisionRequest,
     ResolvePlanningDecisionResponse,
+    ResolvePlanningProposalRequest,
+    ResolvePlanningProposalResponse,
     RestoreProjectSnapshotRequest,
     UndoPlanningMetadataRequest,
     UpdatePlanningStateRequest,
@@ -149,6 +153,127 @@ async def resolve_planning_decision(
         )
         return ResolvePlanningDecisionResponse(
             item=result["item"], revision=result["state"]["revision"]
+        )
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.patch(
+    "/projects/{project_id}/planning/proposals/{proposal_id}",
+    name="resolve_planning_proposal",
+)
+async def resolve_planning_proposal(
+    project_id: UUID,
+    proposal_id: UUID,
+    body: ResolvePlanningProposalRequest,
+    user: CurrentUser,
+    planning: Planning,
+) -> ResolvePlanningProposalResponse:
+    try:
+        result = await planning.resolve_proposal(
+            actor_id=user.id,
+            project_id=project_id,
+            proposal_id=proposal_id,
+            expected_revision=body.expected_revision,
+            status=body.status,
+            rationale=body.rationale,
+        )
+        return ResolvePlanningProposalResponse(
+            item=result["item"],
+            decision=result["decision"],
+            revision=result["state"]["revision"],
+        )
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.post(
+    "/projects/{project_id}/planning/ai-jobs",
+    name="create_planning_ai_job",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_planning_ai_job(
+    project_id: UUID,
+    body: CreatePlanningAiJobRequest,
+    user: CurrentUser,
+    planning_ai: PlanningAi,
+) -> PlanningAiJobResponse:
+    try:
+        return PlanningAiJobResponse.model_validate(
+            await planning_ai.enqueue(
+                actor_id=user.id,
+                project_id=project_id,
+                request_id=body.request_id,
+                kind=body.kind,
+                instruction=body.instruction,
+                expected_planning_revision=body.expected_planning_revision,
+                base_project_revision=body.base_project_revision,
+                base_source_hash=body.base_source_hash,
+                selected_subject=(
+                    None if body.selected_subject is None else body.selected_subject.model_dump()
+                ),
+                source_draft_id=body.source_draft_id,
+            )
+        )
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.get("/projects/{project_id}/planning/ai-jobs", name="list_planning_ai_jobs")
+async def list_planning_ai_jobs(
+    project_id: UUID,
+    user: CurrentUser,
+    planning_ai: PlanningAi,
+    limit: int = Query(default=50, ge=1, le=100),
+) -> list[PlanningAiJobResponse]:
+    try:
+        return [
+            PlanningAiJobResponse.model_validate(item)
+            for item in await planning_ai.list(actor_id=user.id, project_id=project_id, limit=limit)
+        ]
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.get("/projects/{project_id}/planning/ai-jobs/{job_id}", name="get_planning_ai_job")
+async def get_planning_ai_job(
+    project_id: UUID, job_id: UUID, user: CurrentUser, planning_ai: PlanningAi
+) -> PlanningAiJobResponse:
+    try:
+        return PlanningAiJobResponse.model_validate(
+            await planning_ai.get(actor_id=user.id, project_id=project_id, job_id=job_id)
+        )
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.post(
+    "/projects/{project_id}/planning/ai-jobs/{job_id}/cancel",
+    name="cancel_planning_ai_job",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def cancel_planning_ai_job(
+    project_id: UUID, job_id: UUID, user: CurrentUser, planning_ai: PlanningAi
+) -> PlanningAiJobResponse:
+    try:
+        return PlanningAiJobResponse.model_validate(
+            await planning_ai.cancel(actor_id=user.id, project_id=project_id, job_id=job_id)
+        )
+    except (NotFound, AccessDenied, Conflict) as exc:
+        _raise(exc)
+
+
+@router.post(
+    "/projects/{project_id}/planning/ai-jobs/{job_id}/retry",
+    name="retry_planning_ai_job",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_planning_ai_job(
+    project_id: UUID, job_id: UUID, user: CurrentUser, planning_ai: PlanningAi
+) -> PlanningAiJobResponse:
+    try:
+        return PlanningAiJobResponse.model_validate(
+            await planning_ai.retry(actor_id=user.id, project_id=project_id, job_id=job_id)
         )
     except (NotFound, AccessDenied, Conflict) as exc:
         _raise(exc)

@@ -43,6 +43,10 @@ class RspdlCompilerPort(Protocol):
         """이 컴파일러의 정체. 산출물마다 함께 기록된다."""
         ...
 
+    async def capabilities(self) -> frozenset[str]:
+        """실제 compiler 결과로 증명한 선택 기능."""
+        ...
+
     async def compile(self, sources: Sequence[RspdlSource]) -> AnalysisOutcome: ...
 
     async def check(
@@ -115,6 +119,7 @@ class LlmPort(Protocol):
         current_text: str | None,
         diagnostics: Sequence[Mapping[str, Any]],
         grammar: EbnfGrammar,
+        system_prompt: str | None = None,
     ) -> str:
         """지시, 현재 진단과 EBNF 문법을 받아 RSPDL 소스 전문을 돌려준다.
 
@@ -130,6 +135,19 @@ class LlmPort(Protocol):
         application 계층이 그 전송 형식을 알면 벤더 교체 경계가 무너진다.
         """
         ...
+
+
+class PlanningLlmPort(Protocol):
+    """자연어 인터뷰와 소스 생성 계획을 구조화해 돌려주는 LLM 경계."""
+
+    @property
+    def model(self) -> str: ...
+
+    async def interview_project(self, *, context: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
+    async def plan_project_changes(self, *, context: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
+    async def close(self) -> None: ...
 
 
 class UserRepositoryPort(Protocol):
@@ -304,6 +322,15 @@ class PlanningRepositoryPort(Protocol):
         status: str,
         rationale: str | None,
     ) -> DecisionResolutionOutcome: ...
+    async def resolve_proposal(
+        self,
+        project_id: UUID,
+        *,
+        proposal_id: UUID,
+        expected_revision: int,
+        status: str,
+        rationale: str | None,
+    ) -> Mapping[str, Any] | None: ...
     async def patch_metadata(
         self,
         project_id: UUID,
@@ -381,3 +408,71 @@ class PlanningRepositoryPort(Protocol):
         expected_source_hash: str,
         expected_planning_revision: int,
     ) -> Mapping[str, Any] | None: ...
+
+
+class PlanningAiJobRepositoryPort(Protocol):
+    """영속 AI 작업 큐. lease token이 모든 worker 쓰기의 fencing token이다."""
+
+    async def enqueue(
+        self,
+        *,
+        project_id: UUID,
+        actor_id: UUID,
+        request_id: UUID,
+        kind: str,
+        instruction: str,
+        expected_planning_revision: int,
+        frozen_project_revision: int,
+        frozen_source_hash: str,
+        context: Mapping[str, Any],
+        source_draft_id: UUID | None,
+        retry_of_job_id: UUID | None,
+        attempt: int,
+        max_attempts: int,
+        append_user_message: bool = True,
+    ) -> Mapping[str, Any] | None: ...
+
+    async def get(self, job_id: UUID) -> Mapping[str, Any] | None: ...
+    async def get_by_request(
+        self, *, project_id: UUID, actor_id: UUID, request_id: UUID
+    ) -> Mapping[str, Any] | None: ...
+    async def get_retry(self, job_id: UUID) -> Mapping[str, Any] | None: ...
+    async def list(self, project_id: UUID, *, limit: int) -> list[Mapping[str, Any]]: ...
+    async def request_cancel(self, job_id: UUID) -> Mapping[str, Any] | None: ...
+    async def claim(self, *, lease_seconds: int) -> Mapping[str, Any] | None: ...
+    async def heartbeat(
+        self,
+        job_id: UUID,
+        *,
+        lease_token: UUID,
+        lease_seconds: int,
+        progress: Mapping[str, Any],
+    ) -> bool: ...
+    async def renew_lease(self, job_id: UUID, *, lease_token: UUID, lease_seconds: int) -> bool: ...
+    async def checkpoint(
+        self,
+        job_id: UUID,
+        *,
+        lease_token: UUID,
+        checkpoints: Mapping[str, Any],
+        progress: Mapping[str, Any],
+    ) -> bool: ...
+    async def cancelled(self, job_id: UUID, *, lease_token: UUID) -> bool: ...
+    async def finish_cancelled(self, job_id: UUID, *, lease_token: UUID) -> bool: ...
+    async def finish_failed(
+        self, job_id: UUID, *, lease_token: UUID, error: Mapping[str, Any]
+    ) -> bool: ...
+    async def finish_interview(
+        self, job_id: UUID, *, lease_token: UUID, result: Mapping[str, Any]
+    ) -> bool: ...
+    async def finish_generation(
+        self, job_id: UUID, *, lease_token: UUID, result: Mapping[str, Any]
+    ) -> bool: ...
+    async def finish_generation_draft(
+        self,
+        job_id: UUID,
+        *,
+        lease_token: UUID,
+        draft: Mapping[str, Any],
+        result: Mapping[str, Any],
+    ) -> bool: ...

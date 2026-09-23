@@ -298,6 +298,84 @@ class PlanningStateResponse(BaseModel):
     metadata: PlanningMetadata
 
 
+class ResolvePlanningProposalRequest(BaseModel):
+    expected_revision: int = Field(ge=0, description="현재 기획 상태 revision")
+    status: Literal["adopted", "deferred"] = Field(
+        description="정책 제안을 명시적으로 채택하거나 보류"
+    )
+    rationale: str | None = Field(default=None, max_length=2000, description="채택 또는 보류 이유")
+
+
+class ResolvePlanningProposalResponse(BaseModel):
+    item: dict[str, Any] = Field(description="갱신된 정책 제안")
+    decision: dict[str, Any] | None = Field(description="채택 시 생성된 결정. 보류면 null")
+    revision: int = Field(description="갱신된 기획 상태 revision")
+
+
+class PlanningAiSubject(BaseModel):
+    kind: str = Field(min_length=1, max_length=50, description="선택 대상 종류")
+    id: str = Field(min_length=1, max_length=300, description="선택 대상의 안정 식별자")
+    source_path: str | None = Field(default=None, max_length=500, description="compiler 소스 경로")
+    stable_id: str | None = Field(default=None, max_length=300, description="compiler 안정 ID")
+    label: str | None = Field(default=None, max_length=500, description="화면 표시 이름")
+
+
+class CreatePlanningAiJobRequest(BaseModel):
+    request_id: UUID = Field(description="enqueue 재전송을 중복 제거하는 클라이언트 요청 ID")
+    kind: Literal["interview", "generate"] = Field(description="대화 또는 소스 생성 작업")
+    expected_planning_revision: int = Field(ge=0, description="사용자 메시지 기준 revision")
+    instruction: str = Field(
+        min_length=1, max_length=12000, description="인터뷰 답변 또는 생성 지시"
+    )
+    selected_subject: PlanningAiSubject | None = Field(default=None, description="선택한 대화 대상")
+    source_draft_id: UUID | None = Field(default=None, description="검토·수정할 저장 초안")
+    base_project_revision: int | None = Field(default=None, ge=0, description="기대 원문 revision")
+    base_source_hash: str | None = Field(
+        default=None, min_length=64, max_length=64, description="기대 원문 hash"
+    )
+
+
+class PlanningAiProgressResponse(BaseModel):
+    stage: str = Field(description="현재 실행 단계")
+    completed: int = Field(ge=0, description="완료 단위 수")
+    total: int = Field(ge=1, description="전체 단위 수")
+    message: str | None = Field(description="사용자에게 표시할 진행 설명")
+
+
+class PlanningAiErrorResponse(BaseModel):
+    code: Literal[
+        "config", "auth", "rate_limit", "timeout", "provider_failure", "invalid_output", "conflict"
+    ] = Field(description="비밀이나 상류 응답을 포함하지 않는 오류 분류")
+    message: str = Field(description="사용자가 취할 수 있는 조치를 설명하는 안전한 문구")
+    retryable: bool = Field(description="새 작업으로 재시도할 수 있는지")
+
+
+class PlanningAiJobResponse(BaseModel):
+    id: UUID = Field(description="AI 작업 ID")
+    project_id: UUID = Field(description="작업 프로젝트")
+    request_id: UUID = Field(description="enqueue 중복 제거 요청 ID")
+    kind: Literal["interview", "generate"] = Field(description="작업 종류")
+    status: Literal["queued", "running", "succeeded", "failed", "cancelled"] = Field(
+        description="작업 상태"
+    )
+    request: dict[str, Any] = Field(description="원래 지시")
+    frozen_planning_revision: int = Field(description="작업이 읽은 기획 상태 revision")
+    frozen_project_revision: int = Field(description="작업이 읽은 원문 revision")
+    frozen_source_hash: str = Field(description="작업이 읽은 원문 hash")
+    source_draft_id: UUID | None = Field(description="기준 저장 초안")
+    retry_of_job_id: UUID | None = Field(description="재시도 원본 작업")
+    attempt: int = Field(ge=1, description="사용자 재시도 회차")
+    max_attempts: int = Field(ge=1, description="최대 사용자 재시도 회차")
+    progress: PlanningAiProgressResponse = Field(description="영속 진행률")
+    result: dict[str, Any] | None = Field(description="성공 결과. stale 결과도 보존")
+    error: PlanningAiErrorResponse | None = Field(description="정제된 실패 정보")
+    cancel_requested: bool = Field(description="실행 중 취소 요청 여부")
+    created_at: datetime = Field(description="enqueue 시각")
+    started_at: datetime | None = Field(description="최초 worker 시작 시각")
+    finished_at: datetime | None = Field(description="종료 시각")
+    heartbeat_at: datetime | None = Field(description="마지막 worker heartbeat 시각")
+
+
 class UpdatePlanningStateRequest(BaseModel):
     expected_revision: int = Field(ge=0)
     messages: list[dict[str, Any]] = Field(default_factory=list)

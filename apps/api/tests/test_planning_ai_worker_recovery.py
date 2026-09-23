@@ -476,10 +476,11 @@ async def test_duplicate_planned_paths_are_rejected_before_drafting(
 
     stored = await _stored_job(recovery_sessions, job["id"])
     assert stored["status"] == "failed"
+    assert planning_llm.plan_calls == 3
     assert stored["error"] == {
         "code": "invalid_output",
-        "message": "AI 문서 변경 계획에 중복 경로가 있다.",
-        "retryable": False,
+        "message": "AI 문서 변경 계획의 형식을 세 번 검증했지만 고치지 못했다.",
+        "retryable": True,
     }
     assert draft_llm.calls == []
     async with recovery_sessions() as verify:

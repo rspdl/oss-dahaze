@@ -237,6 +237,66 @@ class SqlPlanningRepository:
             {"item": item, "state": _state(row)},
         )
 
+    async def resolve_proposal(
+        self,
+        project_id: UUID,
+        *,
+        proposal_id: UUID,
+        expected_revision: int,
+        status: str,
+        rationale: str | None,
+    ) -> Mapping[str, Any] | None:
+        row = await self._lock_state(project_id)
+        if row.revision != expected_revision:
+            return None
+        index = next(
+            (
+                index
+                for index, value in enumerate(row.proposals)
+                if isinstance(value, Mapping) and value.get("id") == str(proposal_id)
+            ),
+            None,
+        )
+        if index is None:
+            return None
+        current = row.proposals[index]
+        assert isinstance(current, Mapping)
+        if current.get("status") != "open":
+            return None
+        now = datetime.now(UTC).isoformat()
+        decision_id = uuid4() if status == "adopted" else None
+        proposal = {
+            **dict(current),
+            "status": status,
+            "resolution_rationale": rationale,
+            "resolved_at": now,
+            "decision_id": None if decision_id is None else str(decision_id),
+        }
+        proposals = list(row.proposals)
+        proposals[index] = proposal
+        row.proposals = proposals
+        decision: dict[str, Any] | None = None
+        if decision_id is not None:
+            decision = {
+                "id": str(decision_id),
+                "proposal_id": str(proposal_id),
+                "title": str(current.get("title", "채택한 정책")),
+                "rationale": current.get("rationale")
+                or current.get("detail")
+                or current.get("content"),
+                "resolution_rationale": rationale,
+                "subject": current.get("subject"),
+                "source_path": current.get("source_path"),
+                "stable_id": current.get("stable_id"),
+                "status": "decided",
+                "created_at": now,
+                "resolved_at": now,
+            }
+            row.decisions = [*row.decisions, decision]
+        row.revision += 1
+        await self._session.flush()
+        return {"item": proposal, "decision": decision, "state": _state(row)}
+
     async def _lock_state(self, project_id: UUID) -> PlanningStateRow:
         await self._ensure_state(project_id)
         return (

@@ -47,6 +47,8 @@ PLANNING_SYSTEM_PROMPT = (
     f"{_profile_text('system_ko.md', planning=True)}\n\n"
     f"{_profile_text('examples_ko.md', planning=True)}"
 )
+INTERVIEW_SYSTEM_PROMPT = _read("planning_interview_ko.md")
+CHANGE_PLAN_SYSTEM_PROMPT = _read("planning_changes_ko.md")
 
 
 def build_user_prompt(

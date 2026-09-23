@@ -41,7 +41,10 @@ class Settings(BaseSettings):
     # --- LLM ---
     openai_api_key: str | None = None
     # custom tool의 Lark grammar constrained decoding을 지원하는 Responses API 모델.
-    openai_model: str = "gpt-5-nano"
+    openai_model: str = "gpt-5-mini"
+    openai_planning_timeout_s: float = 120.0
+    openai_planning_draft_timeout_s: float = 120.0
+    openai_planning_reasoning_effort: str | None = "low"
 
     @property
     def cors_origins(self) -> list[str]:
@@ -66,8 +69,7 @@ class Settings(BaseSettings):
             problems.append("SESSION_SECRET 이 기본값 그대로다")
         if len(self.session_secret.encode()) < MIN_SECRET_BYTES:
             problems.append(
-                f"SESSION_SECRET 이 {MIN_SECRET_BYTES}바이트 미만이다 "
-                "(openssl rand -hex 32)"
+                f"SESSION_SECRET 이 {MIN_SECRET_BYTES}바이트 미만이다 (openssl rand -hex 32)"
             )
         if not self.cookie_secure:
             problems.append("COOKIE_SECURE 가 꺼져 있다")

@@ -25,6 +25,7 @@ from starlette.routing import Route
 
 from dahaze_api.application.analysis import AnalyzeWorkspace
 from dahaze_api.application.planning import PlanningService
+from dahaze_api.application.planning_ai import PlanningAiService
 from dahaze_api.application.workspace import WorkspaceService
 from dahaze_api.domain.entities import (
     Document,
@@ -38,6 +39,7 @@ from dahaze_api.domain.ports import RspdlCompilerPort
 from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlSource, source_fingerprint
 from dahaze_api.infrastructure.auth.session import SessionTokens
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
+from dahaze_api.infrastructure.db.planning_ai_repository import SqlPlanningAiJobRepository
 from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
 from dahaze_api.infrastructure.db.repositories import (
     SqlDocumentRepository,
@@ -95,6 +97,7 @@ class _Actor:
     workspace: WorkspaceService
     analyzer: AnalyzeWorkspace
     planning: PlanningService
+    planning_ai: PlanningAiService
 
 
 def _project_payload(project: Project) -> dict[str, Any]:
@@ -164,6 +167,24 @@ def _analysis_payload(outcome: AnalysisOutcome) -> dict[str, Any]:
         "locale": outcome.runtime.locale,
         "result": dict(outcome.result),
     }
+
+
+def _planning_ai_job_payload(job: Mapping[str, Any]) -> dict[str, Any]:
+    """REST 작업 DTO와 같은 공개 필드만 MCP에 싣는다.
+
+    frozen context와 checkpoint에는 원문과 아직 공개하면 안 되는 LLM 중간 산출물이
+    들어갈 수 있다. MCP도 응답 경계에서 이를 노출하지 않는다.
+    """
+    hidden = {
+        "actor_id",
+        "context",
+        "checkpoints",
+        "run_count",
+        "lease_token",
+        "lease_expires_at",
+        "updated_at",
+    }
+    return {key: value for key, value in job.items() if key not in hidden}
 
 
 def _role(value: str) -> ProjectRole:
@@ -378,6 +399,28 @@ class McpTools:
             )
             return dict(result)
 
+    async def resolve_planning_proposal(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        proposal_id: str,
+        expected_revision: int,
+        status: str,
+        rationale: str | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            return dict(
+                await actor.planning.resolve_proposal(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    proposal_id=_uuid(proposal_id, field="proposal_id"),
+                    expected_revision=expected_revision,
+                    status=status,
+                    rationale=rationale,
+                )
+            )
+
     async def rspdl_runtime(self, headers: Mapping[str, str] | None) -> dict[str, Any]:
         """이 서버가 돌리는 컴파일러의 정체.
 
@@ -465,6 +508,93 @@ class McpTools:
             )
             return dict(snapshot)
 
+    async def create_planning_ai_job(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        request_id: str,
+        kind: str,
+        instruction: str,
+        expected_planning_revision: int,
+        source_draft_id: str | None = None,
+        selected_subject: dict[str, Any] | None = None,
+        base_project_revision: int | None = None,
+        base_source_hash: str | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            return _planning_ai_job_payload(
+                await actor.planning_ai.enqueue(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    request_id=_uuid(request_id, field="request_id"),
+                    kind=kind,
+                    instruction=instruction,
+                    expected_planning_revision=expected_planning_revision,
+                    base_project_revision=base_project_revision,
+                    base_source_hash=base_source_hash,
+                    selected_subject=selected_subject,
+                    source_draft_id=(
+                        None
+                        if source_draft_id is None
+                        else _uuid(source_draft_id, field="source_draft_id")
+                    ),
+                )
+            )
+
+    async def get_planning_ai_job(
+        self, headers: Mapping[str, str] | None, *, project_id: str, job_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            return _planning_ai_job_payload(
+                await actor.planning_ai.get(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    job_id=_uuid(job_id, field="job_id"),
+                )
+            )
+
+    async def list_planning_ai_jobs(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        async with self._acting(headers) as actor:
+            return [
+                _planning_ai_job_payload(item)
+                for item in await actor.planning_ai.list(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    limit=limit,
+                )
+            ]
+
+    async def cancel_planning_ai_job(
+        self, headers: Mapping[str, str] | None, *, project_id: str, job_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            return _planning_ai_job_payload(
+                await actor.planning_ai.cancel(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    job_id=_uuid(job_id, field="job_id"),
+                )
+            )
+
+    async def retry_planning_ai_job(
+        self, headers: Mapping[str, str] | None, *, project_id: str, job_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            return _planning_ai_job_payload(
+                await actor.planning_ai.retry(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    job_id=_uuid(job_id, field="job_id"),
+                )
+            )
+
     # ------------------------------------------------------------------- 내부
 
     @asynccontextmanager
@@ -495,6 +625,11 @@ class McpTools:
                     store=SqlPlanningRepository(session),
                     analyzer=analyzer,
                     compiler=self._compiler,
+                ),
+                planning_ai=PlanningAiService(
+                    workspace=workspace,
+                    planning=SqlPlanningRepository(session),
+                    jobs=SqlPlanningAiJobRepository(session),
                 ),
             )
 
@@ -698,6 +833,98 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
             status=status,
             rationale=rationale,
         )
+
+    @mcp.tool(
+        name="resolve_planning_proposal",
+        description=(
+            "AI 정책 제안을 stable proposal_id로 채택(adopted)하거나 보류(deferred)한다. "
+            "채택하면 연결된 decided 결정이 생기지만 RSPDL 원문은 아직 바뀌지 않는다."
+        ),
+    )
+    async def resolve_planning_proposal(
+        project_id: str,
+        proposal_id: str,
+        expected_revision: int,
+        status: str,
+        ctx: Context,
+        rationale: str | None = None,
+    ) -> dict[str, Any]:
+        return await tools.resolve_planning_proposal(
+            ctx.headers,
+            project_id=project_id,
+            proposal_id=proposal_id,
+            expected_revision=expected_revision,
+            status=status,
+            rationale=rationale,
+        )
+
+    @mcp.tool(
+        name="create_planning_ai_job",
+        description=(
+            "프로젝트 인터뷰 또는 여러 문서 생성 작업을 영속 큐에 넣는다. request_id는 UUID이며 "
+            "같은 요청 재전송을 중복 제거한다. generate도 확정 원문을 바꾸지 않고 compiler를 거친 "
+            "초안만 만든다. source_draft_id를 주면 저장 초안을 기준으로 검토·수정한다."
+        ),
+    )
+    async def create_planning_ai_job(
+        project_id: str,
+        request_id: str,
+        kind: str,
+        instruction: str,
+        expected_planning_revision: int,
+        ctx: Context,
+        source_draft_id: str | None = None,
+        selected_subject: dict[str, Any] | None = None,
+        base_project_revision: int | None = None,
+        base_source_hash: str | None = None,
+    ) -> dict[str, Any]:
+        return await tools.create_planning_ai_job(
+            ctx.headers,
+            project_id=project_id,
+            request_id=request_id,
+            kind=kind,
+            instruction=instruction,
+            expected_planning_revision=expected_planning_revision,
+            source_draft_id=source_draft_id,
+            selected_subject=selected_subject,
+            base_project_revision=base_project_revision,
+            base_source_hash=base_source_hash,
+        )
+
+    @mcp.tool(
+        name="get_planning_ai_job",
+        description="영속 AI 작업 하나의 진행률, 정제된 오류, 성공 또는 stale 결과를 읽는다.",
+    )
+    async def get_planning_ai_job(project_id: str, job_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.get_planning_ai_job(ctx.headers, project_id=project_id, job_id=job_id)
+
+    @mcp.tool(
+        name="list_planning_ai_jobs",
+        description="프로젝트 AI 작업을 최신순으로 읽어 재접속 뒤 진행과 결과를 복원한다.",
+    )
+    async def list_planning_ai_jobs(
+        project_id: str, ctx: Context, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        return await tools.list_planning_ai_jobs(ctx.headers, project_id=project_id, limit=limit)
+
+    @mcp.tool(
+        name="cancel_planning_ai_job",
+        description=(
+            "queued 또는 running AI 작업의 취소를 요청한다. 완료 결과나 확정 원문은 지우지 않는다."
+        ),
+    )
+    async def cancel_planning_ai_job(project_id: str, job_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.cancel_planning_ai_job(ctx.headers, project_id=project_id, job_id=job_id)
+
+    @mcp.tool(
+        name="retry_planning_ai_job",
+        description=(
+            "실패하거나 취소된 AI 작업을 같은 frozen 맥락과 checkpoint로 새 작업에 재시도한다. "
+            "최신 맥락이 필요하면 새 create 작업을 만든다."
+        ),
+    )
+    async def retry_planning_ai_job(project_id: str, job_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.retry_planning_ai_job(ctx.headers, project_id=project_id, job_id=job_id)
 
     @mcp.tool(
         name="delete_document",

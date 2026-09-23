@@ -16,6 +16,7 @@ from dahaze_api.domain.rspdl import RspdlSource, project_source_hash, source_fin
 ALLOWED_MESSAGE_ROLES = frozenset({"user", "assistant"})
 ALLOWED_DECISION_STATUSES = frozenset({"open", "decided", "deferred"})
 RESOLVED_DECISION_STATUSES = frozenset({"decided", "deferred"})
+RESOLVED_PROPOSAL_STATUSES = frozenset({"adopted", "deferred"})
 
 
 def _validate_message_roles(messages: Sequence[Mapping[str, Any]]) -> None:
@@ -156,6 +157,34 @@ class PlanningService:
         )
         if updated is None:
             raise Conflict("기획 상태가 다른 곳에서 변경되었다")
+        return updated
+
+    async def resolve_proposal(
+        self,
+        *,
+        actor_id: UUID,
+        project_id: UUID,
+        proposal_id: UUID,
+        expected_revision: int,
+        status: str,
+        rationale: str | None,
+    ) -> Mapping[str, Any]:
+        if status not in RESOLVED_PROPOSAL_STATUSES:
+            raise Conflict("제안 status는 adopted 또는 deferred여야 한다")
+        membership = await self._workspace.require_membership(
+            actor_id=actor_id, project_id=project_id
+        )
+        if not membership.role.can_write:
+            raise AccessDenied("이 프로젝트에 쓰기 권한이 없다")
+        updated = await self._store.resolve_proposal(
+            project_id,
+            proposal_id=proposal_id,
+            expected_revision=expected_revision,
+            status=status,
+            rationale=rationale,
+        )
+        if updated is None:
+            raise Conflict("기획 상태가 변경되었거나 제안을 찾을 수 없거나 이미 해결되었다")
         return updated
 
     async def resolve_decision(
