@@ -172,10 +172,6 @@ async def test_simultaneous_duplicate_request_returns_one_job_and_one_user_messa
         ]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="implementation gap: idempotency key does not bind a canonical request payload",
-)
 async def test_same_request_key_with_different_payload_conflicts_safely(
     session: AsyncSession,
     user: User,
@@ -218,10 +214,6 @@ async def test_same_request_key_with_different_payload_conflicts_safely(
     assert sum(isinstance(outcome, Mapping) for outcome in outcomes) == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="implementation gap: concurrent retries can hit the retry_of unique constraint",
-)
 async def test_concurrent_retry_of_one_failed_job_is_deduplicated(
     session: AsyncSession,
     user: User,
@@ -264,10 +256,6 @@ async def test_concurrent_retry_of_one_failed_job_is_deduplicated(
     assert len(retry_ids) == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="implementation gap: stale draft provenance is accepted against a newer project head",
-)
 async def test_stale_source_draft_cannot_rebase_over_new_accepted_source(
     session: AsyncSession,
     user: User,
