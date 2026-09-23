@@ -85,7 +85,13 @@ def test_planning_ebnf_converts_with_a_separate_start_rule() -> None:
     lark = ebnf_to_lark(load_planning_rspdl_grammar())
 
     assert lark.startswith("start: planning_document\n")
-    assert 'planning_frontmatter: "---" NEWLINE' in lark
+    assert (
+        'planning_frontmatter: "---" NEWLINE "모듈: " FRONTMATTER_NAMED_ID NEWLINE'
+        in lark
+    )
+    assert "frontmatter_mapping_line:" in lark
+    assert "frontmatter_sequence_line:" in lark
+    assert "FRONTMATTER_CONTENT" not in lark
     assert "action_input_declaration:" in lark
 
 
