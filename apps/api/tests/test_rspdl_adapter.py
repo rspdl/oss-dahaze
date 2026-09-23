@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 import rspdl
@@ -18,6 +19,7 @@ from dahaze_api.domain.rspdl import (
     workspace_hash,
 )
 from dahaze_api.infrastructure.rspdl import LocalRspdlCompiler
+from dahaze_api.infrastructure.rspdl.local_adapter import PLANNING_CONTRACTS_CAPABILITY
 
 VALID = RspdlSource(
     path="inventory.rspdl",
@@ -53,6 +55,66 @@ def test_runtime_reports_installed_version(compiler: LocalRspdlCompiler) -> None
     assert compiler.runtime.rspdl_version == rspdl.__version__
     assert compiler.runtime.wire_schema_version == rspdl.WIRE_SCHEMA_VERSION
     assert compiler.runtime.locale == rspdl.SUPPORTED_LOCALE
+
+
+@pytest.mark.parametrize(
+    ("diagnostics", "module"),
+    [
+        (
+            [{"severity": "warning"}],
+            {"action_outcomes": [{}], "lookup_results": [{}], "workflows": [{}]},
+        ),
+        ([], {"action_outcomes": [], "lookup_results": [{}], "workflows": [{}]}),
+        ([], {"action_outcomes": [{}], "lookup_results": [], "workflows": [{}]}),
+        ([], {"action_outcomes": [{}], "lookup_results": [{}], "workflows": []}),
+    ],
+)
+async def test_planning_capability_requires_clean_nonempty_semantics(
+    compiler: LocalRspdlCompiler,
+    monkeypatch: pytest.MonkeyPatch,
+    diagnostics: list[dict[str, str]],
+    module: dict[str, list[dict[str, str]]],
+) -> None:
+    compile_probe = AsyncMock(
+        return_value=AnalysisOutcome(
+            kind=AnalysisKind.COMPILE,
+            runtime=compiler.runtime,
+            result={"files": [{"diagnostics": diagnostics, "module": module}]},
+        )
+    )
+    monkeypatch.setattr(compiler, "compile", compile_probe)
+
+    assert await compiler.capabilities() == frozenset()
+
+
+async def test_planning_capability_is_cached_after_semantic_probe(
+    compiler: LocalRspdlCompiler,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compile_probe = AsyncMock(
+        return_value=AnalysisOutcome(
+            kind=AnalysisKind.COMPILE,
+            runtime=compiler.runtime,
+            result={
+                "files": [
+                    {
+                        "diagnostics": [],
+                        "module": {
+                            "action_outcomes": [{"id": "found"}],
+                            "lookup_results": [{"id": "reservation_lookup"}],
+                            "workflows": [{"id": "complete"}],
+                        },
+                    }
+                ]
+            },
+        )
+    )
+    monkeypatch.setattr(compiler, "compile", compile_probe)
+
+    expected = frozenset({PLANNING_CONTRACTS_CAPABILITY})
+    assert await compiler.capabilities() == expected
+    assert await compiler.capabilities() == expected
+    compile_probe.assert_awaited_once()
 
 
 async def test_compile_valid_source_has_no_diagnostics(compiler: LocalRspdlCompiler) -> None:

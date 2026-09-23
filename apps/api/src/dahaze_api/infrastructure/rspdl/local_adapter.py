@@ -27,6 +27,83 @@ from dahaze_api.domain.rspdl import (
 # 실패가 아니라 "모른다"는 결과가 돌아온다.
 DEFAULT_TIMEOUT_MS = 5_000
 DEFAULT_SCOPE_PER_MODEL = 3
+PLANNING_CONTRACTS_CAPABILITY = "rspdl.planning-contracts.v1"
+
+_PLANNING_PROBE = """---
+모듈: 예약(booking)
+화면:
+  예약 등록 화면:
+    레이아웃:
+      - 폼:
+          id: registration_form
+          입력:
+            - 입력: { id: registration_contact, 필드: 연락처 }
+      - 버튼: { id: next, 이름: "조회로 이동" }
+  예약 화면:
+    역할: [고객]
+    권한:
+      - 역할: 고객
+        행동: 조회
+        모델: 예약
+        필드: 연락처
+    레이아웃:
+      - 버튼: { id: lookup, 이름: "조회", 행동: 조회 }
+  예약 완료 화면:
+    레이아웃:
+      - 제목: { id: completed_title, 글: "완료" }
+조회 결과:
+  reservation_lookup:
+    행동: 조회
+    입력: 대상 예약
+    모델: 예약
+    필드: [연락처]
+행동 결과:
+  조회:
+    - id: found
+      유형: 성공
+      제공 데이터:
+        - 모델: 예약
+          필드: 연락처
+          조회 결과: reservation_lookup
+    - id: not_found
+      유형: 실패
+      복구: { 종류: retry, 화면: 예약 화면, 요소: lookup, 행동: 조회 }
+흐름:
+  - id: booking.start_path
+    출발: 예약 등록 화면.next
+    도착: 예약 화면
+  - id: booking.found_path
+    출발: 예약 화면.lookup
+    결과: found
+    도착: 예약 완료 화면
+  - 출발: 예약 화면.lookup
+    결과: not_found
+    처리:
+      종류: 메시지
+      id: missing
+      내용: "예약을 찾지 못했습니다."
+업무:
+  예약 완료(complete):
+    시작: 예약 화면
+    완료:
+      - 화면: 예약 완료 화면
+        필수 데이터:
+          - 모델: 예약
+            필드: 연락처
+---
+
+예약(reservation)은 다음 필드들로 구성되어 있다.
+    연락처(contact): 필수 문자열
+
+고객(customer)은 역할이다.
+조회(lookup)는 행동이다.
+`조회`는 기존 `예약`을 대상 예약(target_reservation)으로 입력받는다.
+`고객`은 `예약`의 `연락처`를 `조회`할 수 있다.
+예약 등록 화면(create_screen)에서는 `예약`을 생성할 수 있다.
+예약 등록 화면(create_screen)에서는 `예약`의 `연락처`를 입력할 수 있다.
+예약 화면(lookup_screen)에서는 `예약`의 `연락처`를 조회할 수 있다.
+예약 완료 화면(done_screen)에서는 `예약`의 `연락처`를 조회할 수 있다.
+"""
 
 
 def _to_sdk_sources(sources: Sequence[RspdlSource]) -> list[rspdl.Source]:
@@ -52,10 +129,37 @@ class LocalRspdlCompiler:
             wire_schema_version=rspdl.WIRE_SCHEMA_VERSION,
             locale=locale,
         )
+        self._capabilities: frozenset[str] | None = None
 
     @property
     def runtime(self) -> RspdlRuntime:
         return self._runtime
+
+    async def capabilities(self) -> frozenset[str]:
+        if self._capabilities is not None:
+            return self._capabilities
+        outcome = await self.compile(
+            [RspdlSource(path="planning-capability-probe.rspdl", text=_PLANNING_PROBE)]
+        )
+        files = outcome.result.get("files")
+        supported = False
+        if isinstance(files, list) and len(files) == 1 and isinstance(files[0], Mapping):
+            file = files[0]
+            diagnostics = file.get("diagnostics")
+            module = file.get("module")
+            no_diagnostics = diagnostics == []
+            supported = (
+                no_diagnostics
+                and isinstance(module, Mapping)
+                and all(
+                    isinstance(module.get(key), list) and len(module[key]) > 0
+                    for key in ("action_outcomes", "lookup_results", "workflows")
+                )
+            )
+        self._capabilities = (
+            frozenset({PLANNING_CONTRACTS_CAPABILITY}) if supported else frozenset()
+        )
+        return self._capabilities
 
     async def compile(self, sources: Sequence[RspdlSource]) -> AnalysisOutcome:
         response = await asyncio.to_thread(
