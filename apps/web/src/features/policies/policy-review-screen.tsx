@@ -34,7 +34,7 @@ import {
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
 import { ShieldIcon, TableIcon } from '@/shared/ui/icons'
 import { RequireSession } from '@/features/auth/require-session'
-import { DEFAULT_PROJECT_VIEW, viewHref } from '@/features/navigation/views'
+import { viewHref } from '@/features/navigation/views'
 import { PolicyFields } from './policy-fields'
 import { usePolicyFilterStore } from './policy-filter-store'
 import { PolicyFilters } from './policy-filters'
@@ -50,7 +50,7 @@ import { PolicyMatrix } from './policy-matrix'
  */
 export function PolicyReviewScreen({ projectId }: { projectId: string }) {
   return (
-    <AppShell breadcrumb={<Crumb>정책 검토</Crumb>}>
+    <AppShell breadcrumb={<Crumb>정책</Crumb>}>
       <RequireSession>
         <PolicyReview projectId={projectId} />
       </RequireSession>
@@ -177,10 +177,10 @@ function PolicyReview({ projectId }: { projectId: string }) {
         */
         <ErrorState
           title="이 컴파일 결과를 읽지 못했습니다"
-          description={`서버의 rspdl ${compilation.data?.rspdl_version ?? ''} 이 이 화면이 아는 것과 다른 모양을 돌려주었습니다. 문서 편집 화면에서는 진단을 그대로 볼 수 있습니다.`}
+          description={`서버의 rspdl ${compilation.data?.rspdl_version ?? ''} 이 이 화면이 아는 것과 다른 모양을 돌려주었습니다. 문서 화면에서는 진단을 그대로 볼 수 있습니다.`}
           action={
             <Button variant="outline" asChild>
-              <Link href={viewHref(projectId, DEFAULT_PROJECT_VIEW)}>문서 편집으로</Link>
+              <Link href={viewHref(projectId, 'documents')}>문서로</Link>
             </Button>
           }
         />
@@ -191,7 +191,7 @@ function PolicyReview({ projectId }: { projectId: string }) {
           description="RSPDL 문서를 하나 쓰면 그 안에 선언한 정책이 여기 모입니다."
           action={
             <Button asChild>
-              <Link href={viewHref(projectId, DEFAULT_PROJECT_VIEW)}>문서 편집으로</Link>
+              <Link href={viewHref(projectId, 'documents')}>문서로</Link>
             </Button>
           }
         />
@@ -201,12 +201,12 @@ function PolicyReview({ projectId }: { projectId: string }) {
           title="선언된 정책이 없습니다"
           description={
             diagnostics.error > 0
-              ? '진단 오류가 있는 문서는 컴파일되지 않아 정책도 나오지 않습니다. 문서 편집 화면에서 진단을 먼저 확인하세요.'
+              ? '진단 오류가 있는 문서는 컴파일되지 않아 정책도 나오지 않습니다. 문서 화면에서 진단을 먼저 확인하세요.'
               : '누가 무엇을 할 수 있는지를 문서에 쓰면 여기 모입니다. 역할과 행동을 선언한 뒤 `역할`은 `모델`의 `필드`를 `행동`할 수 있다 로 씁니다.'
           }
           action={
             <Button variant="outline" asChild>
-              <Link href={viewHref(projectId, DEFAULT_PROJECT_VIEW)}>문서 편집으로</Link>
+              <Link href={viewHref(projectId, 'documents')}>문서로</Link>
             </Button>
           }
         />

@@ -12,7 +12,7 @@ import {
 import { Badge, Button, EmptyState, ErrorState, Input, Skeleton, cn } from '@dahaze/ui'
 
 import { RequireSession } from '@/features/auth/require-session'
-import { documentHref, viewHref, DEFAULT_PROJECT_VIEW } from '@/features/navigation/views'
+import { documentHref, viewHref } from '@/features/navigation/views'
 import { errorMessage } from '@/shared/api/errors'
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
 import { FileIcon, TableIcon } from '@/shared/ui/icons'
@@ -106,8 +106,8 @@ function DataModelView({ projectId }: { projectId: string }) {
     return (
       <ErrorState
         title="이 컴파일 결과를 읽지 못했습니다"
-        description={`서버의 rspdl ${compilation.data?.rspdl_version ?? ''} 이 이 화면이 아는 것과 다른 모양을 돌려주었습니다. 문서 편집 화면에서는 컴파일러 진단을 그대로 확인할 수 있습니다.`}
-        action={<Button variant="outline" asChild><Link href={viewHref(projectId, DEFAULT_PROJECT_VIEW)}>문서 편집으로</Link></Button>}
+        description={`서버의 rspdl ${compilation.data?.rspdl_version ?? ''} 이 이 화면이 아는 것과 다른 모양을 돌려주었습니다. 문서 화면에서는 컴파일러 진단을 그대로 확인할 수 있습니다.`}
+        action={<Button variant="outline" asChild><Link href={viewHref(projectId, 'documents')}>문서로</Link></Button>}
       />
     )
   }
@@ -118,7 +118,7 @@ function DataModelView({ projectId }: { projectId: string }) {
         icon={<TableIcon />}
         title="아직 문서가 없습니다"
         description="RSPDL 문서를 작성하면 컴파일된 데이터 모델이 이곳에 나타납니다."
-        action={<Button asChild><Link href={viewHref(projectId, DEFAULT_PROJECT_VIEW)}>문서 편집으로</Link></Button>}
+        action={<Button asChild><Link href={viewHref(projectId, 'documents')}>문서로</Link></Button>}
       />
     )
   }
@@ -129,7 +129,7 @@ function DataModelView({ projectId }: { projectId: string }) {
         icon={<TableIcon />}
         title="선언된 데이터 모델이 없습니다"
         description="모델과 필드를 RSPDL 문서에 선언하면, 컴파일 결과를 여기에서 비교할 수 있습니다."
-        action={<Button variant="outline" asChild><Link href={viewHref(projectId, DEFAULT_PROJECT_VIEW)}>문서 편집으로</Link></Button>}
+        action={<Button variant="outline" asChild><Link href={viewHref(projectId, 'documents')}>문서로</Link></Button>}
       />
     )
   }

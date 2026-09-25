@@ -4,7 +4,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Button, EmptyState, ErrorState, Skeleton } from '@dahaze/ui'
 
-import { DEFAULT_PROJECT_VIEW, viewHref } from '@/features/navigation/views'
+import { viewHref } from '@/features/navigation/views'
 import { errorMessage } from '@/shared/api/errors'
 import { TableIcon } from '@/shared/ui/icons'
 import type { BoardData } from './use-board-data'
@@ -68,10 +68,10 @@ export function BoardGate({
     return (
       <ErrorState
         title="이 컴파일 결과를 읽지 못했습니다"
-        description={`서버의 rspdl ${compilation.data?.rspdl_version ?? ''} 이 이 화면이 아는 것과 다른 모양을 돌려주었습니다. 문서 편집 화면에서는 컴파일러 진단을 그대로 확인할 수 있습니다.`}
+        description={`서버의 rspdl ${compilation.data?.rspdl_version ?? ''} 이 이 화면이 아는 것과 다른 모양을 돌려주었습니다. 문서 화면에서는 컴파일러 진단을 그대로 확인할 수 있습니다.`}
         action={
           <Button variant="outline" asChild>
-            <Link href={viewHref(projectId, DEFAULT_PROJECT_VIEW)}>문서 편집으로</Link>
+            <Link href={viewHref(projectId, 'documents')}>문서로</Link>
           </Button>
         }
       />
@@ -86,7 +86,7 @@ export function BoardGate({
         description="RSPDL 문서를 작성하면 선언한 구조가 이곳에 나타납니다."
         action={
           <Button asChild>
-            <Link href={viewHref(projectId, DEFAULT_PROJECT_VIEW)}>문서 편집으로</Link>
+            <Link href={viewHref(projectId, 'documents')}>문서로</Link>
           </Button>
         }
       />
@@ -101,7 +101,7 @@ export function BoardGate({
         description={emptyDescription}
         action={
           <Button variant="outline" asChild>
-            <Link href={viewHref(projectId, DEFAULT_PROJECT_VIEW)}>문서 편집으로</Link>
+            <Link href={viewHref(projectId, 'documents')}>문서로</Link>
           </Button>
         }
       />

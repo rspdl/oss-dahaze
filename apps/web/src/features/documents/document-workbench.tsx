@@ -71,7 +71,7 @@ export function DocumentWorkbenchScreen({
       lockToViewport
       breadcrumb={
         <>
-          <Crumb href={viewHref(projectId, 'documents')}>문서 편집</Crumb>
+          <Crumb href={viewHref(projectId, 'documents')}>문서</Crumb>
         </>
       }
     >

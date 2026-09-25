@@ -38,7 +38,7 @@ import { useRspdlRuntime } from '@/features/analysis/use-runtime'
 import { CreateDocumentDialog } from '@/features/documents/create-document-dialog'
 
 /**
- * 문서 편집 뷰. 프로젝트를 고른 뒤 왼쪽 메뉴에서 처음 만나는 화면이다.
+ * 문서 뷰. 프로젝트의 RSPDL 문서 목록이다.
  *
  * 프로젝트의 신원(이름·슬러그·기본 버전·보관)도 여기 있다. 그것만을 위한 화면을 따로
  * 두면 아무도 가지 않는 경유지가 하나 생긴다 — 문서를 보러 온 김에 같이 보게 둔다.
@@ -46,7 +46,7 @@ import { CreateDocumentDialog } from '@/features/documents/create-document-dialo
 export function DocumentsViewScreen({ projectId }: { projectId: string }) {
   return (
     <AppShell
-      breadcrumb={<Crumb>문서 편집</Crumb>}
+      breadcrumb={<Crumb>문서</Crumb>}
       actions={
         <CreateDocumentDialog
           projectId={projectId}

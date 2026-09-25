@@ -312,7 +312,7 @@ function FlowView({ projectId }: { projectId: string }) {
 
         {graph.danglingPaths.length === 0 ? null : (
           <p className="mt-3 rounded-control border border-diagnostic-warning/40 bg-diagnostic-warning/5 px-3 py-2 text-xs text-text-muted">
-            끝점을 찾지 못한 경로 {graph.danglingPaths.length}건은 그리지 않았습니다. 문서 편집
+            끝점을 찾지 못한 경로 {graph.danglingPaths.length}건은 그리지 않았습니다. 문서
             화면에서 컴파일러 진단을 확인하세요.
           </p>
         )}
