@@ -1,12 +1,17 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Button, Toaster, cn } from '@dahaze/ui'
 
+import { useSession } from '@/features/auth/use-session'
 import { AppSidebar } from '@/features/navigation/app-sidebar'
+import { activeRoute } from '@/features/navigation/views'
+import { PlanningAiPanel } from '@/features/planning/planning-ai-panel'
+import { usePlanningUiStore } from '@/features/planning/planning-ui-store'
 import { useSidebarStore } from './sidebar-store'
-import { PanelLeftIcon } from './icons'
+import { PanelLeftIcon, PanelRightIcon } from './icons'
 
 /**
  * 모든 화면이 공유하는 껍데기.
@@ -48,11 +53,13 @@ export function AppShell({
   lockToViewport?: boolean
 }) {
   const setMobileOpen = useSidebarStore((state) => state.setMobileOpen)
+  const aiProjectId = useAiPanelProjectId()
 
   return (
     <div
       className={cn(
-        'min-h-dvh md:grid md:grid-cols-[auto_1fr]',
+        'min-h-dvh md:grid',
+        aiProjectId === null ? 'md:grid-cols-[auto_1fr]' : 'md:grid-cols-[auto_1fr_auto]',
         lockToViewport && 'h-dvh overflow-hidden',
       )}
     >
@@ -94,8 +101,11 @@ export function AppShell({
               </nav>
             ) : null}
 
-            {actions ? (
-              <div className="ml-auto flex items-center gap-2">{actions}</div>
+            {actions || aiProjectId !== null ? (
+              <div className="ml-auto flex items-center gap-2">
+                {actions}
+                {aiProjectId === null ? null : <AiPanelToggle />}
+              </div>
             ) : null}
           </div>
         </header>
@@ -119,8 +129,58 @@ export function AppShell({
         </main>
       </div>
 
+      {aiProjectId === null ? null : <PlanningAiPanel projectId={aiProjectId} />}
+
       <Toaster position="bottom-right" />
     </div>
+  )
+}
+
+/**
+ * AI 대화 패널을 붙일 프로젝트. 붙이지 않을 화면이면 `null`.
+ *
+ * 문서 하나를 여는 화면에는 붙이지 않는다. 그 화면에는 편집기 초안을 고치는 자기 AI 도우미가
+ * 있어서, 여기서도 붙이면 성격이 다른 대화창 두 개가 나란히 선다. 두 대화를 세션 하나로
+ * 합치기 전까지는 한 화면에 하나만 둔다.
+ */
+function useAiPanelProjectId(): string | null {
+  const pathname = usePathname()
+  const session = useSession()
+  const route = activeRoute(pathname)
+  if (!session.isSignedIn || route.projectId === null || route.documentId !== null) return null
+  return route.projectId
+}
+
+/** 상단 막대의 AI 대화 여닫기. 넓은 화면은 패널을, 좁은 화면은 서랍을 여닫는다. */
+function AiPanelToggle() {
+  const panelOpen = usePlanningUiStore((state) => state.panelOpen)
+  const mobileOpen = usePlanningUiStore((state) => state.mobileOpen)
+  const setPanelOpen = usePlanningUiStore((state) => state.setPanelOpen)
+  const setMobileOpen = usePlanningUiStore((state) => state.setMobileOpen)
+
+  return (
+    <>
+      <Button
+        variant={panelOpen ? 'secondary' : 'outline'}
+        size="sm"
+        className="hidden gap-1.5 md:inline-flex"
+        aria-pressed={panelOpen}
+        onClick={() => setPanelOpen(!panelOpen)}
+      >
+        <PanelRightIcon className="size-4" />
+        AI 대화
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className="gap-1.5 md:hidden"
+        aria-pressed={mobileOpen}
+        onClick={() => setMobileOpen(!mobileOpen)}
+      >
+        <PanelRightIcon className="size-4" />
+        AI 대화
+      </Button>
+    </>
   )
 }
 

@@ -1,13 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { PlanningDraftResponse, PlanningDraftSummaryResponse, PlanningStateResponse, ProjectCompileResponse } from '@dahaze/api-client'
 
-vi.mock('../auth/require-session', () => ({ RequireSession: () => null }))
-vi.mock('../../shared/ui/app-shell', () => ({ AppShell: () => null, Crumb: () => null }))
-vi.mock('./handoff-inspector', () => ({ HandoffInspector: () => null }))
-vi.mock('./metadata-editor', () => ({ MetadataEditor: () => null }))
-vi.mock('./planning-workspace', () => ({ PlanningWorkspace: () => null }))
-
-import { acceptedCompilerDocumentHref, toAiJob, toModel, type PlanningCompilerInputs } from './planning-screen'
+import { acceptedCompilerDocumentHref, toAiJob, toModel, type PlanningCompilerInputs } from './planning-model'
 
 function state(overrides: Partial<PlanningStateResponse> = {}): PlanningStateResponse {
   return {

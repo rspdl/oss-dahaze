@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { cn } from '@dahaze/ui'
 import { useGetDocument, useGetPlanningState, usePatchPlanningMetadata, type DocumentResponse, type PlanningStateResponse } from '@dahaze/api-client'
 import { useQueryClient } from '@tanstack/react-query'
@@ -11,7 +10,8 @@ import { DEFAULT_VIEWPORT_DIMENSIONS, type MockupViewport } from '@/features/moc
 import { parseModelSamples } from '@/features/mockup/sample-data'
 import { designBindingKey, type DesignBinding, type ElementDesign, type ElementSelection, type PrototypeAction, type PrototypeMode, type SampleVariant, type SemanticProposal } from '@/features/mockup/prototype-contract'
 import { parsePlanningEnvironments, visibleScreenKeys } from '@/features/planning/environments'
-import { elementPlanningSubject, planningSubjectHref } from '@/features/planning/planning-subject'
+import { elementPlanningSubject } from '@/features/planning/planning-subject'
+import { usePlanningUiStore } from '@/features/planning/planning-ui-store'
 import type { PlanningSubject } from '@/features/planning/planning-types'
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
 import { errorMessage } from '@/shared/api/errors'
@@ -219,6 +219,7 @@ function FlowView({ projectId }: { projectId: string }) {
   const isViewportPresetSelected = (candidate: MockupViewport) =>
     dimensions.width === DEFAULT_VIEWPORT_DIMENSIONS[candidate].width
     && dimensions.height === DEFAULT_VIEWPORT_DIMENSIONS[candidate].height
+  const askAbout = usePlanningUiStore((store) => store.askAbout)
   const interviewSubject: PlanningSubject | null = selected === null ? null : selectedElement?.screenKey === selected.id && selectedElement.elementId !== undefined
     ? elementPlanningSubject({ screenKey: selectedElement.screenKey, elementId: selectedElement.elementId, sourcePath: selected.screen.path, label: selectedElement.name ?? selectedElement.text ?? selectedElement.elementId })
     : { kind: 'screen', id: selected.screen.id, stableId: selected.screen.id, sourcePath: selected.screen.path, label: selected.screen.name }
@@ -301,7 +302,7 @@ function FlowView({ projectId }: { projectId: string }) {
           {mode === 'edit' ? <button type="button" disabled={designEditor.history.length === 0} className="rounded border px-2 py-1 disabled:opacity-40" onClick={() => setDesignEditor(undoDesign)}>배치 실행 취소</button> : null}
           {mode === 'edit' ? <button type="button" disabled={!designDirty || designEditor.status === 'saving' || designEditor.status === 'conflict'} className="rounded border px-2 py-1 disabled:opacity-40" onClick={() => void saveDesign()}>{designEditor.status === 'saving' ? '자동 저장 중' : designDirty ? '지금 저장' : '자동 저장됨'}</button> : null}
           {mode === 'edit' && selectedElement?.elementId !== undefined ? <PathEditorControls key={`${selectedElement.screenKey}:${selectedElement.elementId}`} selection={selectedElement} graph={graph} specification={specification} onPropose={setProposal} /> : null}
-          {mode === 'edit' && interviewSubject !== null ? <Link href={planningSubjectHref(projectId, interviewSubject)} className="rounded border px-2 py-1 text-accent">{interviewSubject.kind === 'element' ? '이 요소를 AI와 확인' : '이 화면을 AI와 확인'}</Link> : null}
+          {mode === 'edit' && interviewSubject !== null ? <button type="button" onClick={() => askAbout(interviewSubject)} className="rounded border px-2 py-1 text-accent">{interviewSubject.kind === 'element' ? '이 요소를 AI와 확인' : '이 화면을 AI와 확인'}</button> : null}
           {mode === 'edit' ? <button type="button" className="ml-auto rounded border px-2 py-1" aria-pressed={inspectorOpen} onClick={() => setInspectorOpen((open) => !open)}>{inspectorOpen ? '원문 닫기' : '원문 열기'}</button> : null}
         </div>
         {selectedElement?.elementId === undefined && selectedElement !== null ? <p className="mt-2 text-xs text-diagnostic-warning">명세가 바뀌면 이 요소의 배치를 다시 확인해야 합니다.</p> : null}

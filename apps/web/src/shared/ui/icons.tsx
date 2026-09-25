@@ -211,3 +211,13 @@ export function SlidersIcon(props: SVGProps<SVGSVGElement>) {
     </Base>
   )
 }
+
+/** 오른쪽 패널. AI 대화 패널을 여닫는 버튼이 쓴다. */
+export function PanelRightIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M14.5 4.5v15" />
+    </Base>
+  )
+}
