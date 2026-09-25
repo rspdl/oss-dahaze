@@ -180,3 +180,34 @@ export function FlowIcon(props: SVGProps<SVGSVGElement>) {
     </Base>
   )
 }
+
+/** 받은 편지함. 검토 뷰가 쓴다 — 판단할 것이 쌓이는 자리. */
+export function InboxIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <path d="M4 13.5 6.2 5.6A1.5 1.5 0 0 1 7.64 4.5h8.72a1.5 1.5 0 0 1 1.44 1.1L20 13.5" />
+      <path d="M4 13.5v4.5a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5v-4.5h-4.5l-1.5 2.5h-4L8.5 13.5Z" />
+    </Base>
+  )
+}
+
+/** 시계. 버전·전달 뷰가 쓴다 — 지나간 상태로 돌아가는 곳. */
+export function ClockIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </Base>
+  )
+}
+
+/** 조절기. 설정 뷰가 쓴다. */
+export function SlidersIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+      <circle cx="15" cy="7" r="2" />
+      <circle cx="9" cy="17" r="2" />
+    </Base>
+  )
+}

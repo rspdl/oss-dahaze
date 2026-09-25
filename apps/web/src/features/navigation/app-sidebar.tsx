@@ -21,19 +21,22 @@ import { AccountMenu } from '@/features/auth/account-menu'
 import { useSession } from '@/features/auth/use-session'
 import { useSidebarStore } from '@/shared/ui/sidebar-store'
 import {
+  ClockIcon,
   FileIcon,
   FlowIcon,
   HierarchyIcon,
+  InboxIcon,
   PanelLeftIcon,
   PenIcon,
   ShieldIcon,
-  SparkleIcon,
+  SlidersIcon,
   TableIcon,
   XIcon,
 } from '@/shared/ui/icons'
 import { ProjectSwitcher } from './project-switcher'
 import {
   PROJECT_VIEWS,
+  VIEW_GROUPS,
   activeRoute,
   documentHref,
   viewHref,
@@ -237,12 +240,14 @@ export function AppSidebar() {
 
 /** 뷰마다의 아이콘. 뜻은 옆 글자가 나르고, 기둥이 좁을 때만 혼자 선다. */
 const VIEW_ICONS: Record<ProjectViewId, ReactNode> = {
-  planning: <SparkleIcon className="size-4 shrink-0" />,
+  planning: <InboxIcon className="size-4 shrink-0" />,
   documents: <PenIcon className="size-4 shrink-0" />,
   policies: <ShieldIcon className="size-4 shrink-0" />,
   'data-models': <TableIcon className="size-4 shrink-0" />,
   ia: <HierarchyIcon className="size-4 shrink-0" />,
   'screen-flow': <FlowIcon className="size-4 shrink-0" />,
+  versions: <ClockIcon className="size-4 shrink-0" />,
+  settings: <SlidersIcon className="size-4 shrink-0" />,
 }
 
 function ProjectViewNav({
@@ -256,31 +261,59 @@ function ProjectViewNav({
   activeDocumentId: string | null
   railed: boolean
 }) {
+  /*
+    묶음마다 머리글을 단다. 메뉴가 여덟 줄이 되면 한 줄로 늘어놓은 목록은 어디서 시작해
+    어디로 가는지 말해 주지 못한다 — 묶음 이름이 그 순서를 대신 말한다. 기둥 모드에서는
+    글자가 들어갈 자리가 없어 가는 선으로만 나눈다.
+  */
   return (
     <>
-      {PROJECT_VIEWS.map((view) => (
-        <div key={view.id}>
-          <NavRow
-            href={viewHref(projectId, view.id)}
-            railed={railed}
-            isActive={view.id === activeView}
-            tooltip={view.label}
-            icon={VIEW_ICONS[view.id]}
-          >
-            {view.label}
-          </NavRow>
-
-          {/*
-            문서 목록은 문서 편집 뷰 **안의** 것이므로 그 메뉴 아래에 들여 쓴다. 다른 뷰를
-            보는 동안에는 접는다 — 정책 표를 보는 사람에게 문서 목록은 지금 할 일이 아니다.
-            기둥 모드에서는 자리가 없어 아예 접는다.
-          */}
-          {view.id === 'documents' && activeView === 'documents' && !railed ? (
-            <DocumentNav
-              projectId={projectId}
-              activeDocumentId={activeDocumentId}
-            />
+      {VIEW_GROUPS.map((group) => (
+        <div
+          key={group.id}
+          role="group"
+          aria-label={group.label ?? undefined}
+          className={cn('flex flex-col gap-0.5', group.label !== null && 'mt-3')}
+        >
+          {group.label === null ? null : railed ? (
+            <span aria-hidden className="mx-auto mb-1 hidden h-px w-5 bg-border md:block" />
           ) : null}
+          {group.label === null ? null : (
+            <span
+              className={cn(
+                'px-2 pb-1 text-[0.6875rem] font-medium tracking-wide text-text-subtle',
+                railed && 'md:hidden',
+              )}
+            >
+              {group.label}
+            </span>
+          )}
+
+          {PROJECT_VIEWS.filter((view) => view.group === group.id).map((view) => (
+            <div key={view.id}>
+              <NavRow
+                href={viewHref(projectId, view.id)}
+                railed={railed}
+                isActive={view.id === activeView}
+                tooltip={view.label}
+                icon={VIEW_ICONS[view.id]}
+              >
+                {view.label}
+              </NavRow>
+
+              {/*
+                문서 목록은 문서 뷰 **안의** 것이므로 그 메뉴 아래에 들여 쓴다. 다른 뷰를
+                보는 동안에는 접는다 — 정책 표를 보는 사람에게 문서 목록은 지금 할 일이 아니다.
+                기둥 모드에서는 자리가 없어 아예 접는다.
+              */}
+              {view.id === 'documents' && activeView === 'documents' && !railed ? (
+                <DocumentNav
+                  projectId={projectId}
+                  activeDocumentId={activeDocumentId}
+                />
+              ) : null}
+            </div>
+          ))}
         </div>
       ))}
     </>
