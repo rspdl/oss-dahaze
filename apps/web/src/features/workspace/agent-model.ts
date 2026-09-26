@@ -172,6 +172,9 @@ export function toolTitle(name: string, args: Record<string, unknown>): string {
     case 'grep':
       subject = pick('pattern')
       break
+    case 'fetch':
+      subject = pick('id')
+      break
     case 'commit':
       subject = pick('message')
       break

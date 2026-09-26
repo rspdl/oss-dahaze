@@ -73,6 +73,7 @@ describe('toolTitle', () => {
     expect(toolTitle('add', { parent: '/주문', name: '결제.rspdl' })).toBe('Add(/주문/결제.rspdl)')
     expect(toolTitle('mv', { from: '/a.rspdl', to: '/b.rspdl' })).toBe('Mv(/a.rspdl → /b.rspdl)')
     expect(toolTitle('search', { query: '재고' })).toBe('Search(재고)')
+    expect(toolTitle('fetch', { id: 'inventory.item', owner_id: '' })).toBe('Fetch(inventory.item)')
     expect(toolTitle('compile', {})).toBe('Compile')
   })
 })
