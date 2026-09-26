@@ -17,7 +17,7 @@ from uuid import UUID
 
 from dahaze_api.application.errors import ApplicationError, FolderNotEmpty, Locked
 from dahaze_api.application.tree import TreeService
-from dahaze_api.application.tree_inspection import TreeInspector
+from dahaze_api.application.tree_inspection import LinkedSymbol, SymbolFetch, TreeInspector
 from dahaze_api.domain.agent import FileChange, ToolCall, ToolOutcome, ToolSpec
 from dahaze_api.domain.rspdl import TextPosition
 from dahaze_api.domain.tree import is_under
@@ -65,6 +65,25 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
                 "kind": _string("IR 컬렉션 경로. 거르지 않으면 빈 문자열"),
             },
             [],
+        ),
+    ),
+    ToolSpec(
+        name="fetch",
+        description=(
+            "심볼 ID 하나의 원문 구간과 연결을 돌려준다. referenced_by 는 이 심볼을 가리키는 "
+            "심볼(정책·제약·화면 요소 등), references 는 이 심볼이 가리키는 심볼이다. ID 는 "
+            "search 결과의 id 를 쓴다. 정책·제약 ID 는 원문을 고치면 바뀔 수 있으므로, 편집 뒤에는 "
+            "모델·역할·행동처럼 이름 있는 심볼에서 다시 fetch 한다. references_supported 가 "
+            "false 면 이 컴파일러는 연결을 주지 않는다."
+        ),
+        parameters=_object(
+            {
+                "id": _string("심볼 ID. 예: inventory.item"),
+                "owner_id": _string(
+                    "local ID 의 소속. 결과의 owner_id 를 그대로 쓴다. 전역 ID 면 빈 문자열"
+                ),
+            },
+            ["id"],
         ),
     ),
     ToolSpec(
@@ -179,6 +198,40 @@ def _arg(arguments: Mapping[str, Any], name: str, *, default: str | None = None)
     return value
 
 
+def fetch_output(result: SymbolFetch) -> dict[str, Any]:
+    """fetch 결과. 앱 AI 도구와 MCP 가 같은 모양을 쓴다."""
+
+    def link(entry: LinkedSymbol) -> dict[str, Any]:
+        return {
+            "kind": entry.kind,
+            "id": entry.id,
+            "owner_id": entry.owner_id,
+            "field": entry.field,
+            "path": entry.path,
+            "start": _position(entry.start),
+            "end": _position(entry.end),
+        }
+
+    return {
+        "symbols": [
+            {
+                "id": s.id,
+                "kind": s.kind,
+                "name": s.name,
+                "path": s.path,
+                "start": _position(s.start),
+                "end": _position(s.end),
+                "text": s.text,
+            }
+            for s in result.symbols
+        ],
+        "referenced_by": [link(e) for e in result.referenced_by],
+        "references": [link(e) for e in result.references],
+        "references_supported": result.references_supported,
+        "unparsed": [{"path": u.path, "error_count": u.error_count} for u in result.unparsed],
+    }
+
+
 def _position(position: TextPosition | None) -> dict[str, int] | None:
     return None if position is None else {"line": position.line, "column": position.column}
 
@@ -284,6 +337,15 @@ class AgentToolbox:
                 "truncated": result.truncated,
             },
         )
+
+    async def _fetch(self, args: Mapping[str, Any], _: bool) -> ToolOutcome:
+        result = await self._inspector.fetch(
+            actor_id=self._actor_id,
+            project_id=self._project_id,
+            symbol_id=_arg(args, "id"),
+            owner_id=_arg(args, "owner_id", default="") or None,
+        )
+        return ToolOutcome(ok=True, output=fetch_output(result))
 
     async def _grep(self, args: Mapping[str, Any], _: bool) -> ToolOutcome:
         result = await self._inspector.grep(

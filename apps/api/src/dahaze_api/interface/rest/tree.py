@@ -32,6 +32,7 @@ from dahaze_api.interface.rest.tree_schemas import (
     GrepResponse,
     MoveRequest,
     SaveFileRequest,
+    SymbolFetchResponse,
     SymbolSearchResponse,
     TreeCompileResponse,
     TreeEntryResponse,
@@ -39,6 +40,7 @@ from dahaze_api.interface.rest.tree_schemas import (
     commit_out,
     compile_out,
     entry_out,
+    fetch_out,
     file_out,
     folder_out,
     grep_out,
@@ -134,6 +136,22 @@ async def search_tree_symbols(
             actor_id=user.id, project_id=project_id, query=query, kind=kind
         )
     return search_out(result)
+
+
+@router.get("/projects/{project_id}/tree/fetch", name="fetch_tree_symbol")
+async def fetch_tree_symbol(
+    project_id: UUID,
+    user: CurrentUser,
+    inspector: Inspector,
+    id: str = Query(description="심볼 ID. 예: inventory.item"),
+    owner_id: str | None = Query(default=None, description="local ID 의 소속"),
+) -> SymbolFetchResponse:
+    """심볼 원문과 연결(가리키는·가리켜지는 심볼). 없으면 404."""
+    with _http_errors():
+        result = await inspector.fetch(
+            actor_id=user.id, project_id=project_id, symbol_id=id, owner_id=owner_id
+        )
+    return fetch_out(result)
 
 
 @router.get("/projects/{project_id}/tree/grep", name="grep_tree")

@@ -710,6 +710,56 @@
         "title": "DeleteResponse",
         "type": "object"
       },
+      "FetchedSymbolResponse": {
+        "properties": {
+          "end": {
+            "$ref": "#/components/schemas/PositionResponse"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "IR 컬렉션 경로",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "start": {
+            "$ref": "#/components/schemas/PositionResponse"
+          },
+          "text": {
+            "description": "심볼 선언의 원문 구간",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "path",
+          "start",
+          "end",
+          "text"
+        ],
+        "title": "FetchedSymbolResponse",
+        "type": "object"
+      },
       "FindModelRequest": {
         "properties": {
           "scope_per_model": {
@@ -845,6 +895,58 @@
           "rspdl_version"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "LinkedSymbolResponse": {
+        "properties": {
+          "end": {
+            "$ref": "#/components/schemas/PositionResponse"
+          },
+          "field": {
+            "description": "참조를 만든 필드. 예: model_id",
+            "title": "Field",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "컴파일러가 붙인 심볼 종류",
+            "title": "Kind",
+            "type": "string"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "local ID 의 소속. 전역 ID 면 null",
+            "title": "Owner Id"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "start": {
+            "$ref": "#/components/schemas/PositionResponse",
+            "description": "참조하는 레코드의 원문 위치"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "owner_id",
+          "field",
+          "path",
+          "start",
+          "end"
+        ],
+        "title": "LinkedSymbolResponse",
         "type": "object"
       },
       "LocatedDiagnosticResponse": {
@@ -1276,6 +1378,55 @@
           "text"
         ],
         "title": "SourceIn",
+        "type": "object"
+      },
+      "SymbolFetchResponse": {
+        "properties": {
+          "referenced_by": {
+            "description": "이 심볼을 가리키는 심볼",
+            "items": {
+              "$ref": "#/components/schemas/LinkedSymbolResponse"
+            },
+            "title": "Referenced By",
+            "type": "array"
+          },
+          "references": {
+            "description": "이 심볼이 가리키는 심볼",
+            "items": {
+              "$ref": "#/components/schemas/LinkedSymbolResponse"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "references_supported": {
+            "description": "컴파일러가 참조 목록을 주는가. false 면 두 목록이 비어 있어도 참조 없음이 아니다",
+            "title": "References Supported",
+            "type": "boolean"
+          },
+          "symbols": {
+            "description": "같은 ID 의 선언. local ID 면 여럿일 수 있다",
+            "items": {
+              "$ref": "#/components/schemas/FetchedSymbolResponse"
+            },
+            "title": "Symbols",
+            "type": "array"
+          },
+          "unparsed": {
+            "items": {
+              "$ref": "#/components/schemas/UnparsedFileResponse"
+            },
+            "title": "Unparsed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "symbols",
+          "referenced_by",
+          "references",
+          "references_supported",
+          "unparsed"
+        ],
+        "title": "SymbolFetchResponse",
         "type": "object"
       },
       "SymbolMatchResponse": {
@@ -3627,6 +3778,95 @@
           }
         },
         "summary": "Delete Tree Entry",
+        "tags": [
+          "tree"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/tree/fetch": {
+      "get": {
+        "description": "심볼 원문과 연결(가리키는·가리켜지는 심볼). 없으면 404.",
+        "operationId": "fetch_tree_symbol",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "심볼 ID. 예: inventory.item",
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "심볼 ID. 예: inventory.item",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "local ID 의 소속",
+            "in": "query",
+            "name": "owner_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "local ID 의 소속",
+              "title": "Owner Id"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SymbolFetchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fetch Tree Symbol",
         "tags": [
           "tree"
         ]

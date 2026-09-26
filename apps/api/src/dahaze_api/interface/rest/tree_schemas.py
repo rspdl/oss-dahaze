@@ -9,7 +9,13 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from dahaze_api.application.tree import TreeEntry
-from dahaze_api.application.tree_inspection import GrepResult, SymbolSearch, TreeCompilation
+from dahaze_api.application.tree_inspection import (
+    GrepResult,
+    LinkedSymbol,
+    SymbolFetch,
+    SymbolSearch,
+    TreeCompilation,
+)
 from dahaze_api.domain.rspdl import TextPosition
 from dahaze_api.domain.tree import Commit, TreeFile, TreeFolder
 
@@ -144,6 +150,40 @@ class SymbolSearchResponse(BaseModel):
     truncated: bool = Field(description="결과가 상한을 넘어 잘렸는지")
 
 
+class FetchedSymbolResponse(BaseModel):
+    id: str
+    kind: str = Field(description="IR 컬렉션 경로")
+    name: str | None
+    path: str
+    start: PositionResponse
+    end: PositionResponse
+    text: str = Field(description="심볼 선언의 원문 구간")
+
+
+class LinkedSymbolResponse(BaseModel):
+    kind: str = Field(description="컴파일러가 붙인 심볼 종류")
+    id: str
+    owner_id: str | None = Field(description="local ID 의 소속. 전역 ID 면 null")
+    field: str = Field(description="참조를 만든 필드. 예: model_id")
+    path: str
+    start: PositionResponse = Field(description="참조하는 레코드의 원문 위치")
+    end: PositionResponse
+
+
+class SymbolFetchResponse(BaseModel):
+    symbols: list[FetchedSymbolResponse] = Field(
+        description="같은 ID 의 선언. local ID 면 여럿일 수 있다"
+    )
+    referenced_by: list[LinkedSymbolResponse] = Field(description="이 심볼을 가리키는 심볼")
+    references: list[LinkedSymbolResponse] = Field(description="이 심볼이 가리키는 심볼")
+    references_supported: bool = Field(
+        description=(
+            "컴파일러가 참조 목록을 주는가. false 면 두 목록이 비어 있어도 참조 없음이 아니다"
+        )
+    )
+    unparsed: list[UnparsedFileResponse]
+
+
 class GrepMatchResponse(BaseModel):
     path: str
     line: int
@@ -247,6 +287,43 @@ def search_out(result: SymbolSearch) -> SymbolSearchResponse:
             UnparsedFileResponse(path=u.path, error_count=u.error_count) for u in result.unparsed
         ],
         truncated=result.truncated,
+    )
+
+
+def fetch_out(result: SymbolFetch) -> SymbolFetchResponse:
+    def pos(position: TextPosition) -> PositionResponse:
+        return PositionResponse(line=position.line, column=position.column)
+
+    def link(entry: LinkedSymbol) -> LinkedSymbolResponse:
+        return LinkedSymbolResponse(
+            kind=entry.kind,
+            id=entry.id,
+            owner_id=entry.owner_id,
+            field=entry.field,
+            path=entry.path,
+            start=pos(entry.start),
+            end=pos(entry.end),
+        )
+
+    return SymbolFetchResponse(
+        symbols=[
+            FetchedSymbolResponse(
+                id=s.id,
+                kind=s.kind,
+                name=s.name,
+                path=s.path,
+                start=pos(s.start),
+                end=pos(s.end),
+                text=s.text,
+            )
+            for s in result.symbols
+        ],
+        referenced_by=[link(e) for e in result.referenced_by],
+        references=[link(e) for e in result.references],
+        references_supported=result.references_supported,
+        unparsed=[
+            UnparsedFileResponse(path=u.path, error_count=u.error_count) for u in result.unparsed
+        ],
     )
 
 

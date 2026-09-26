@@ -103,11 +103,16 @@ SVN과 같은 구조다. 프로젝트마다 **공유 작업 트리 하나**가 �
   멈춘다. 거절하면 도구가 거절 결과를 돌려주고 AI가 턴을 이어 간다.
 - `commit`에 이동한 파일을 넣으면 옛 경로와 새 경로가 한 단위로 들어간다.
 
-### 나중에
+### fetch
 
-- `fetch(symbol_id)`: 심볼의 원문 구간과 연결 심볼 ID를 돌려준다. IR에 역참조가 없어서
-  rspdl-core에 역참조 출력을 요청했고([rspdl-core#41](https://github.com/rspdl/rspdl-core/issues/41)),
-  반영된 뒤 만든다.
+`fetch(id, owner_id?)` 는 심볼 선언의 원문 구간과, 그 심볼을 가리키는 심볼(`referenced_by`)·그
+심볼이 가리키는 심볼(`references`)을 돌려준다. 연결은 컴파일 결과의 `references`
+([rspdl-core#41](https://github.com/rspdl/rspdl-core/issues/41), PR #42)에서 읽는다. locator 의
+`kind` 는 search 의 kind 와 같은 IR 컬렉션 경로다. 화면 요소처럼 소속마다 따로 있는 local ID 는
+`owner_id` 로 고른다.
+
+`references` 를 주지 않는 컴파일러(PyPI 0.1.4)에서는 원문만 돌려주고 `references_supported: false`
+로 표시한다. #42 가 들어간 버전이 PyPI 에 나오면 `upgrade-rspdl` 절차로 핀을 올린다.
 
 ## 에이전트 실행
 

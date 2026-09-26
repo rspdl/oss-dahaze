@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -12,7 +14,7 @@ from dahaze_api.application.errors import Conflict, NotFound
 from dahaze_api.application.tree import TreeService
 from dahaze_api.application.tree_inspection import TreeInspector
 from dahaze_api.domain.entities import Project, User
-from dahaze_api.domain.rspdl import TextPosition, byte_offset_to_position
+from dahaze_api.domain.rspdl import RspdlIndex, TextPosition, byte_offset_to_position
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
 from dahaze_api.infrastructure.db.repositories import SqlProjectRepository
 from dahaze_api.infrastructure.db.tree_repository import SqlTreeRepository
@@ -228,3 +230,149 @@ async def test_non_member_cannot_inspect(
 ) -> None:
     with pytest.raises(NotFound):
         await inspector.grep(actor_id=other_user.id, project_id=project.id, pattern="a")
+
+
+# ---------------------------------------------------------------------- fetch
+
+
+async def test_fetch_returns_declaration_text(
+    inspector: TreeInspector, user: User, project: Project
+) -> None:
+    result = await inspector.fetch(
+        actor_id=user.id, project_id=project.id, symbol_id="inventory.item.quantity"
+    )
+    [symbol] = result.symbols
+    assert (symbol.kind, symbol.path, symbol.start.line) == ("models.fields", "/재고/항목.rspdl", 5)
+    assert symbol.text.strip() == "수량(quantity): 필수 정수"
+
+
+async def test_fetch_unknown_symbol_is_not_found(
+    inspector: TreeInspector, user: User, project: Project
+) -> None:
+    with pytest.raises(NotFound):
+        await inspector.fetch(actor_id=user.id, project_id=project.id, symbol_id="nope.x")
+
+
+class _WithReferences:
+    """참조 목록을 주는 컴파일러의 결과 모양 (rspdl-core#41) 을 흉내 낸다."""
+
+    def __init__(self, references: list[dict[str, object]]) -> None:
+        self._inner = LocalRspdlIndexer()
+        self._references = references
+
+    def index(self, result: Mapping[str, Any]) -> RspdlIndex:
+        return self._inner.index({**result, "references": self._references})
+
+
+async def test_fetch_follows_references_both_ways(
+    session: AsyncSession, tree: TreeService, user: User, project: Project
+) -> None:
+    compiler = LocalRspdlCompiler()
+    constraint_span = {"start": INVENTORY.encode().index("재고 항목의 수량".encode()), "end": 0}
+    constraint_span["end"] = len(INVENTORY.encode().rstrip())
+    inspector = TreeInspector(
+        tree=tree,
+        analyzer=AnalyzeWorkspace(compiler=compiler, cache=SqlAnalysisCache(session)),
+        indexer=_WithReferences(
+            [
+                {
+                    "path": "/재고/항목.rspdl",
+                    "from": {"kind": "constraint", "id": "inventory.constraint_1"},
+                    "to": {"kind": "model", "id": "inventory.item"},
+                    "field": "model_id",
+                    "span": constraint_span,
+                }
+            ]
+        ),
+        matcher=Re2PatternMatcher(),
+        runtime=compiler.runtime,
+    )
+
+    item = await inspector.fetch(
+        actor_id=user.id, project_id=project.id, symbol_id="inventory.item"
+    )
+    assert item.references_supported
+    [link] = item.referenced_by
+    assert (link.kind, link.id, link.field, link.start.line) == (
+        "constraint",
+        "inventory.constraint_1",
+        "model_id",
+        7,
+    )
+    assert item.references == ()
+
+    constraint = await inspector.fetch(
+        actor_id=user.id, project_id=project.id, symbol_id="inventory.constraint_1"
+    )
+    assert [(r.id, r.field) for r in constraint.references] == [("inventory.item", "model_id")]
+
+
+class _WithoutReferences:
+    """참조 목록을 주지 않는 컴파일러(0.1.4 이하)의 결과 모양."""
+
+    def index(self, result: Mapping[str, Any]) -> RspdlIndex:
+        return LocalRspdlIndexer().index({k: v for k, v in result.items() if k != "references"})
+
+
+async def test_fetch_marks_compiler_without_references(
+    session: AsyncSession, tree: TreeService, user: User, project: Project
+) -> None:
+    """참조를 주지 않는 컴파일러면 빈 목록을 "참조 없음" 으로 읽지 않게 표시한다."""
+    compiler = LocalRspdlCompiler()
+    inspector = TreeInspector(
+        tree=tree,
+        analyzer=AnalyzeWorkspace(compiler=compiler, cache=SqlAnalysisCache(session)),
+        indexer=_WithoutReferences(),
+        matcher=Re2PatternMatcher(),
+        runtime=compiler.runtime,
+    )
+    result = await inspector.fetch(
+        actor_id=user.id, project_id=project.id, symbol_id="inventory.item"
+    )
+    assert result.references_supported is False
+    assert result.referenced_by == ()
+
+
+async def test_fetch_with_real_compiler_references(
+    inspector: TreeInspector, user: User, project: Project
+) -> None:
+    """설치된 컴파일러가 참조를 줄 때만 돈다 (rspdl-core#41 이 들어간 버전)."""
+    item = await inspector.fetch(
+        actor_id=user.id, project_id=project.id, symbol_id="inventory.item"
+    )
+    if not item.references_supported:
+        pytest.skip("설치된 컴파일러가 참조 목록을 주지 않는다")
+    assert [(r.kind, r.field) for r in item.referenced_by] == [("constraints", "model_id")]
+    quantity = await inspector.fetch(
+        actor_id=user.id, project_id=project.id, symbol_id="inventory.item.quantity"
+    )
+    assert [(r.kind, r.field) for r in quantity.referenced_by] == [("constraints", "left")]
+
+
+async def test_fetch_owner_filters_local_ids(
+    session: AsyncSession, tree: TreeService, user: User, project: Project
+) -> None:
+    compiler = LocalRspdlCompiler()
+
+    def ref(owner: str) -> dict[str, object]:
+        return {
+            "path": "/재고/항목.rspdl",
+            "from": {"kind": "screens", "id": f"inventory.{owner}"},
+            "to": {"kind": "screen_layouts.elements", "id": "pay", "owner_id": owner},
+            "field": "source_element_id",
+            "span": {"start": 0, "end": 1},
+        }
+
+    inspector = TreeInspector(
+        tree=tree,
+        analyzer=AnalyzeWorkspace(compiler=compiler, cache=SqlAnalysisCache(session)),
+        indexer=_WithReferences([ref("desktop"), ref("mobile")]),
+        matcher=Re2PatternMatcher(),
+        runtime=compiler.runtime,
+    )
+    both = await inspector.fetch(actor_id=user.id, project_id=project.id, symbol_id="pay")
+    assert len(both.referenced_by) == 2
+    one = await inspector.fetch(
+        actor_id=user.id, project_id=project.id, symbol_id="pay", owner_id="mobile"
+    )
+    assert [r.id for r in one.referenced_by] == ["inventory.mobile"]

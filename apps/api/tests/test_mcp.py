@@ -524,6 +524,7 @@ async def test_tools_are_advertised_over_http(
         "ls",
         "read",
         "search",
+        "fetch",
         "grep",
         "compile",
         "mkdir",

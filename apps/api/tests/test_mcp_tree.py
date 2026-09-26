@@ -81,6 +81,8 @@ async def test_write_search_compile_commit(
     assert [(m["id"], m["path"], m["start"]["line"]) for m in found["matches"]] == [
         ("inventory.item", "/재고/항목.rspdl", 3)
     ]
+    fetched = await tools.tree_fetch(headers, project_id=pid, symbol_id="inventory.item")
+    assert fetched["symbols"][0]["name"] == "재고 항목"
     compiled = await tools.tree_compile(headers, project_id=pid)
     assert compiled["compiled"] is True
     grep = await tools.tree_grep(headers, project_id=pid, pattern="필수")

@@ -141,9 +141,36 @@ class FileDiagnostic:
 
 
 @dataclass(frozen=True, slots=True)
+class SymbolLocator:
+    """참조의 한쪽 끝. `owner_id` 는 local ID 의 소속이다(전역 ID 면 없음)."""
+
+    kind: str
+    id: str
+    owner_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RspdlReference:
+    """컴파일러가 해석한 참조 하나 (rspdl-core#41).
+
+    `source` 의 `field` 가 `target` 을 가리킨다. span 은 참조하는 레코드의 UTF-8 byte 범위다.
+    """
+
+    path: str
+    source: SymbolLocator
+    target: SymbolLocator
+    field: str
+    span_start: int
+    span_end: int
+
+
+@dataclass(frozen=True, slots=True)
 class RspdlIndex:
-    """컴파일 결과에서 읽어 낸 심볼과 진단."""
+    """컴파일 결과에서 읽어 낸 심볼·진단·참조."""
 
     symbols: tuple[RspdlSymbol, ...]
     unparsed: tuple[UnparsedFile, ...]
     diagnostics: tuple[FileDiagnostic, ...]
+    references: tuple[RspdlReference, ...] = ()
+    # 컴파일러가 참조 목록을 주는가. 주지 않는 버전에서는 "참조 없음" 과 구분해야 한다.
+    references_supported: bool = False

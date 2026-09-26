@@ -70,6 +70,7 @@ def test_tool_specs_are_function_tools() -> None:
         "ls",
         "read",
         "search",
+        "fetch",
         "grep",
         "compile",
         "mkdir",

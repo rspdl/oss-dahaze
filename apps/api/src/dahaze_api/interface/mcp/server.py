@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.applications import Starlette
 from starlette.routing import Route
 
+from dahaze_api.application.agent_tools import fetch_output
 from dahaze_api.application.analysis import AnalyzeWorkspace
 from dahaze_api.application.projects import ProjectService
 from dahaze_api.application.tree import TreeService
@@ -348,6 +349,23 @@ class McpTools:
                 kind=kind,
             )
             return search_out(result).model_dump(mode="json")
+
+    async def tree_fetch(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        symbol_id: str,
+        owner_id: str | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            result = await actor.inspector.fetch(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                symbol_id=symbol_id,
+                owner_id=owner_id,
+            )
+            return fetch_output(result)
 
     async def tree_grep(
         self,
@@ -716,6 +734,24 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         project_id: str, ctx: Context, query: str = "", kind: str | None = None
     ) -> dict[str, Any]:
         return await tools.tree_search(ctx.headers, project_id=project_id, query=query, kind=kind)
+
+    @mcp.tool(
+        name="fetch",
+        description=(
+            "심볼 ID 하나의 원문 구간과 연결을 돌려준다. `referenced_by` 는 이 심볼을 가리키는 "
+            "심볼(정책·제약·화면 요소 등), `references` 는 이 심볼이 가리키는 심볼이다. ID 는 "
+            "`search` 결과의 id 를 쓴다. 화면 요소 같은 local ID 는 `owner_id` 로 소속을 "
+            "고른다. 정책·제약 ID 는 원문을 고치면 바뀔 수 있으므로, 편집 뒤에는 이름 있는 "
+            "심볼에서 다시 fetch 한다. `references_supported` 가 false 면 이 "
+            "컴파일러는 연결을 주지 않는다."
+        ),
+    )
+    async def fetch(
+        project_id: str, id: str, ctx: Context, owner_id: str | None = None
+    ) -> dict[str, Any]:
+        return await tools.tree_fetch(
+            ctx.headers, project_id=project_id, symbol_id=id, owner_id=owner_id
+        )
 
     @mcp.tool(
         name="grep",

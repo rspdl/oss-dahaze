@@ -220,3 +220,22 @@ async def test_non_member_gets_404(
     )
     assert created["id"]
     assert (await other_client.get(f"/api/commits/{commit.json()['id']}")).status_code == 404
+
+
+async def test_fetch_symbol(client: httpx.AsyncClient, project_id: str) -> None:
+    await _add(
+        client,
+        project_id,
+        "재고.rspdl",
+        "@모듈 재고(inventory)\n\n재고 항목(item)은 다음 필드들로 구성되어 있다.\n"
+        "    이름(name): 필수 문자열\n",
+    )
+    found = await client.get(
+        f"/api/projects/{project_id}/tree/fetch", params={"id": "inventory.item.name"}
+    )
+    assert found.status_code == 200
+    assert found.json()["symbols"][0]["text"].strip() == "이름(name): 필수 문자열"
+    assert isinstance(found.json()["references_supported"], bool)
+
+    missing = await client.get(f"/api/projects/{project_id}/tree/fetch", params={"id": "no.such"})
+    assert missing.status_code == 404

@@ -12,7 +12,14 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from typing import Any
 
-from dahaze_api.domain.rspdl import FileDiagnostic, RspdlIndex, RspdlSymbol, UnparsedFile
+from dahaze_api.domain.rspdl import (
+    FileDiagnostic,
+    RspdlIndex,
+    RspdlReference,
+    RspdlSymbol,
+    SymbolLocator,
+    UnparsedFile,
+)
 
 MODULE_KIND = "module"
 
@@ -33,8 +40,13 @@ class LocalRspdlIndexer:
                 unparsed.append(UnparsedFile(path=path, error_count=errors))
                 continue
             symbols.extend(_symbols(module, kind=MODULE_KIND, path=path))
+        raw_references = result.get("references")
         return RspdlIndex(
-            symbols=tuple(symbols), unparsed=tuple(unparsed), diagnostics=tuple(diagnostics)
+            symbols=tuple(symbols),
+            unparsed=tuple(unparsed),
+            diagnostics=tuple(diagnostics),
+            references=tuple(_references(raw_references)),
+            references_supported=isinstance(raw_references, list),
         )
 
 
@@ -80,3 +92,36 @@ def _symbol(node: Mapping[str, Any], *, kind: str, path: str) -> RspdlSymbol | N
         span_start=start,
         span_end=end,
     )
+
+
+def _locator(value: Any) -> SymbolLocator | None:
+    if not isinstance(value, Mapping):
+        return None
+    kind, symbol_id, owner = value.get("kind"), value.get("id"), value.get("owner_id")
+    if not isinstance(kind, str) or not isinstance(symbol_id, str):
+        return None
+    return SymbolLocator(
+        kind=kind, id=symbol_id, owner_id=owner if isinstance(owner, str) else None
+    )
+
+
+def _references(raw: Any) -> Iterator[RspdlReference]:
+    """`result.references` (rspdl-core#41). 0.1.4 이하에는 없다."""
+    for entry in raw if isinstance(raw, list) else []:
+        if not isinstance(entry, Mapping):
+            continue
+        source, target = _locator(entry.get("from")), _locator(entry.get("to"))
+        span = entry.get("span")
+        if source is None or target is None or not isinstance(span, Mapping):
+            continue
+        start, end = span.get("start"), span.get("end")
+        if not isinstance(start, int) or not isinstance(end, int):
+            continue
+        yield RspdlReference(
+            path=str(entry.get("path", "")),
+            source=source,
+            target=target,
+            field=str(entry.get("field", "")),
+            span_start=start,
+            span_end=end,
+        )
