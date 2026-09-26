@@ -334,6 +334,8 @@ class AgentRepositoryPort(Protocol):
 
     async def get_session(self, session_id: UUID) -> AgentSession | None: ...
 
+    async def rename_session(self, session_id: UUID, *, title: str) -> None: ...
+
     async def append_item(
         self,
         *,

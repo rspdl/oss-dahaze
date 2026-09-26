@@ -47,6 +47,7 @@ from dahaze_api.domain.ports import (
 )
 
 DEFAULT_SESSION_TITLE = "새 대화"
+SESSION_TITLE_LENGTH = 40
 MAX_MESSAGE_LENGTH = 20_000
 LEASE_SECONDS = 120
 # 답변 텍스트를 이 간격으로 묶어 이벤트 하나로 쓴다. 토큰마다 쓰면 DB 쓰기가 너무 많다.
@@ -64,6 +65,14 @@ SKIPPED_RESULT = (
     "앞선 도구 호출이 사용자 승인을 기다려 이 호출은 실행하지 않았다. 필요하면 다시 부른다."
 )
 DENIED_RESULT = "사용자가 이 삭제를 거절했다. 지우지 않았다."
+
+
+def session_title_from(text: str) -> str:
+    """첫 메시지의 첫 줄을 제목 길이로 자른다."""
+    first_line = text.strip().splitlines()[0].strip()
+    if len(first_line) <= SESSION_TITLE_LENGTH:
+        return first_line
+    return first_line[: SESSION_TITLE_LENGTH - 1].rstrip() + "…"
 
 
 def _utcnow() -> datetime:
@@ -186,6 +195,9 @@ class AgentService:
             kind=ItemKind.USER_MESSAGE,
             payload={"text": text},
         )
+        # 제목을 정하지 않은 세션은 첫 메시지 앞부분을 제목으로 쓴다. 세션 목록에서 구분하려고.
+        if item.seq == 1 and session.title == DEFAULT_SESSION_TITLE:
+            await self._s.agents.rename_session(session_id, title=session_title_from(text))
         await _item_event(self._s, session.project_id, item)
         await _turn_event(self._s, turn)
         return turn

@@ -181,6 +181,11 @@ class SqlAgentRepository:
         row = await self._session.get(AgentSessionRow, session_id)
         return None if row is None else _to_session(row)
 
+    async def rename_session(self, session_id: UUID, *, title: str) -> None:
+        await self._session.execute(
+            update(AgentSessionRow).where(AgentSessionRow.id == session_id).values(title=title)
+        )
+
     # ------------------------------------------------------------------ 항목
 
     async def append_item(

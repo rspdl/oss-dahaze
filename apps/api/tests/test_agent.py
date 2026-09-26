@@ -540,3 +540,29 @@ async def test_other_member_cannot_see_session(
     session = await service.create_session(actor_id=user.id, project_id=project.id)
     with pytest.raises(NotFound):
         await service.list_items(actor_id=other_user.id, session_id=session.id)
+
+
+async def test_first_message_names_untitled_session(
+    scope: AgentScope, service: AgentService, user: User, project: Project
+) -> None:
+    session = await service.create_session(actor_id=user.id, project_id=project.id)
+    long = "주문 모델에 배송 상태를 추가하고 결제 완료 뒤에만 배송을 시작하게 해 줘\n두 번째 줄"
+    await service.send_message(
+        actor_id=user.id, session_id=session.id, text=long, request_id=uuid4()
+    )
+
+    renamed = await service.get_session(actor_id=user.id, session_id=session.id)
+    assert renamed.title.endswith("…")
+    assert len(renamed.title) == 40
+    assert "두 번째 줄" not in renamed.title
+
+
+async def test_given_title_is_kept(
+    scope: AgentScope, service: AgentService, user: User, project: Project
+) -> None:
+    session = await service.create_session(actor_id=user.id, project_id=project.id, title="배송")
+    await service.send_message(
+        actor_id=user.id, session_id=session.id, text="a", request_id=uuid4()
+    )
+    kept = await service.get_session(actor_id=user.id, session_id=session.id)
+    assert kept.title == "배송"
