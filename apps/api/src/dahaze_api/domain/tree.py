@@ -29,6 +29,10 @@ FOLDER_PATH_PATTERN = re.compile(rf"^(?:/{_SEGMENT})+$")
 FILE_PATH_PATTERN = re.compile(rf"^(?:/{_SEGMENT})*/{_SEGMENT}\.rspdl$")
 
 
+class InvalidPattern(ValueError):
+    """grep 패턴을 컴파일할 수 없다."""
+
+
 class ChangeKind(StrEnum):
     ADD = "add"
     MODIFY = "modify"

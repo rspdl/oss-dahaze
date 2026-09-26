@@ -126,6 +126,12 @@ class TreeService:
         snap = await self._snapshot(project_id)
         return self._file(snap, path)
 
+    async def files(self, *, actor_id: UUID, project_id: UUID) -> list[TreeFile]:
+        """작업 트리의 살아 있는 파일 전부. 컴파일·검색의 입력이다."""
+        await self._require_member(actor_id, project_id)
+        snap = await self._snapshot(project_id)
+        return [snap.live[path] for path in sorted(snap.live)]
+
     async def changes(self, *, actor_id: UUID, project_id: UUID) -> list[TreeFile]:
         """commit 안 된 변경이 있는 파일. 지워진 파일도 포함한다."""
         await self._require_member(actor_id, project_id)

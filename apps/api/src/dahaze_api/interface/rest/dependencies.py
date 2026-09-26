@@ -21,6 +21,8 @@ from dahaze_api.application.auth import (
 from dahaze_api.application.authoring import DraftRspdlDocument
 from dahaze_api.application.planning import PlanningService
 from dahaze_api.application.planning_ai import PlanningAiService
+from dahaze_api.application.tree import TreeService
+from dahaze_api.application.tree_inspection import TreeInspector
 from dahaze_api.application.workspace import WorkspaceService
 from dahaze_api.config import Settings, get_settings
 from dahaze_api.domain.entities import User
@@ -44,9 +46,12 @@ from dahaze_api.infrastructure.db.repositories import (
     SqlUserRepository,
 )
 from dahaze_api.infrastructure.db.session import get_session
+from dahaze_api.infrastructure.db.tree_repository import SqlTreeRepository
 from dahaze_api.infrastructure.llm import LlmNotConfigured, OpenAiLlm
 from dahaze_api.infrastructure.llm.grammars import load_rspdl_grammar
 from dahaze_api.infrastructure.rspdl import LocalRspdlCompiler
+from dahaze_api.infrastructure.rspdl.indexer import LocalRspdlIndexer
+from dahaze_api.infrastructure.text import Re2PatternMatcher
 
 SESSION_COOKIE = "dahaze_session"
 
@@ -153,6 +158,26 @@ def get_planning_ai(workspace: Workspace, session: DbSession) -> PlanningAiServi
 
 
 PlanningAi = Annotated[PlanningAiService, Depends(get_planning_ai)]
+
+
+def get_tree(session: DbSession) -> TreeService:
+    return TreeService(projects=SqlProjectRepository(session), tree=SqlTreeRepository(session))
+
+
+Tree = Annotated[TreeService, Depends(get_tree)]
+
+
+def get_tree_inspector(tree: Tree, analyzer: Analyzer, compiler: Compiler) -> TreeInspector:
+    return TreeInspector(
+        tree=tree,
+        analyzer=analyzer,
+        indexer=LocalRspdlIndexer(),
+        matcher=Re2PatternMatcher(),
+        runtime=compiler.runtime,
+    )
+
+
+Inspector = Annotated[TreeInspector, Depends(get_tree_inspector)]
 
 
 def get_project_compiler(

@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
@@ -26,6 +26,7 @@ from dahaze_api.domain.planning import DecisionResolutionOutcome
 from dahaze_api.domain.rspdl import (
     AnalysisOutcome,
     RspdlEditOutcome,
+    RspdlIndex,
     RspdlRuntime,
     RspdlSource,
 )
@@ -564,3 +565,21 @@ class TreeRepositoryPort(Protocol):
         ...
 
     async def get_commit(self, commit_id: UUID) -> Commit | None: ...
+
+
+class RspdlIndexerPort(Protocol):
+    """컴파일 결과에서 심볼과 진단을 읽는다.
+
+    IR 모양은 `0.x` 동안 바뀌므로 (ADR-0003) 읽는 코드를 `infrastructure/rspdl/` 에 둔다.
+    rspdl 을 올릴 때 고칠 곳이 그 디렉터리 하나로 모인다. 결과를 재작성하지 않고 읽기만 한다.
+    """
+
+    def index(self, result: Mapping[str, Any]) -> RspdlIndex: ...
+
+
+class PatternMatcherPort(Protocol):
+    """grep 의 정규식 엔진. 사용자와 AI 가 넣은 패턴을 실행하므로 선형 시간이어야 한다."""
+
+    def compile(self, pattern: str) -> Callable[[str], bool]:
+        """줄 하나가 패턴에 맞는지 보는 함수. 잘못된 패턴이면 `InvalidPattern`."""
+        ...

@@ -9,6 +9,7 @@ ADR-0001 은 어느 계층이 무엇을 import 할 수 있는지 정한다. 그 
 1. `rspdl` 은 `infrastructure/rspdl/` 안에서만 import 한다.
    RSPDL 버전 변경의 폭발 반경을 한 디렉터리로 묶기 위해서다 (ADR-0002).
 2. `openai` 는 `infrastructure/llm/` 안에서만 import 한다.
+   `re2` 는 `infrastructure/text/` 안에서만 import 한다.
 3. `domain/` 은 순수해야 한다. 다른 계층도, 프레임워크도 import 하지 않는다.
 4. `application/` 은 `infrastructure/` 와 `interface/` 를 import 하지 않는다.
    의존은 port 를 통해서만 흐른다.
@@ -31,6 +32,7 @@ API_SRC = Path(__file__).resolve().parent.parent / "apps" / "api" / "src" / "dah
 CONFINED_PACKAGES: dict[str, str] = {
     "rspdl": "infrastructure/rspdl",
     "openai": "infrastructure/llm",
+    "re2": "infrastructure/text",
 }
 
 # 계층이 import 할 수 없는 내부 계층.

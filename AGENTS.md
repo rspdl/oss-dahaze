@@ -20,6 +20,7 @@
 
 - `import rspdl` → `apps/api/src/dahaze_api/infrastructure/rspdl/` 안에서만
 - `import openai` → `infrastructure/llm/` 안에서만
+- `import re2` → `infrastructure/text/` 안에서만
 - `domain/` 은 다른 계층도 프레임워크(fastapi·sqlalchemy·pydantic 등)도 import하지 않는다
 - `application/` 은 `infrastructure/`·`interface/` 를 import하지 않는다. port를 통해서만 흐른다
 

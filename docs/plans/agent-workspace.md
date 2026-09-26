@@ -38,6 +38,8 @@ SVN과 같은 구조다. 프로젝트마다 **공유 작업 트리 하나**가 �
   오류 종료에서도 같다.
 - MCP 클라이언트는 `unlock` 도구로 푼다. 호출을 잊거나 연결이 끊기는 경우를 위해
   타임아웃도 적용한다.
+- MCP 전송은 stateless라 세션 ID가 없다. MCP 잠금 보유자는 토큰 사용자 단위(`mcp:<user_id>`)다.
+  같은 사용자의 MCP 클라이언트끼리는 잠금을 공유하고, 다른 사용자의 잠금은 풀 수 없다.
 - 잠금은 그 세션의 마지막 쓰기부터 10분이 지나면 만료된다. 만료되면 잠금을 풀고 그 AI 작업을
   중단한다. 사용자 승인을 기다리는 동안은 시간을 세지 않는다.
 - 다른 세션이 잠근 파일에 쓰려 하면 도구가 잠금 보유자와 함께 오류를 돌려준다. AI는
@@ -57,14 +59,16 @@ SVN과 같은 구조다. 프로젝트마다 **공유 작업 트리 하나**가 �
 | `ls` | `path?` (기본 `/`) | 폴더·파일 트리. 파일마다 commit 안 된 변경 여부, 잠금 보유자 |
 | `read` | `path` | 문서 전문과 줄 수 |
 | `search` | `query`, `kind?` | 일치한 심볼 목록, 심볼을 읽지 못한 파일 목록 |
-| `grep` | `pattern`, `path_glob?` | `path:line: 줄 내용` 목록. 상한이 있으며 넘으면 잘렸다고 표시 |
+| `grep` | `pattern`, `path_glob?` | `path:line: 줄 내용` 목록. 상한 200개, 넘으면 `truncated`. 정규식은 RE2 |
 | `compile` | 없음 | 파일별 진단 |
 
 **search**
 
 - 작업 트리 전체를 컴파일한 IR에서 찾는다. 컴파일 캐시(ADR-0003)를 그대로 쓴다.
-- `query`는 심볼 ID와 이름에 부분 일치한다. `kind`는 IR이 주는 종류
-  (`model`·`field`·`enum`·`role`·`action`·`policy`·`constraint`)로 거른다.
+- `query`는 심볼 ID와 이름에 부분 일치한다(대소문자 무시). `kind`는 IR의 컬렉션 경로
+  (`models`, `models.fields`, `roles`, `actions`, `policies`, `screens` …)로 거른다.
+- 심볼은 IR에서 `id`와 `span`을 가진 노드 전부다. 종류 목록을 dahaze가 따로 정의하지 않으므로
+  rspdl이 종류를 추가해도 검색 코드를 고치지 않는다. 읽는 코드는 `infrastructure/rspdl/indexer.py`에 있다.
 - 결과 항목: `id`, `kind`, `name`(있을 때), `path`, 시작·끝 줄.
 - 구문 오류로 `module`이 비는 파일은 `unparsed: [{path, error_count}]`로 함께 돌려준다.
   AI가 "심볼이 없다"와 "읽지 못했다"를 구분하게 하려는 것이다.
@@ -159,7 +163,9 @@ SVN과 같은 구조다. 프로젝트마다 **공유 작업 트리 하나**가 �
   (`previous_response_id`)에 기대지 않는다.
 - **에이전트 오케스트레이션**: 우선 직접 구현한다. 잠금·승인 대기·100회 상한·재개의 복잡도를
   보고 LangChain(LangGraph) 도입을 다시 판단한다.
-- **도입 후보(미확정)**: `google-re2`(grep ReDoS 방지), `@codemirror/merge`(diff),
+- **grep 정규식 엔진**: `google-re2`. 선형 시간이라 사용자·AI 패턴이 워커 스레드를 멈추지 못한다.
+  `import re2`는 `infrastructure/text/` 안에서만 한다.
+- **도입 후보(미확정)**: `@codemirror/merge`(diff),
   `@headless-tree/react`(파일 트리), `react-markdown`+`remark-gfm`(채팅). 해당 단계에서 확정한다.
 
 ## 기존 데이터 초기화

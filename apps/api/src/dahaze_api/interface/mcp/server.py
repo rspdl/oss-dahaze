@@ -26,6 +26,8 @@ from starlette.routing import Route
 from dahaze_api.application.analysis import AnalyzeWorkspace
 from dahaze_api.application.planning import PlanningService
 from dahaze_api.application.planning_ai import PlanningAiService
+from dahaze_api.application.tree import TreeService
+from dahaze_api.application.tree_inspection import TreeInspector
 from dahaze_api.application.workspace import WorkspaceService
 from dahaze_api.domain.entities import (
     Document,
@@ -47,12 +49,24 @@ from dahaze_api.infrastructure.db.repositories import (
     SqlUserRepository,
 )
 from dahaze_api.infrastructure.db.session import get_session_factory
+from dahaze_api.infrastructure.db.tree_repository import SqlTreeRepository
+from dahaze_api.infrastructure.rspdl.indexer import LocalRspdlIndexer
+from dahaze_api.infrastructure.text import Re2PatternMatcher
 from dahaze_api.interface.mcp.auth import (
     BearerAuthMiddleware,
     McpAuthError,
     authenticated_user_id,
 )
 from dahaze_api.interface.rest.dependencies import get_compiler, get_session_tokens
+from dahaze_api.interface.rest.tree_schemas import (
+    commit_out,
+    compile_out,
+    entry_out,
+    file_out,
+    folder_out,
+    grep_out,
+    search_out,
+)
 
 MCP_PATH = "/mcp"
 
@@ -98,6 +112,17 @@ class _Actor:
     analyzer: AnalyzeWorkspace
     planning: PlanningService
     planning_ai: PlanningAiService
+    tree: TreeService
+    inspector: TreeInspector
+
+    @property
+    def lock_holder(self) -> str:
+        """MCP 쓰기의 잠금 보유자.
+
+        전송이 stateless 라 MCP 세션 ID 가 없다. 사용자 단위로 묶으므로 같은 사용자의 MCP
+        클라이언트끼리는 잠금을 공유하고, 다른 사용자의 잠금은 풀 수 없다.
+        """
+        return f"mcp:{self.user.id}"
 
 
 def _project_payload(project: Project) -> dict[str, Any]:
@@ -574,6 +599,173 @@ class McpTools:
                 )
             )
 
+    # --------------------------------------------------------- 작업 트리 (ADR-0008)
+
+    async def tree_ls(
+        self, headers: Mapping[str, str] | None, *, project_id: str, path: str = "/"
+    ) -> list[dict[str, Any]]:
+        async with self._acting(headers) as actor:
+            entries = await actor.tree.ls(
+                actor_id=actor.user.id, project_id=_uuid(project_id, field="project_id"), path=path
+            )
+            return [entry_out(e).model_dump(mode="json") for e in entries]
+
+    async def tree_read(
+        self, headers: Mapping[str, str] | None, *, project_id: str, path: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            file = await actor.tree.read(
+                actor_id=actor.user.id, project_id=_uuid(project_id, field="project_id"), path=path
+            )
+            return file_out(file).model_dump(mode="json")
+
+    async def tree_search(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        query: str = "",
+        kind: str | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            result = await actor.inspector.search(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                query=query,
+                kind=kind,
+            )
+            return search_out(result).model_dump(mode="json")
+
+    async def tree_grep(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        pattern: str,
+        path_glob: str | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            result = await actor.inspector.grep(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                pattern=pattern,
+                path_glob=path_glob,
+            )
+            return grep_out(result).model_dump(mode="json")
+
+    async def tree_compile(
+        self, headers: Mapping[str, str] | None, *, project_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            result = await actor.inspector.compile(
+                actor_id=actor.user.id, project_id=_uuid(project_id, field="project_id")
+            )
+            return compile_out(result).model_dump(mode="json")
+
+    async def tree_mkdir(
+        self, headers: Mapping[str, str] | None, *, project_id: str, parent: str, name: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            folder = await actor.tree.mkdir(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                parent=parent,
+                name=name,
+            )
+            return folder_out(folder).model_dump(mode="json")
+
+    async def tree_add(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        parent: str,
+        name: str,
+        content: str,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            file = await actor.tree.add(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                parent=parent,
+                name=name,
+                content=content,
+                holder=actor.lock_holder,
+            )
+            return file_out(file).model_dump(mode="json")
+
+    async def tree_edit(
+        self, headers: Mapping[str, str] | None, *, project_id: str, path: str, content: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            file = await actor.tree.edit(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                path=path,
+                content=content,
+                holder=actor.lock_holder,
+            )
+            return file_out(file).model_dump(mode="json")
+
+    async def tree_mv(
+        self, headers: Mapping[str, str] | None, *, project_id: str, source: str, target: str
+    ) -> list[dict[str, Any]]:
+        async with self._acting(headers) as actor:
+            moved = await actor.tree.move(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                source=source,
+                target=target,
+                holder=actor.lock_holder,
+            )
+            return [file_out(f).model_dump(mode="json") for f in moved]
+
+    async def tree_delete(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        path: str,
+        recursive: bool = False,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            deleted = await actor.tree.delete(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                path=path,
+                recursive=recursive,
+                holder=actor.lock_holder,
+            )
+            return {"deleted_files": deleted}
+
+    async def tree_commit(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        paths: list[str],
+        message: str,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            commit = await actor.tree.commit(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                paths=paths,
+                message=message,
+                holder=actor.lock_holder,
+            )
+            return commit_out(commit).model_dump(mode="json")
+
+    async def tree_unlock(
+        self, headers: Mapping[str, str] | None, *, project_id: str | None = None
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            released = await actor.tree.release_locks(
+                holder=actor.lock_holder,
+                project_id=None if project_id is None else _uuid(project_id, field="project_id"),
+            )
+            return {"released": released}
+
     # ------------------------------------------------------------------- 내부
 
     @asynccontextmanager
@@ -595,6 +787,9 @@ class McpTools:
                 compiler=self._compiler,
             )
             analyzer = AnalyzeWorkspace(compiler=self._compiler, cache=SqlAnalysisCache(session))
+            tree = TreeService(
+                projects=SqlProjectRepository(session), tree=SqlTreeRepository(session)
+            )
             yield _Actor(
                 user=user,
                 workspace=workspace,
@@ -609,6 +804,14 @@ class McpTools:
                     workspace=workspace,
                     planning=SqlPlanningRepository(session),
                     jobs=SqlPlanningAiJobRepository(session),
+                ),
+                tree=tree,
+                inspector=TreeInspector(
+                    tree=tree,
+                    analyzer=analyzer,
+                    indexer=LocalRspdlIndexer(),
+                    matcher=Re2PatternMatcher(),
+                    runtime=self._compiler.runtime,
                 ),
             )
 
@@ -1001,6 +1204,148 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         return await tools.get_project_handoff(
             ctx.headers, project_id=project_id, snapshot_version=snapshot_version
         )
+
+    # ------------------------------------------------------ 작업 트리 (ADR-0008)
+    # 앱 안의 AI 와 같은 도구 세트다. 경로는 `/` 로 시작하는 프로젝트 루트 기준이다.
+
+    @mcp.tool(
+        name="ls",
+        description=(
+            "프로젝트 작업 트리의 폴더와 파일을 `path` 아래 전부 나열한다. 파일마다 commit 안 된 "
+            "변경 종류(`change`)와 잠근 작업(`locked_by`)이 붙는다. 경로는 `/` 로 시작한다."
+        ),
+    )
+    async def ls(project_id: str, ctx: Context, path: str = "/") -> list[dict[str, Any]]:
+        return await tools.tree_ls(ctx.headers, project_id=project_id, path=path)
+
+    @mcp.tool(
+        name="read",
+        description="파일 하나의 원문 전체를 읽는다. 편집하기 전에 반드시 먼저 읽는다.",
+    )
+    async def read(project_id: str, path: str, ctx: Context) -> dict[str, Any]:
+        return await tools.tree_read(ctx.headers, project_id=project_id, path=path)
+
+    @mcp.tool(
+        name="search",
+        description=(
+            "작업 트리 전체를 컴파일해 심볼(모델·필드·역할·행동·정책·화면 등)을 찾는다. `query` 는 "
+            "심볼 ID(예: `inventory.item`)나 이름(예: `재고 항목`)에 부분 일치한다. `kind` 는 "
+            "IR 컬렉션 경로(예: `models`, `models.fields`, `roles`, `actions`, `policies`)로 "
+            "거른다. 결과마다 파일 경로와 줄 범위가 있으므로 `read` 로 이어서 읽는다. 원문 "
+            "텍스트는 찾지 않는다 — 텍스트는 `grep` 을 쓴다. `unparsed` 에 있는 파일은 구문 "
+            "오류로 심볼을 읽지 못한 파일이므로, 거기 있는 심볼은 결과에 없다."
+        ),
+    )
+    async def search(
+        project_id: str, ctx: Context, query: str = "", kind: str | None = None
+    ) -> dict[str, Any]:
+        return await tools.tree_search(ctx.headers, project_id=project_id, query=query, kind=kind)
+
+    @mcp.tool(
+        name="grep",
+        description=(
+            "원문을 줄 단위 RE2 정규식으로 찾는다. `path_glob` 으로 파일을 거를 수 있고 `*` 는 "
+            "`/` 도 넘는다. 심볼을 찾을 때는 `search` 가 정확하다."
+        ),
+    )
+    async def grep(
+        project_id: str, pattern: str, ctx: Context, path_glob: str | None = None
+    ) -> dict[str, Any]:
+        return await tools.tree_grep(
+            ctx.headers, project_id=project_id, pattern=pattern, path_glob=path_glob
+        )
+
+    @mcp.tool(
+        name="compile",
+        description=(
+            "작업 트리의 모든 파일을 함께 컴파일해 진단을 돌려준다. 진단마다 파일 경로와 시작·끝 "
+            "줄·열이 있다. 진단 원본(`diagnostic`)을 요약하거나 지어내지 말고 그대로 전한다. "
+            "파일을 고친 뒤에는 이 도구로 확인한다."
+        ),
+    )
+    async def compile(project_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.tree_compile(ctx.headers, project_id=project_id)
+
+    @mcp.tool(
+        name="mkdir",
+        description="`parent` 폴더 아래에 `name` 폴더를 만든다. 루트는 `/` 다.",
+    )
+    async def mkdir(project_id: str, parent: str, name: str, ctx: Context) -> dict[str, Any]:
+        return await tools.tree_mkdir(ctx.headers, project_id=project_id, parent=parent, name=name)
+
+    @mcp.tool(
+        name="add",
+        description=(
+            "`parent` 폴더 아래에 `name` 파일을 원문 `content` 로 만든다. 이름은 `.rspdl` 로 "
+            "끝나야 한다. 작업 트리에 바로 저장되고 이 파일은 잠긴다. 작업을 마치면 `unlock` 한다."
+        ),
+    )
+    async def add(
+        project_id: str, parent: str, name: str, content: str, ctx: Context
+    ) -> dict[str, Any]:
+        return await tools.tree_add(
+            ctx.headers, project_id=project_id, parent=parent, name=name, content=content
+        )
+
+    @mcp.tool(
+        name="edit",
+        description=(
+            "파일 원문을 `content` 전체로 바꾼다. 부분 수정이 아니므로 `read` 로 읽은 원문에서 "
+            "고친 전문을 보낸다. 작업 트리에 바로 저장되고 이 파일은 잠긴다. 다른 작업이 잠근 "
+            "파일이면 실패하므로 사람에게 알리고 기다린다."
+        ),
+    )
+    async def edit(project_id: str, path: str, content: str, ctx: Context) -> dict[str, Any]:
+        return await tools.tree_edit(ctx.headers, project_id=project_id, path=path, content=content)
+
+    @mcp.tool(
+        name="mv",
+        description=(
+            "파일이나 폴더를 `target` 전체 경로로 옮긴다. 파일 ID 가 유지되어 이력이 이어진다. "
+            "폴더를 옮기면 안의 파일이 모두 잠긴다."
+        ),
+    )
+    async def mv(project_id: str, source: str, target: str, ctx: Context) -> list[dict[str, Any]]:
+        return await tools.tree_mv(ctx.headers, project_id=project_id, source=source, target=target)
+
+    @mcp.tool(
+        name="delete",
+        description=(
+            "파일이나 폴더를 지운다. 비어 있지 않은 폴더는 `recursive` 없이는 실패한다. 안의 "
+            "항목까지 지우려면 사람에게 확인받은 뒤 `recursive: true` 로 다시 부른다."
+        ),
+    )
+    async def delete(
+        project_id: str, path: str, ctx: Context, recursive: bool = False
+    ) -> dict[str, Any]:
+        return await tools.tree_delete(
+            ctx.headers, project_id=project_id, path=path, recursive=recursive
+        )
+
+    @mcp.tool(
+        name="commit",
+        description=(
+            "고른 파일의 commit 안 된 변경을 이력으로 남긴다. 메시지는 필수다. 옮기거나 지운 "
+            "파일은 옛 경로로도 고를 수 있다. 다른 작업이 잠근 파일은 넣을 수 없다."
+        ),
+    )
+    async def commit(
+        project_id: str, paths: list[str], message: str, ctx: Context
+    ) -> dict[str, Any]:
+        return await tools.tree_commit(
+            ctx.headers, project_id=project_id, paths=paths, message=message
+        )
+
+    @mcp.tool(
+        name="unlock",
+        description=(
+            "이 사용자의 MCP 작업이 잡은 파일 잠금을 푼다. 작업을 마치고 사람에게 결과를 "
+            "알리기 전에 반드시 부른다. 부르지 않으면 마지막 쓰기부터 10분 동안 사람이 그 "
+            "파일을 저장할 수 없다. `project_id` 를 비우면 모든 프로젝트의 잠금을 푼다."
+        ),
+    )
+    async def unlock(ctx: Context, project_id: str | None = None) -> dict[str, Any]:
+        return await tools.tree_unlock(ctx.headers, project_id=project_id)
 
     return mcp
 

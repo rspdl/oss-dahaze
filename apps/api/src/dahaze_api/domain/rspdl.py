@@ -117,3 +117,70 @@ def project_source_hash(sources: Sequence[RspdlSource]) -> str:
     빈 값으로 고정한다. 적용 경쟁 검사가 별도의 해시 구현과 어긋나지 않게 한다.
     """
     return workspace_hash(sources, locale="")
+
+
+@dataclass(frozen=True, slots=True)
+class TextPosition:
+    """원문 위치. 줄과 열은 1부터 세고, 열은 유니코드 코드 포인트 단위다."""
+
+    line: int
+    column: int
+
+
+def byte_offset_to_position(text: str, offset: int) -> TextPosition:
+    """UTF-8 byte 오프셋 → 줄·열.
+
+    RSPDL 의 span 은 UTF-8 byte 오프셋이다 (ADR-0006). 한국어 원문에서 문자 인덱스로 쓰면
+    위치가 어긋난다. 문자 중간이나 범위 밖을 가리키면 던지지 않고 가장 가까운 앞쪽 경계로
+    자른다 — 위치 하나 때문에 진단 목록 전체를 못 보여주는 것보다 낫다.
+    """
+    encoded = text.encode("utf-8")
+    offset = max(0, min(offset, len(encoded)))
+    # 문자 중간이면 앞쪽 문자 경계로 옮긴다. UTF-8 연속 바이트는 0b10xxxxxx 이다.
+    while offset > 0 and offset < len(encoded) and encoded[offset] & 0xC0 == 0x80:
+        offset -= 1
+    before = encoded[:offset].decode("utf-8")
+    line = before.count("\n") + 1
+    column = len(before) - (before.rfind("\n") + 1) + 1
+    return TextPosition(line=line, column=column)
+
+
+@dataclass(frozen=True, slots=True)
+class RspdlSymbol:
+    """IR 에서 `id` 와 `span` 을 가진 노드 하나.
+
+    `kind` 는 IR 의 컬렉션 경로다 (`models`, `models.fields`, `screens` …). dahaze 가 종류
+    목록을 따로 정의하지 않으므로, 컴파일러가 종류를 추가해도 그대로 검색된다.
+    """
+
+    id: str
+    kind: str
+    name: str | None
+    path: str
+    span_start: int
+    span_end: int
+
+
+@dataclass(frozen=True, slots=True)
+class UnparsedFile:
+    """모듈을 만들지 못해 심볼을 읽을 수 없는 파일."""
+
+    path: str
+    error_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class FileDiagnostic:
+    """파일 하나에 붙은 진단. `diagnostic` 은 컴파일러가 준 그대로다."""
+
+    path: str
+    diagnostic: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class RspdlIndex:
+    """컴파일 결과에서 읽어 낸 심볼과 진단."""
+
+    symbols: tuple[RspdlSymbol, ...]
+    unparsed: tuple[UnparsedFile, ...]
+    diagnostics: tuple[FileDiagnostic, ...]
