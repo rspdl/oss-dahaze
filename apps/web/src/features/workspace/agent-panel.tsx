@@ -56,6 +56,7 @@ import {
   StopIcon,
   WarningIcon,
 } from '@/shared/ui/icons'
+import { Markdown } from '@/shared/ui/markdown'
 import { changeStats, resultSummary, toAgentRows, toolTitle, type AgentRow } from './agent-model'
 import { DiffStat } from './diff-view'
 import { useWorkspaceStore } from './workspace-store'
@@ -331,7 +332,7 @@ function Conversation({ sessionId }: { sessionId: string }) {
           ))}
           {partial !== undefined && partial !== '' ? (
             <li>
-              <p className="text-body whitespace-pre-wrap text-text">{partial}</p>
+              <Markdown>{partial}</Markdown>
             </li>
           ) : null}
         </ol>
@@ -387,7 +388,7 @@ function Row({
     )
   }
   if (row.kind === 'assistant') {
-    return <p className="text-body whitespace-pre-wrap text-text">{row.text}</p>
+    return <Markdown>{row.text}</Markdown>
   }
 
   const stats = row.result === null ? null : changeStats(row.result.changes)
