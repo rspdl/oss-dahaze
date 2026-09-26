@@ -106,7 +106,8 @@ SVN과 같은 구조다. 프로젝트마다 **공유 작업 트리 하나**가 �
 ### 나중에
 
 - `fetch(symbol_id)`: 심볼의 원문 구간과 연결 심볼 ID를 돌려준다. IR에 역참조가 없어서
-  rspdl-core에 역참조 출력을 요청했고, 반영된 뒤 만든다.
+  rspdl-core에 역참조 출력을 요청했고([rspdl-core#41](https://github.com/rspdl/rspdl-core/issues/41)),
+  반영된 뒤 만든다.
 
 ## 에이전트 실행
 
