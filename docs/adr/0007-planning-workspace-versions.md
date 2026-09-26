@@ -2,8 +2,8 @@
 id: planning-workspace-versions
 title: Planning Workspace Versions
 type: adr
-status: accepted
-version: "2"
+status: superseded
+version: "1"
 summary: Separates editable planning context, compiled candidate changes, accepted source revisions, and immutable whole-project handoff snapshots.
 topics:
   - storage
@@ -12,12 +12,15 @@ topics:
 related:
   - document-storage-model
   - mcp-and-llm-authoring
-last_updated: "2026-09-27"
+last_updated: "2026-09-26"
+superseded_by: working-tree-commits-and-locks
 owners:
   - rspdl-maintainers
 ---
 
 # Planning Workspace Versions
+
+> [ADR-0008](0008-working-tree-commits-and-locks.md)이 이 결정을 대체한다. 초안 보관·명시적 apply·전달본 스냅샷은 공유 작업 트리와 commit으로 바뀌었다.
 
 ## 배경
 
@@ -50,8 +53,6 @@ AI 작업은 enqueue 시점의 기획 revision, 기준 원문 revision/hash, 선
 compiler stable ID를 frozen context로 보관한다. source draft를 고쳐 만든 초안은 그 draft의
 원래 기준 revision/hash를 이어받는다. 작업 중 확정 원문이나 기획 상태가 바뀌면 결과를 버리지
 않고 stale 검토 결과로 남기며, 최신 상태 위에 적용 가능한 것처럼 표시하지 않는다.
-초기에는 한 프로젝트의 AI 작업을 하나씩 진행한다. 이는 AI 요청 사이의 동시 실행을 줄이는
-범위 결정이며, 다른 탭이나 직접 편집으로 기준이 바뀌는 경우의 revision 검사는 유지한다.
 
 적용은 별도의 명시적 사용자 요청이다. 기준이 달라졌으면 충돌을 반환한다. compiler의
 error 진단이 있으면 원문은 그대로 두고 미적용 상태와 원래 결과를 정상 응답으로 반환한다.
