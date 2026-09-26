@@ -22,6 +22,7 @@ import {
   FolderOpen,
   FolderPlus,
   FlowArrow,
+  GearSix,
   GitCommit,
   Info,
   LockSimple,
@@ -120,6 +121,7 @@ export const TableIcon = bold(Table, "TableIcon")
 export const HierarchyIcon = bold(TreeStructure, "HierarchyIcon")
 export const FlowIcon = bold(FlowArrow, "FlowIcon")
 export const SlidersIcon = bold(SlidersHorizontal, "SlidersIcon")
+export const SettingsIcon = bold(GearSix, "SettingsIcon")
 export const PanelLeftIcon = bold(SidebarSimple, "PanelLeftIcon")
 
 /** 오른쪽 패널 여닫기. 왼쪽 패널 아이콘을 좌우로 뒤집는다. */

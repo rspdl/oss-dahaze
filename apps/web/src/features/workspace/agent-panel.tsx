@@ -2,23 +2,32 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
+  getGetAgentSettingsQueryKey,
   getListAgentItemsQueryKey,
   getListAgentSessionsQueryKey,
   getListAgentTurnsQueryKey,
   useCancelAgentTurn,
   useCreateAgentSession,
+  useGetAgentSettings,
   useListAgentItems,
   useListAgentSessions,
   useListAgentTurns,
   useResolveAgentApproval,
   useSendAgentMessage,
+  useUpdateAgentSettings,
   type AgentItemResponse,
+  type AgentSettingsBody,
   type AgentSessionResponse,
   type AgentTurnResponse,
 } from '@dahaze/api-client'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Button,
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
   EmptyState,
   ErrorState,
   Select,
@@ -42,6 +51,7 @@ import {
   ErrorIcon,
   PlusIcon,
   SendIcon,
+  SettingsIcon,
   SpinnerIcon,
   StopIcon,
   WarningIcon,
@@ -116,6 +126,7 @@ export function AgentPanel({ projectId }: { projectId: string }) {
           </TooltipTrigger>
           <TooltipContent>새 대화</TooltipContent>
         </Tooltip>
+        <AgentSettingsMenu />
       </header>
 
       {sessions.isPending ? (
@@ -139,6 +150,61 @@ export function AgentPanel({ projectId }: { projectId: string }) {
         <Conversation key={session.id} sessionId={session.id} />
       )}
     </aside>
+  )
+}
+
+/**
+ * AI 설정. 사용자 단위라 프로젝트를 바꿔도 그대로다.
+ *
+ * 폴더 재귀 삭제 자동 승인을 켜면 AI 가 비어 있지 않은 폴더를 지울 때 멈춰 묻지 않는다.
+ * 사람이 파일 트리에서 지울 때의 확인 대화상자와는 관계없다.
+ */
+function AgentSettingsMenu() {
+  const queryClient = useQueryClient()
+  const settings = useGetAgentSettings<AgentSettingsBody>()
+  const update = useUpdateAgentSettings()
+  const checked = settings.data?.auto_approve_recursive_delete ?? false
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm" aria-label="AI 설정">
+              <SettingsIcon />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>AI 설정</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuLabel className="text-caption text-text-subtle">AI 설정 · 내 계정 전체</DropdownMenuLabel>
+        <DropdownMenuCheckboxItem
+          checked={checked}
+          disabled={settings.isPending || settings.isError || update.isPending}
+          onCheckedChange={(next) =>
+            update.mutate(
+              { data: { auto_approve_recursive_delete: next } },
+              {
+                onSuccess: (saved) => {
+                  queryClient.setQueryData(getGetAgentSettingsQueryKey(), saved)
+                  toast.success(next ? '폴더를 묻지 않고 지우게 했어요' : '폴더를 지우기 전에 묻게 했어요')
+                },
+                onError: (error) => toast.error('설정을 바꾸지 못했어요', { description: errorMessage(error) }),
+              },
+            )
+          }
+          className="items-start"
+        >
+          <span className="grid gap-0.5">
+            <span className="text-body-sm text-text">폴더 삭제를 묻지 않기</span>
+            <span className="text-caption text-text-muted">
+              AI가 안에 항목이 있는 폴더를 지울 때 승인을 기다리지 않고 바로 지워요.
+            </span>
+          </span>
+        </DropdownMenuCheckboxItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

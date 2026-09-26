@@ -36,6 +36,7 @@ export {
   RefreshIcon,
   SearchIcon,
   SendIcon,
+  SettingsIcon,
   ShieldIcon,
   SlidersIcon,
   SparkleIcon,
