@@ -44,6 +44,7 @@ from dahaze_api.infrastructure.db.repositories import (
     SqlUserRepository,
 )
 from dahaze_api.infrastructure.db.session import get_session_factory
+from dahaze_api.infrastructure.llm.prompts import tree_layout_guide
 from dahaze_api.interface.mcp.auth import (
     BearerAuthMiddleware,
     McpAuthError,
@@ -62,7 +63,7 @@ from dahaze_api.interface.rest.tree_schemas import (
 
 MCP_PATH = "/mcp"
 
-INSTRUCTIONS = """\
+_BASE_INSTRUCTIONS = """\
 dahaze 는 RSPDL 로 쓴 제품 기획을 프로젝트 작업 트리에 저장하고, 컴파일러로 검증하는 워크스페이스다.
 
 - 파일 원문이 유일한 진실이다. 컴파일 결과는 언제든 다시 만들 수 있는 파생물이다.
@@ -70,15 +71,20 @@ dahaze 는 RSPDL 로 쓴 제품 기획을 프로젝트 작업 트리에 저장�
   사람에게 보여라.
 - 모든 도구는 토큰이 지목한 사용자 권한으로 동작한다. 그 사용자가 멤버가 아닌 프로젝트는
   존재하지 않는 것처럼 보인다.
-- 파일은 프로젝트 작업 트리 안에 있다. `ls`·`read`·`search`·`grep` 으로 읽고, `add`·`edit`·`mv`·
-  `delete`·`mkdir` 로 바꾼다. 쓰기는 작업 트리에 바로 저장되고 파일이 잠긴다. 작업을 마치면
+- 파일은 프로젝트 작업 트리 안에 있다. `ls`·`read`·`search`·`fetch`·`grep` 으로 읽고, `add`·`edit`·
+  `mv`·`delete`·`mkdir` 로 바꾼다. 쓰기는 작업 트리에 바로 저장되고 파일이 잠긴다. 작업을 마치면
   `unlock` 한다. 이력은 사람이 요청할 때 `commit` 으로 남긴다.
+- `search` 는 컴파일된 심볼만, `grep` 은 원문 텍스트만 찾는다. 심볼을 바꾸기 전에는 `fetch` 로
+  그 심볼을 가리키는 선언을 확인한다.
 - 파일을 바꾼 뒤에는 `compile` 로 진단을 확인한다.
 - 프로젝트가 없으면 `create_project` 로 만들고, 있으면 `list_projects` 로 골라라. 새로 만들지
   기존 것을 쓸지는 사람에게 물어라.
 - `archive_project`, 비어 있지 않은 폴더의 `delete`(`recursive: true`)는 사람이 명시적으로
   요청했을 때만 쓴다.
 """
+
+# 파일 구성 규칙과 쓰기 전 판단 절차는 앱 AI 프롬프트와 같은 원문을 쓴다 (ADR-0005).
+INSTRUCTIONS = f"{_BASE_INSTRUCTIONS}\n{tree_layout_guide()}\n"
 
 # 도구 호출 하나가 쓸 DB 세션의 수명을 여는 함수. 테스트가 자기 세션을 밀어 넣는 지점이다.
 SessionScope = Callable[[], AbstractAsyncContextManager[AsyncSession]]
@@ -706,7 +712,8 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         name="ls",
         description=(
             "프로젝트 작업 트리의 폴더와 파일을 `path` 아래 전부 나열한다. 파일마다 commit 안 된 "
-            "변경 종류(`change`)와 잠근 작업(`locked_by`)이 붙는다. 경로는 `/` 로 시작한다."
+            "변경 종류(`change`)와 잠근 작업(`locked_by`)이 붙는다. 경로는 `/` 로 시작한다. "
+            "새 파일을 만들기 전에 이 도구로 도메인 폴더와 파일 구성을 확인한다."
         ),
     )
     async def ls(project_id: str, ctx: Context, path: str = "/") -> list[dict[str, Any]]:
@@ -724,8 +731,9 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         description=(
             "작업 트리 전체를 컴파일해 심볼(모델·필드·역할·행동·정책·화면 등)을 찾는다. `query` 는 "
             "심볼 ID(예: `inventory.item`)나 이름(예: `재고 항목`)에 부분 일치한다. `kind` 는 "
-            "IR 컬렉션 경로(예: `models`, `models.fields`, `roles`, `actions`, `policies`)로 "
-            "거른다. 결과마다 파일 경로와 줄 범위가 있으므로 `read` 로 이어서 읽는다. 원문 "
+            "IR 컬렉션 경로(예: `module`, `models`, `models.fields`, `roles`, `actions`, "
+            "`policies`)로 거른다. `kind` 를 `module` 로 주면 파일마다 하나인 모듈 목록이 나온다. "
+            "결과마다 파일 경로와 줄 범위가 있으므로 `read` 로 이어서 읽는다. 원문 "
             "텍스트는 찾지 않는다 — 텍스트는 `grep` 을 쓴다. `unparsed` 에 있는 파일은 구문 "
             "오류로 심볼을 읽지 못한 파일이므로, 거기 있는 심볼은 결과에 없다."
         ),
@@ -780,7 +788,11 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
 
     @mcp.tool(
         name="mkdir",
-        description="`parent` 폴더 아래에 `name` 폴더를 만든다. 루트는 `/` 다.",
+        description=(
+            "`parent` 폴더 아래에 `name` 폴더를 만든다. 루트는 `/` 다. 폴더는 도메인 영역"
+            "(회원·예약·결제 등) 단위로 만든다. 같은 영역 폴더가 이미 있으면 만들지 않고 그 "
+            "폴더를 쓴다. 이름에는 한글·영숫자·`_`·`-` 만 쓴다."
+        ),
     )
     async def mkdir(project_id: str, parent: str, name: str, ctx: Context) -> dict[str, Any]:
         return await tools.tree_mkdir(ctx.headers, project_id=project_id, parent=parent, name=name)
@@ -789,7 +801,10 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         name="add",
         description=(
             "`parent` 폴더 아래에 `name` 파일을 원문 `content` 로 만든다. 이름은 `.rspdl` 로 "
-            "끝나야 한다. 작업 트리에 바로 저장되고 이 파일은 잠긴다. 작업을 마치면 `unlock` 한다."
+            "끝나야 한다. 파일 하나가 모듈 하나이므로 `content` 는 모듈 머리말로 시작하고, 모듈 "
+            "ID 는 다른 파일과 겹치지 않아야 한다. 백틱 참조는 같은 파일 안의 선언만 찾으므로, "
+            "다른 파일의 모델을 참조해야 하면 새 파일을 만들지 말고 그 파일을 `edit` 한다. "
+            "작업 트리에 바로 저장되고 이 파일은 잠긴다. 작업을 마치면 `unlock` 한다."
         ),
     )
     async def add(

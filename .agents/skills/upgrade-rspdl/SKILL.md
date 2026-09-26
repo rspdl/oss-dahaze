@@ -74,6 +74,8 @@ python3 scripts/rspdl_recompile_report.py --to 0.2.0 --corpus /tmp/dahaze-corpus
 - 프롬프트의 예제를 새 버전으로 컴파일해 진단이 없는지 본다
 - CHANGELOG 에 문법 추가·변경이 있으면 프롬프트와 EBNF 에 함께 반영한다
 - IR 모양이 바뀌었으면 `infrastructure/rspdl/indexer.py`(심볼 검색)를 점검한다
+- 파일 사이 참조와 모듈 ID 규칙이 바뀌었는지 `tests/test_agent_prompts.py` 로 본다. 바뀌었으면
+  `agent_system_ko.md` 의 tree-layout 구간(파일 구성·쓰기 전 판단)을 고친다
 - `PROMPT_RSPDL_VERSION`, `GRAMMAR_RSPDL_VERSION`, 설치된 컴파일러 버전이 같은지 확인한다
 
 ### 5. wire schema가 바뀌었다면

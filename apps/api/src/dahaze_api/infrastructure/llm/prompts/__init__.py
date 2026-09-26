@@ -46,11 +46,40 @@ def _grammar_reference(*, planning: bool) -> str:
     return f"{heading}{rest}".strip()
 
 
+# `agent_system_ko.md` 안에서 파일 구성 규칙을 감싸는 구분자. MCP 서버 instructions 가 이 구간만
+# 가져다 쓴다. 규칙 원문을 한 곳에 두어 앱 AI 와 MCP 가 같은 문장을 받게 한다.
+_TREE_LAYOUT_START = "<!-- tree-layout -->"
+_TREE_LAYOUT_END = "<!-- /tree-layout -->"
+
+
+def _agent_system() -> str:
+    text = _read("agent_system_ko.md")
+    if _TREE_LAYOUT_START not in text or _TREE_LAYOUT_END not in text:
+        raise RuntimeError("agent_system_ko.md 에 tree-layout 구분자가 없다")
+    markers = {_TREE_LAYOUT_START, _TREE_LAYOUT_END}
+    lines = [line for line in text.splitlines() if line.strip() not in markers]
+    return "\n".join(lines).strip()
+
+
+def tree_layout_guide() -> str:
+    """파일 구성 규칙과 쓰기 전 판단 절차. 앱 AI 프롬프트와 MCP instructions 가 함께 쓴다.
+
+    파일 하나가 모듈 하나이고 백틱 참조가 파일 밖으로 나가지 않는다는 규칙은 rspdl 0.1.4 에서
+    실제 컴파일로 확인한 것이다. 컴파일러가 파일 사이 참조를 지원하면 이 구간을 고친다.
+    """
+    text = _read("agent_system_ko.md")
+    _, start, rest = text.partition(_TREE_LAYOUT_START)
+    body, end, _ = rest.partition(_TREE_LAYOUT_END)
+    if not start or not end:
+        raise RuntimeError("agent_system_ko.md 에 tree-layout 구분자가 없다")
+    return body.strip()
+
+
 def build_agent_instructions(*, project_name: str, planning: bool, grammar: str) -> str:
     """앱 AI 의 시스템 프롬프트. 역할·도구 규칙, 문법 요약, 예시, EBNF 스냅샷 순서다."""
     return "\n\n".join(
         [
-            _read("agent_system_ko.md").strip(),
+            _agent_system(),
             f"# 현재 프로젝트\n\n{project_name}",
             _grammar_reference(planning=planning),
             _profile_text("examples_ko.md", planning=planning),

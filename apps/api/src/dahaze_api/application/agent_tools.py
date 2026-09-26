@@ -41,7 +41,8 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         name="ls",
         description=(
             "작업 트리의 폴더와 파일을 path 아래 전부 나열한다. 파일마다 commit 안 된 변경 "
-            "종류(change)와 잠근 작업(locked_by)이 붙는다. 경로는 / 로 시작한다."
+            "종류(change)와 잠근 작업(locked_by)이 붙는다. 경로는 / 로 시작한다. 새 파일을 "
+            "만들기 전에 이 도구로 도메인 폴더와 파일 구성을 확인한다."
         ),
         parameters=_object({"path": _string("나열할 폴더. 루트는 /")}, []),
     ),
@@ -55,8 +56,9 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         description=(
             "작업 트리 전체를 컴파일해 심볼(모델·필드·역할·행동·정책·화면 등)을 찾는다. query 는 "
             "심볼 ID(예: inventory.item)나 이름(예: 재고 항목)에 부분 일치한다. kind 는 IR 컬렉션 "
-            "경로(models, models.fields, roles, actions, policies, screens 등)로 거른다. 결과마다 "
-            "파일 경로와 줄 범위가 있다. 원문 텍스트는 찾지 않는다. unparsed 에 있는 파일은 구문 "
+            "경로(module, models, models.fields, roles, actions, policies, screens 등)로 거른다. "
+            "kind 를 module 로 주면 파일마다 하나인 모듈 목록이 나온다. 결과마다 파일 경로와 줄 "
+            "범위가 있다. 원문 텍스트는 찾지 않는다. unparsed 에 있는 파일은 구문 "
             "오류로 심볼을 읽지 못한 파일이다."
         ),
         parameters=_object(
@@ -110,7 +112,11 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
     ),
     ToolSpec(
         name="mkdir",
-        description="parent 폴더 아래에 name 폴더를 만든다. 루트는 / 다.",
+        description=(
+            "parent 폴더 아래에 name 폴더를 만든다. 루트는 / 다. 폴더는 도메인 영역(회원·예약·"
+            "결제 등) 단위로 만든다. 같은 영역 폴더가 이미 있으면 만들지 않고 그 폴더를 쓴다. "
+            "이름에는 한글·영숫자·_·- 만 쓴다."
+        ),
         parameters=_object(
             {"parent": _string("상위 폴더"), "name": _string("폴더 이름")}, ["parent", "name"]
         ),
@@ -119,7 +125,9 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         name="add",
         description=(
             "parent 폴더 아래에 name 파일을 원문 content 로 만든다. 이름은 .rspdl 로 끝나야 한다. "
-            "작업 트리에 바로 저장된다."
+            "파일 하나가 모듈 하나이므로 content 는 모듈 머리말로 시작하고, 모듈 ID 는 다른 파일과 "
+            "겹치지 않아야 한다. 백틱 참조는 같은 파일 안의 선언만 찾으므로, 다른 파일의 모델을 "
+            "참조해야 하면 새 파일을 만들지 말고 그 파일을 edit 한다. 작업 트리에 바로 저장된다."
         ),
         parameters=_object(
             {
