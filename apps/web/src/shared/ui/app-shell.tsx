@@ -1,17 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { Button, Toaster, cn } from '@dahaze/ui'
 
-import { useSession } from '@/features/auth/use-session'
 import { AppSidebar } from '@/features/navigation/app-sidebar'
-import { activeRoute } from '@/features/navigation/views'
-import { PlanningAiPanel } from '@/features/planning/planning-ai-panel'
-import { usePlanningUiStore } from '@/features/planning/planning-ui-store'
 import { useSidebarStore } from './sidebar-store'
-import { PanelLeftIcon, PanelRightIcon } from './icons'
+import { PanelLeftIcon } from './icons'
 
 /**
  * 모든 화면이 공유하는 껍데기.
@@ -45,21 +40,25 @@ export function AppShell({
    * 켜지 않는다.
    */
   lockToViewport = false,
+  /**
+   * 본문 여백을 없앨지 여부. 여러 열이 테두리로 나뉘어 화면 가장자리까지 닿는 작업공간처럼,
+   * 여백 대신 열 경계가 구획을 나누는 화면만 켠다. `fullBleed`·`lockToViewport` 와 함께 쓴다.
+   */
+  flush = false,
 }: {
   children: ReactNode
   breadcrumb?: ReactNode
   actions?: ReactNode
   fullBleed?: boolean
   lockToViewport?: boolean
+  flush?: boolean
 }) {
   const setMobileOpen = useSidebarStore((state) => state.setMobileOpen)
-  const aiProjectId = useAiPanelProjectId()
 
   return (
     <div
       className={cn(
-        'min-h-dvh md:grid',
-        aiProjectId === null ? 'md:grid-cols-[auto_1fr]' : 'md:grid-cols-[auto_1fr_auto]',
+        'min-h-dvh md:grid md:grid-cols-[auto_1fr]',
         lockToViewport && 'h-dvh overflow-hidden',
       )}
     >
@@ -101,12 +100,7 @@ export function AppShell({
               </nav>
             ) : null}
 
-            {actions || aiProjectId !== null ? (
-              <div className="ml-auto flex items-center gap-2">
-                {actions}
-                {aiProjectId === null ? null : <AiPanelToggle />}
-              </div>
-            ) : null}
+            {actions ? <div className="ml-auto flex items-center gap-2">{actions}</div> : null}
           </div>
         </header>
 
@@ -116,71 +110,23 @@ export function AppShell({
         */}
         <main
           className={cn(
-            'flex-1 px-4 md:px-8',
+            'flex-1',
+            !flush && 'px-4 md:px-8',
             fullBleed ? 'flex min-h-0 flex-col' : 'w-full max-w-5xl',
             /*
               가둔 화면에서는 위아래 여백을 줄인다. 여백은 남는 공간에서 덜어내는 것인데,
               높이가 고정되면 남는 공간이 없어 그만큼 편집기와 대화창이 좁아진다.
             */
-            lockToViewport ? 'min-h-0 overflow-hidden py-4 md:py-5' : 'py-7 md:py-9',
+            lockToViewport ? 'min-h-0 overflow-hidden' : 'py-7 md:py-9',
+            lockToViewport && !flush && 'py-4 md:py-5',
           )}
         >
           {children}
         </main>
       </div>
 
-      {aiProjectId === null ? null : <PlanningAiPanel projectId={aiProjectId} />}
-
       <Toaster position="bottom-right" />
     </div>
-  )
-}
-
-/**
- * AI 대화 패널을 붙일 프로젝트. 붙이지 않을 화면이면 `null`.
- *
- * 문서 하나를 여는 화면에는 붙이지 않는다. 그 화면에는 편집기 초안을 고치는 자기 AI 도우미가
- * 있어서, 여기서도 붙이면 성격이 다른 대화창 두 개가 나란히 선다. 두 대화를 세션 하나로
- * 합치기 전까지는 한 화면에 하나만 둔다.
- */
-function useAiPanelProjectId(): string | null {
-  const pathname = usePathname()
-  const session = useSession()
-  const route = activeRoute(pathname)
-  if (!session.isSignedIn || route.projectId === null || route.documentId !== null) return null
-  return route.projectId
-}
-
-/** 상단 막대의 AI 대화 여닫기. 넓은 화면은 패널을, 좁은 화면은 서랍을 여닫는다. */
-function AiPanelToggle() {
-  const panelOpen = usePlanningUiStore((state) => state.panelOpen)
-  const mobileOpen = usePlanningUiStore((state) => state.mobileOpen)
-  const setPanelOpen = usePlanningUiStore((state) => state.setPanelOpen)
-  const setMobileOpen = usePlanningUiStore((state) => state.setMobileOpen)
-
-  return (
-    <>
-      <Button
-        variant={panelOpen ? 'secondary' : 'outline'}
-        size="sm"
-        className="hidden gap-1.5 md:inline-flex"
-        aria-pressed={panelOpen}
-        onClick={() => setPanelOpen(!panelOpen)}
-      >
-        <PanelRightIcon className="size-4" />
-        AI 대화
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        className="gap-1.5 md:hidden"
-        aria-pressed={mobileOpen}
-        onClick={() => setMobileOpen(!mobileOpen)}
-      >
-        <PanelRightIcon className="size-4" />
-        AI 대화
-      </Button>
-    </>
   )
 }
 

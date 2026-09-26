@@ -4,10 +4,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, type ReactNode } from 'react'
 import {
-  useListDocuments,
-  type DocumentSummaryResponse,
-} from '@dahaze/api-client'
-import {
   Button,
   Skeleton,
   Tooltip,
@@ -20,28 +16,9 @@ import {
 import { AccountMenu } from '@/features/auth/account-menu'
 import { useSession } from '@/features/auth/use-session'
 import { useSidebarStore } from '@/shared/ui/sidebar-store'
-import {
-  ClockIcon,
-  FileIcon,
-  FlowIcon,
-  HierarchyIcon,
-  InboxIcon,
-  PanelLeftIcon,
-  PenIcon,
-  ShieldIcon,
-  SlidersIcon,
-  TableIcon,
-  XIcon,
-} from '@/shared/ui/icons'
+import { FolderIcon, PanelLeftIcon, XIcon } from '@/shared/ui/icons'
 import { ProjectSwitcher } from './project-switcher'
-import {
-  PROJECT_VIEWS,
-  VIEW_GROUPS,
-  activeRoute,
-  documentHref,
-  viewHref,
-  type ProjectViewId,
-} from './views'
+import { PROJECT_VIEWS, activeRoute, viewHref, type ProjectViewId } from './views'
 
 /**
  * 왼쪽 내비게이션.
@@ -50,7 +27,7 @@ import {
  * 볼지**를 고른다. 두 가지를 한 트리에 섞어 두면 뷰가 늘어날 때마다 프로젝트 목록과 뷰
  * 목록이 같은 자리를 다투고, 결국 둘 다 읽기 어려워진다.
  *
- * 도메인(프로젝트·뷰·문서)을 알기 때문에 `packages/ui` 가 아니라 여기 산다 (UI 패키지 스킬).
+ * 도메인(프로젝트·뷰)을 알기 때문에 `packages/ui` 가 아니라 여기 산다 (UI 패키지 스킬).
  */
 export function AppSidebar() {
   const pathname = usePathname()
@@ -161,7 +138,7 @@ export function AppSidebar() {
         {session.isSignedIn ? (
           <>
             {/*
-              전환기는 스크롤 영역 **밖**에 둔다. 문서가 많아 아래가 길어져도 "지금 어느
+              전환기는 스크롤 영역 **밖**에 둔다. 메뉴가 길어져도 "지금 어느
               프로젝트인지" 는 늘 보여야 한다 — 그게 아래 모든 것의 전제이기 때문이다.
             */}
             <div
@@ -197,7 +174,6 @@ export function AppSidebar() {
                 <ProjectViewNav
                   projectId={active.projectId}
                   activeView={active.view}
-                  activeDocumentId={active.documentId}
                   railed={railed}
                 />
               )}
@@ -238,130 +214,35 @@ export function AppSidebar() {
   )
 }
 
-/** 뷰마다의 아이콘. 뜻은 옆 글자가 나르고, 기둥이 좁을 때만 혼자 선다. */
+/** 뷰마다의 아이콘. 뜻은 옆 글자가 전하고, 기둥이 좁을 때만 아이콘만 보인다. */
 const VIEW_ICONS: Record<ProjectViewId, ReactNode> = {
-  planning: <InboxIcon className="size-4 shrink-0" />,
-  documents: <PenIcon className="size-4 shrink-0" />,
-  policies: <ShieldIcon className="size-4 shrink-0" />,
-  'data-models': <TableIcon className="size-4 shrink-0" />,
-  ia: <HierarchyIcon className="size-4 shrink-0" />,
-  'screen-flow': <FlowIcon className="size-4 shrink-0" />,
-  versions: <ClockIcon className="size-4 shrink-0" />,
-  settings: <SlidersIcon className="size-4 shrink-0" />,
+  workspace: <FolderIcon className="size-4 shrink-0" />,
 }
 
 function ProjectViewNav({
   projectId,
   activeView,
-  activeDocumentId,
   railed,
 }: {
   projectId: string
   activeView: ProjectViewId | null
-  activeDocumentId: string | null
   railed: boolean
 }) {
-  /*
-    묶음마다 머리글을 단다. 메뉴가 여덟 줄이 되면 한 줄로 늘어놓은 목록은 어디서 시작해
-    어디로 가는지 말해 주지 못한다 — 묶음 이름이 그 순서를 대신 말한다. 기둥 모드에서는
-    글자가 들어갈 자리가 없어 가는 선으로만 나눈다.
-  */
   return (
     <>
-      {VIEW_GROUPS.map((group) => (
-        <div
-          key={group.id}
-          role="group"
-          aria-label={group.label ?? undefined}
-          className={cn('flex flex-col gap-0.5', group.label !== null && 'mt-3')}
+      {PROJECT_VIEWS.map((view) => (
+        <NavRow
+          key={view.id}
+          href={viewHref(projectId, view.id)}
+          railed={railed}
+          isActive={view.id === activeView}
+          tooltip={view.label}
+          icon={VIEW_ICONS[view.id]}
         >
-          {group.label === null ? null : railed ? (
-            <span aria-hidden className="mx-auto mb-1 hidden h-px w-5 bg-border md:block" />
-          ) : null}
-          {group.label === null ? null : (
-            <span
-              className={cn(
-                'px-2 pb-1 text-[0.6875rem] font-medium tracking-wide text-text-subtle',
-                railed && 'md:hidden',
-              )}
-            >
-              {group.label}
-            </span>
-          )}
-
-          {PROJECT_VIEWS.filter((view) => view.group === group.id).map((view) => (
-            <div key={view.id}>
-              <NavRow
-                href={viewHref(projectId, view.id)}
-                railed={railed}
-                isActive={view.id === activeView}
-                tooltip={view.label}
-                icon={VIEW_ICONS[view.id]}
-              >
-                {view.label}
-              </NavRow>
-
-              {/*
-                문서 목록은 문서 뷰 **안의** 것이므로 그 메뉴 아래에 들여 쓴다. 다른 뷰를
-                보는 동안에는 접는다 — 정책 표를 보는 사람에게 문서 목록은 지금 할 일이 아니다.
-                기둥 모드에서는 자리가 없어 아예 접는다.
-              */}
-              {view.id === 'documents' && activeView === 'documents' && !railed ? (
-                <DocumentNav
-                  projectId={projectId}
-                  activeDocumentId={activeDocumentId}
-                />
-              ) : null}
-            </div>
-          ))}
-        </div>
+          {view.label}
+        </NavRow>
       ))}
     </>
-  )
-}
-
-function DocumentNav({
-  projectId,
-  activeDocumentId,
-}: {
-  projectId: string
-  activeDocumentId: string | null
-}) {
-  const documents = useListDocuments<DocumentSummaryResponse[]>(projectId, {
-    query: { staleTime: 30_000 },
-  })
-
-  if (documents.isPending) {
-    return (
-      <div className="ml-4 flex flex-col gap-1 border-l py-1 pl-3">
-        <Skeleton className="h-4 w-28" />
-        <Skeleton className="h-4 w-20" />
-      </div>
-    )
-  }
-
-  if (documents.error !== null || (documents.data?.length ?? 0) === 0) return null
-
-  return (
-    <ul className="ml-4 flex flex-col gap-0.5 border-l py-0.5 pl-1.5">
-      {documents.data?.map((document, index) => (
-        <li
-          key={document.id}
-          className="animate-rise"
-          /* 한꺼번에 나타나면 목록이 몇 개인지 눈에 들어오지 않는다. 순서대로 흘려보낸다. */
-          style={{ animationDelay: `${Math.min(index, 8) * 28}ms` }}
-        >
-          <NavRow
-            href={documentHref(projectId, document.id)}
-            railed={false}
-            isActive={document.id === activeDocumentId}
-            icon={<FileIcon className="size-3.5 shrink-0" />}
-          >
-            {document.title}
-          </NavRow>
-        </li>
-      ))}
-    </ul>
   )
 }
 
