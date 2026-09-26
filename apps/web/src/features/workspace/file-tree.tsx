@@ -317,14 +317,14 @@ function TreeRow({
       </span>
 
       {dirty ? (
-        <span className="size-1.5 shrink-0 rounded-full bg-text-muted" title="저장하지 않은 입력">
+        <span className="relative size-1.5 shrink-0 rounded-full bg-text-muted" title="저장하지 않은 입력">
           <span className="sr-only">저장하지 않은 입력 있음</span>
         </span>
       ) : null}
       {locked ? (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="inline-flex text-diagnostic-warning">
+            <span className="relative inline-flex text-diagnostic-warning">
               <LockIcon className="size-3.5" />
               <span className="sr-only">{describeHolder(node.lockedBy!)}이(가) 쓰는 중</span>
             </span>
@@ -377,7 +377,7 @@ const CHANGE_TONE: Record<ChangeKind, string> = {
 export function ChangeMark({ change }: { change: ChangeKind }) {
   const { letter, label } = CHANGE_LABEL[change]
   return (
-    <span className={cn('w-4 shrink-0 text-center font-mono text-caption font-semibold', CHANGE_TONE[change])}>
+    <span className={cn('relative w-4 shrink-0 text-center font-mono text-caption font-semibold', CHANGE_TONE[change])}>
       <span aria-hidden>{letter}</span>
       <span className="sr-only">{label}</span>
     </span>

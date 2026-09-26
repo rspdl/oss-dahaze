@@ -62,10 +62,15 @@ export function DiffView({ hunks, label }: { hunks: readonly DiffHunk[]; label: 
   )
 }
 
-/** `+12 −3` 표시. 숫자가 0 인 쪽은 흐리게. */
+/**
+ * `+12 −3` 표시. 숫자가 0 인 쪽은 흐리게.
+ *
+ * `relative` 는 안의 `sr-only`(absolute)가 기준으로 삼을 조상이다. 없으면 스크롤 영역 밖 문서
+ * 기준으로 배치되어, 긴 대화에서 페이지 전체가 늘어나고 창이 스크롤된다.
+ */
 export function DiffStat({ added, removed }: { added: number; removed: number }) {
   return (
-    <span className="inline-flex items-center gap-1.5 font-mono text-caption tabular-nums">
+    <span className="relative inline-flex items-center gap-1.5 font-mono text-caption tabular-nums">
       <span aria-hidden className={added > 0 ? 'text-success' : 'text-text-subtle'}>
         +{added.toLocaleString('ko-KR')}
       </span>
