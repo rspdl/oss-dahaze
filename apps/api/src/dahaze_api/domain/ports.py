@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -27,6 +28,13 @@ from dahaze_api.domain.rspdl import (
     RspdlEditOutcome,
     RspdlRuntime,
     RspdlSource,
+)
+from dahaze_api.domain.tree import (
+    Commit,
+    CommitChange,
+    FileLock,
+    TreeFile,
+    TreeFolder,
 )
 
 
@@ -476,3 +484,83 @@ class PlanningAiJobRepositoryPort(Protocol):
         draft: Mapping[str, Any],
         result: Mapping[str, Any],
     ) -> bool: ...
+
+
+class TreeRepositoryPort(Protocol):
+    """공유 작업 트리, commit, 파일 잠금 (ADR-0008).
+
+    판단은 유스케이스가 한다. 이 port 는 읽고 쓰기만 한다. 한 프로젝트의 트리 변경은
+    `lock_project` 로 직렬화한 트랜잭션 안에서만 일어난다.
+    """
+
+    async def lock_project(self, project_id: UUID) -> None:
+        """트랜잭션이 끝날 때까지 이 프로젝트의 다른 트리 변경을 막는다."""
+        ...
+
+    async def list_folders(self, project_id: UUID) -> list[TreeFolder]: ...
+
+    async def list_files(self, project_id: UUID) -> list[TreeFile]:
+        """지워졌지만 아직 commit 되지 않은 파일도 포함한다."""
+        ...
+
+    async def create_folder(self, *, project_id: UUID, path: str) -> TreeFolder: ...
+
+    async def move_folder(self, folder_id: UUID, *, path: str) -> None: ...
+
+    async def delete_folder(self, folder_id: UUID) -> None: ...
+
+    async def create_file(
+        self, *, project_id: UUID, path: str, text: str, actor_id: UUID
+    ) -> TreeFile: ...
+
+    async def update_file(
+        self,
+        file_id: UUID,
+        *,
+        actor_id: UUID,
+        path: str | None = None,
+        text: str | None = None,
+        deleted: bool | None = None,
+    ) -> TreeFile: ...
+
+    async def remove_file(self, file_id: UUID) -> None:
+        """행을 없앤다. commit 된 적 없는 파일을 지우거나, 삭제를 commit 할 때 쓴다."""
+        ...
+
+    async def mark_committed(self, file_id: UUID) -> None:
+        """작업 상태를 마지막 commit 상태로 삼는다."""
+        ...
+
+    async def list_locks(self, project_id: UUID) -> list[FileLock]: ...
+
+    async def put_lock(
+        self,
+        *,
+        file_id: UUID,
+        project_id: UUID,
+        holder: str,
+        actor_id: UUID,
+        now: datetime,
+    ) -> bool:
+        """잠금을 잡거나 마지막 쓰기 시각을 갱신한다. 만료된 남의 잠금은 덮어쓴다.
+
+        살아 있는 남의 잠금이 있으면 아무것도 바꾸지 않고 `False` 를 돌려준다.
+        """
+        ...
+
+    async def release_locks(self, *, holder: str, project_id: UUID | None = None) -> int: ...
+
+    async def create_commit(
+        self,
+        *,
+        project_id: UUID,
+        author_id: UUID,
+        message: str,
+        changes: Sequence[CommitChange],
+    ) -> Commit: ...
+
+    async def list_commits(self, project_id: UUID) -> list[Commit]:
+        """최신이 먼저."""
+        ...
+
+    async def get_commit(self, commit_id: UUID) -> Commit | None: ...

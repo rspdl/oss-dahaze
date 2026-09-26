@@ -374,3 +374,112 @@ class ProjectSnapshotRow(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class TreeFolderRow(Base):
+    """작업 트리의 폴더 (ADR-0008). commit 대상이 아니다."""
+
+    __tablename__ = "tree_folders"
+    __table_args__ = (UniqueConstraint("project_id", "path", name="uq_tree_folder_path"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # 전체 경로를 둔다. 폴더를 옮기면 접두사를 바꾸고, glob 도 경로 하나로 맞춘다.
+    path: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class TreeFileRow(TimestampMixin, Base):
+    """작업 트리의 파일. 작업 상태와 마지막 commit 상태를 함께 둔다."""
+
+    __tablename__ = "tree_files"
+    __table_args__ = (
+        # 지워졌지만 commit 전인 파일의 경로는 새 파일이 다시 쓸 수 있어야 한다.
+        Index(
+            "uq_tree_file_path_alive",
+            "project_id",
+            "path",
+            unique=True,
+            postgresql_where="NOT deleted",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    path: Mapped[str] = mapped_column(String(500), nullable=False)
+    # 진실. 오류 진단이 남은 원문도 그대로 저장한다.
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    deleted: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+    committed_path: Mapped[str | None] = mapped_column(String(500))
+    committed_text: Mapped[str | None] = mapped_column(Text)
+    updated_by: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+
+class FileLockRow(Base):
+    """AI 쓰기의 파일 잠금. 파일 하나에 보유자 하나."""
+
+    __tablename__ = "file_locks"
+
+    file_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("tree_files.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    holder: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    actor_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("users.id", ondelete="SET NULL"))
+    last_write_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CommitRow(Base):
+    """이력 한 점. 리비전은 commit 에서만 생긴다 (ADR-0008)."""
+
+    __tablename__ = "commits"
+    __table_args__ = (UniqueConstraint("project_id", "seq", name="uq_commit_project_seq"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    author_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    changes: Mapped[list[CommitChangeRow]] = relationship(
+        back_populates="commit",
+        cascade="all, delete-orphan",
+        order_by="CommitChangeRow.position",
+        lazy="selectin",
+    )
+
+
+class CommitChangeRow(Base):
+    __tablename__ = "commit_changes"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    commit_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("commits.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    # 외래키를 걸지 않는다. 삭제를 commit 하면 파일 행은 사라지지만 이력은 남아야 한다.
+    file_id: Mapped[UUID] = mapped_column(Uuid, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    old_path: Mapped[str | None] = mapped_column(String(500))
+    new_path: Mapped[str | None] = mapped_column(String(500))
+    diff: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str | None] = mapped_column(Text)
+
+    commit: Mapped[CommitRow] = relationship(back_populates="changes")
