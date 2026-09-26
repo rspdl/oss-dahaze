@@ -16,7 +16,8 @@ import { create } from 'zustand'
  */
 export type CenterView =
   | { kind: 'empty' }
-  | { kind: 'file'; path: string }
+  /** `line` 이 있으면 열면서 그 줄을 보여준다(1부터). */
+  | { kind: 'file'; path: string; line?: number }
   | { kind: 'commit'; commitId: string }
   | { kind: 'call'; sessionId: string; callId: string }
 
@@ -33,9 +34,16 @@ interface WorkspaceState {
   excluded: Record<string, true>
   /** AI 가 턴 도중 흘려보내는 답변 조각. 턴 id 별. 최종 답변 항목이 기록되면 지운다. */
   streaming: Record<string, string>
+  /**
+   * 에디터 아래 패널. 파일을 옮겨 다녀도 유지한다 — 심볼 연결을 따라 다른 파일로 넘어갈 때
+   * 패널이 접히면 따라가던 목록을 잃는다. null 은 사용자가 접은 것, undefined 는 아직 고르지 않은 것.
+   */
+  bottomPanel: 'diagnostics' | 'symbols' | null | undefined
+  symbolQuery: string
+  symbol: { id: string; ownerId: string | null } | null
 
   enter: (projectId: string) => void
-  openFile: (path: string) => void
+  openFile: (path: string, line?: number) => void
   openCommit: (commitId: string) => void
   openCall: (sessionId: string, callId: string) => void
   closeCenter: () => void
@@ -50,6 +58,9 @@ interface WorkspaceState {
   resetExcluded: () => void
   appendDelta: (turnId: string, delta: string) => void
   clearStreaming: (turnId: string) => void
+  setBottomPanel: (panel: 'diagnostics' | 'symbols' | null) => void
+  setSymbolQuery: (query: string) => void
+  selectSymbol: (symbol: { id: string; ownerId: string | null } | null) => void
 }
 
 function ancestors(path: string): string[] {
@@ -67,13 +78,27 @@ function movePath(path: string, from: string, to: string): string {
   return path
 }
 
-const EMPTY = {
-  center: { kind: 'empty' } as CenterView,
+const EMPTY: Pick<
+  WorkspaceState,
+  | 'center'
+  | 'drafts'
+  | 'expanded'
+  | 'sessionId'
+  | 'excluded'
+  | 'streaming'
+  | 'bottomPanel'
+  | 'symbolQuery'
+  | 'symbol'
+> = {
+  center: { kind: 'empty' },
   drafts: {},
   expanded: {},
   sessionId: null,
   excluded: {},
   streaming: {},
+  bottomPanel: undefined,
+  symbolQuery: '',
+  symbol: null,
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -83,11 +108,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   enter: (projectId) =>
     set((state) => (state.projectId === projectId ? state : { projectId, ...EMPTY })),
 
-  openFile: (path) =>
+  openFile: (path, line) =>
     set((state) => {
       const expanded = { ...state.expanded }
       for (const folder of ancestors(path)) expanded[folder] = true
-      return { center: { kind: 'file', path }, expanded }
+      return { center: line === undefined ? { kind: 'file', path } : { kind: 'file', path, line }, expanded }
     }),
   openCommit: (commitId) => set({ center: { kind: 'commit', commitId } }),
   openCall: (sessionId, callId) => set({ center: { kind: 'call', sessionId, callId } }),
@@ -148,4 +173,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       delete streaming[turnId]
       return { streaming }
     }),
+
+  setBottomPanel: (bottomPanel) => set({ bottomPanel }),
+  setSymbolQuery: (symbolQuery) => set({ symbolQuery }),
+  selectSymbol: (symbol) => set({ symbol }),
 }))

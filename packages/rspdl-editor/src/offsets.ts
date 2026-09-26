@@ -88,3 +88,25 @@ export function spanToLineColumn(
   const column = [...text.slice(lineStart, index)].length + 1
   return { line: newlineCount, column }
 }
+
+/**
+ * 1부터 세는 줄 번호를 그 줄 전체의 바이트 구간으로. 끝은 줄바꿈 앞(배타적)이다.
+ *
+ * 서버가 심볼 위치를 줄·열로 줄 때, 그 줄을 `revealSpan` 으로 보여주려고 쓴다. 줄이 문서보다
+ * 뒤면 마지막 줄을 준다. 빈 문서면 `{0, 0}`.
+ */
+export function lineToByteSpan(text: string, line: number): ByteSpan {
+  const lines = text.split('\n')
+  const target = Math.min(Math.max(1, line), lines.length) - 1
+  let start = 0
+  for (let index = 0; index < target; index += 1) {
+    start += byteLength(lines[index]!) + 1
+  }
+  return { start, end: start + byteLength(lines[target] ?? '') }
+}
+
+function byteLength(text: string): number {
+  let bytes = 0
+  for (const character of text) bytes += utf8Length(character.codePointAt(0)!)
+  return bytes
+}

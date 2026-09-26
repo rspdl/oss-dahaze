@@ -81,7 +81,14 @@ function Center({ projectId }: { projectId: string }) {
   const center = useWorkspaceStore((state) => state.center)
   switch (center.kind) {
     case 'file':
-      return <FileEditor key={center.path} projectId={projectId} path={center.path} />
+      return (
+        <FileEditor
+          key={`${center.path}:${center.line ?? ''}`}
+          projectId={projectId}
+          path={center.path}
+          line={center.line}
+        />
+      )
     case 'commit':
       return <CommitView commitId={center.commitId} />
     case 'call':

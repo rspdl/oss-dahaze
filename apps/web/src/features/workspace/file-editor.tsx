@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   useCompileTree,
   useListTree,
@@ -9,7 +9,12 @@ import {
   type TreeEntryResponse,
   type TreeFileResponse,
 } from '@dahaze/api-client'
-import { RspdlEditor, type ByteSpan, type RspdlDiagnostic } from '@dahaze/rspdl-editor'
+import {
+  RspdlEditor,
+  lineToByteSpan,
+  type ByteSpan,
+  type RspdlDiagnostic,
+} from '@dahaze/rspdl-editor'
 import {
   Button,
   DiagnosticBadge,
@@ -27,6 +32,7 @@ import { errorMessage, isNotFound } from '@/shared/api/errors'
 import { parseDiagnostic } from '@/shared/rspdl/diagnostics'
 import { renderDiagnosticMessage, renderDiagnosticTitle } from '@/shared/rspdl/diagnostic-messages'
 import { LockIcon, SpinnerIcon } from '@/shared/ui/icons'
+import { SymbolPanel } from './symbol-panel'
 import { describeHolder } from './tree-model'
 import { useTreeActions } from './use-tree-actions'
 import { useWorkspaceStore } from './workspace-store'
@@ -46,7 +52,16 @@ interface LocatedDiagnostic {
  *   기준이라, 저장하지 않은 입력이 있으면 밑줄을 긋지 않는다 — 다른 텍스트의 바이트 위치를 얹으면
  *   엉뚱한 곳에 그어진다.
  */
-export function FileEditor({ projectId, path }: { projectId: string; path: string }) {
+export function FileEditor({
+  projectId,
+  path,
+  line,
+}: {
+  projectId: string
+  path: string
+  /** 열면서 보여줄 줄(1부터). 심볼 연결에서 넘어올 때 온다. */
+  line?: number
+}) {
   const file = useReadTreeFile<TreeFileResponse>(projectId, { path })
   const tree = useListTree<TreeEntryResponse[]>(projectId)
   const compile = useCompileTree<TreeCompileResponse>(projectId)
@@ -55,12 +70,21 @@ export function FileEditor({ projectId, path }: { projectId: string; path: strin
   const dropDraft = useWorkspaceStore((state) => state.dropDraft)
   const actions = useTreeActions(projectId)
   const [revealSpan, setRevealSpan] = useState<ByteSpan | null>(null)
+  const bottomPanel = useWorkspaceStore((state) => state.bottomPanel)
+  const setBottomPanel = useWorkspaceStore((state) => state.setBottomPanel)
 
   const lockedBy = tree.data?.find((entry) => entry.path === path)?.locked_by ?? null
   const saved = file.data?.text
   const value = draft ?? saved ?? ''
   const dirty = draft !== undefined && draft !== saved
   const readOnly = lockedBy !== null || file.data?.change === 'delete'
+
+  /*
+    줄을 지정해 열었으면 그 줄을 보여준다. 사용자가 진단을 고르면 그쪽이 이긴다. 에디터는
+    경로·줄마다 새로 마운트되므로(`workspace-screen` 의 key) 따로 상태를 두지 않는다.
+  */
+  const reveal =
+    revealSpan ?? (line !== undefined && saved !== undefined ? lineToByteSpan(saved, line) : null)
 
   const diagnostics = useMemo<LocatedDiagnostic[]>(() => {
     if (compile.data === undefined) return []
@@ -73,6 +97,9 @@ export function FileEditor({ projectId, path }: { projectId: string; path: strin
     }
     return located
   }, [compile.data, path])
+
+  // 사용자가 아직 고르지 않았으면 진단이 있을 때만 진단 탭을 연다.
+  const bottom = bottomPanel === undefined ? (diagnostics.length > 0 ? 'diagnostics' : null) : bottomPanel
 
   const counts = useMemo(() => {
     const result = { error: 0, warning: 0, info: 0 }
@@ -177,7 +204,7 @@ export function FileEditor({ projectId, path }: { projectId: string; path: strin
           onChange={readOnly ? undefined : (next) => (next === saved ? dropDraft(path) : setDraft(path, next))}
           readOnly={readOnly}
           diagnostics={dirty ? [] : diagnostics.map((entry) => entry.diagnostic)}
-          revealSpan={dirty ? null : revealSpan}
+          revealSpan={dirty ? null : reveal}
           renderMessage={renderDiagnosticMessage}
           ariaLabel={`${path} 원문`}
           placeholder="RSPDL 원문을 입력하거나 오른쪽 AI 대화에 부탁해 보세요."
@@ -185,13 +212,25 @@ export function FileEditor({ projectId, path }: { projectId: string; path: strin
         />
       </div>
 
-      {diagnostics.length > 0 ? (
-        <DiagnosticList
-          diagnostics={diagnostics}
-          stale={dirty}
-          onReveal={(diagnostic) => setRevealSpan({ ...diagnostic.span })}
-        />
-      ) : null}
+      <BottomPanel
+        open={bottom}
+        diagnosticCount={diagnostics.length}
+        onOpenChange={setBottomPanel}
+      >
+        {bottom === 'symbols' ? (
+          <SymbolPanel projectId={projectId} />
+        ) : diagnostics.length === 0 ? (
+          <p className="px-4 py-3 text-caption text-text-muted">
+            {compile.data === undefined ? '진단을 불러오고 있어요.' : '이 파일에는 진단이 없어요.'}
+          </p>
+        ) : (
+          <DiagnosticList
+            diagnostics={diagnostics}
+            stale={dirty}
+            onReveal={(diagnostic) => setRevealSpan({ ...diagnostic.span })}
+          />
+        )}
+      </BottomPanel>
     </div>
   )
 }
@@ -206,7 +245,7 @@ function DiagnosticList({
   onReveal: (diagnostic: RspdlDiagnostic) => void
 }) {
   return (
-    <section aria-label="진단" className="max-h-44 shrink-0 overflow-y-auto border-t bg-canvas-subtle">
+    <section aria-label="진단" className="min-h-0 flex-1 overflow-y-auto">
       {stale ? (
         <p className="px-4 pt-2 text-caption text-text-muted">
           저장한 원문 기준 진단이에요. 저장하면 다시 확인해요.
@@ -240,6 +279,49 @@ function DiagnosticList({
           </li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+/**
+ * 에디터 아래 패널. 진단과 심볼 사이를 오가고, 연 탭을 한 번 더 누르면 접는다. 진단이 있으면
+ * 처음에는 진단 탭이 열려 있다.
+ */
+function BottomPanel({
+  open,
+  diagnosticCount,
+  onOpenChange,
+  children,
+}: {
+  open: 'diagnostics' | 'symbols' | null
+  diagnosticCount: number
+  onOpenChange: (next: 'diagnostics' | 'symbols' | null) => void
+  children: ReactNode
+}) {
+  const tab = (id: 'diagnostics' | 'symbols', label: string) => (
+    <button
+      type="button"
+      aria-pressed={open === id}
+      onClick={() => onOpenChange(open === id ? null : id)}
+      className={cn(
+        'h-8 rounded-sm px-2.5 text-label-sm outline-none focus-visible:focus-ring',
+        open === id ? 'bg-selected text-text' : 'text-text-muted hover:bg-state-hover hover:text-text',
+      )}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <section
+      aria-label="진단과 심볼"
+      className={cn('flex shrink-0 flex-col border-t bg-canvas-subtle', open !== null && 'h-56')}
+    >
+      <div className="flex h-10 shrink-0 items-center gap-1 px-2">
+        {tab('diagnostics', diagnosticCount > 0 ? `진단 ${diagnosticCount.toLocaleString('ko-KR')}` : '진단')}
+        {tab('symbols', '심볼')}
+      </div>
+      {open === null ? null : <div className="flex min-h-0 flex-1 flex-col border-t">{children}</div>}
     </section>
   )
 }

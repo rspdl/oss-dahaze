@@ -28,6 +28,7 @@ export {
 
 export {
   byteOffsetToIndex,
+  lineToByteSpan,
   spanToLineColumn,
   spanToRange,
   type ByteSpan,
