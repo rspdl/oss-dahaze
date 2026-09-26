@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-from dahaze_api.infrastructure.llm.openai_adapter import (
-    LlmError,
-    LlmNotConfigured,
-    LlmUnavailable,
-    OpenAiLlm,
-)
+from dahaze_api.infrastructure.llm.agent_adapter import OpenAiAgentLlm
+from dahaze_api.infrastructure.llm.errors import LlmError, LlmNotConfigured, LlmUnavailable
 
-__all__ = ["LlmError", "LlmNotConfigured", "LlmUnavailable", "OpenAiLlm"]
+__all__ = ["LlmError", "LlmNotConfigured", "LlmUnavailable", "OpenAiAgentLlm"]

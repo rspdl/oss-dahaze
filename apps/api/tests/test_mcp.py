@@ -3,7 +3,7 @@
 가장 중요한 것은 두 가지다.
 
 1. **MCP 토큰은 세션 토큰이 아니다.** audience 가 다르므로 서로 대신 쓸 수 없다 (ADR-0005).
-2. **MCP 도 REST 와 같은 접근 검사를 지난다.** 도구가 `WorkspaceService` 만 부르므로,
+2. **MCP 도 REST 와 같은 접근 검사를 지난다.** 도구가 유스케이스만 부르므로,
    남의 프로젝트로 가는 경로가 MCP 쪽에만 따로 생기지 않는다.
 
 도구는 전송(transport)에서 떼어 검사한다. MCP 프로토콜을 태우지 않아도 "토큰으로 행위자를
@@ -13,7 +13,6 @@
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -26,18 +25,14 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dahaze_api.application.errors import AccessDenied, Conflict, NotFound
-from dahaze_api.application.workspace import WorkspaceService
+from dahaze_api.application.projects import ProjectService
 from dahaze_api.domain.entities import Project, ProjectRole, User
 from dahaze_api.infrastructure.auth.session import (
     ALGORITHM,
     MCP_AUDIENCE,
     SessionTokens,
 )
-from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
-from dahaze_api.infrastructure.db.repositories import (
-    SqlDocumentRepository,
-    SqlProjectRepository,
-)
+from dahaze_api.infrastructure.db.repositories import SqlProjectRepository
 from dahaze_api.infrastructure.db.session import get_session
 from dahaze_api.interface.mcp import McpAuthError, McpTools, mount_mcp
 from dahaze_api.interface.rest.dependencies import get_compiler, get_session_tokens
@@ -53,18 +48,6 @@ VALID_TEXT = (
     "    이름(name): 필수 문자열\n"
     "    수량(quantity): 필수 정수\n"
 )
-EDITABLE_TEXT = """---
-모듈: 상품(catalog)
-화면:
-  상품 입력 화면:
-    레이아웃:
-      - 제목: { id: title, 글: "상품 입력" }
----
-
-상품(product)은 다음 필드들로 구성되어 있다.
-    이름(name): 필수 문자열
-상품 입력 화면(product_form)에서는 `상품`을 생성할 수 있다.
-"""
 
 
 @pytest.fixture
@@ -88,24 +71,18 @@ def tools(session: AsyncSession, tokens: SessionTokens) -> McpTools:
 
 
 @pytest.fixture
-def workspace(session: AsyncSession) -> WorkspaceService:
+def workspace(session: AsyncSession) -> ProjectService:
     """준비 데이터를 만드는 통로.
 
     MCP 에도 `create_project` 가 있지만 픽스처는 유스케이스를 직접 부른다. 준비 단계가
     검사 대상 도구를 거치면, 그 도구가 깨졌을 때 관계없는 테스트까지 한꺼번에 빨개진다.
     """
-    return WorkspaceService(
-        projects=SqlProjectRepository(session),
-        documents=SqlDocumentRepository(session),
-        compiler=get_compiler(),
-    )
+    return ProjectService(projects=SqlProjectRepository(session), compiler=get_compiler())
 
 
 @pytest.fixture
-async def project(workspace: WorkspaceService, user: User) -> Project:
-    return await workspace.create_project(
-        actor_id=user.id, slug="mcp-fixture", name="MCP 픽스처"
-    )
+async def project(workspace: ProjectService, user: User) -> Project:
+    return await workspace.create_project(actor_id=user.id, slug="mcp-fixture", name="MCP 픽스처")
 
 
 def auth(token: str) -> dict[str, str]:
@@ -146,9 +123,7 @@ async def test_expired_token_is_rejected(tools: McpTools, user: User) -> None:
         await tools.list_projects(auth(expired))
 
 
-async def test_token_signed_with_another_secret_is_rejected(
-    tools: McpTools, user: User
-) -> None:
+async def test_token_signed_with_another_secret_is_rejected(tools: McpTools, user: User) -> None:
     forged = SessionTokens("another-secret-that-is-long-enough-32b").issue_mcp(user.id)
 
     with pytest.raises(McpAuthError):
@@ -173,9 +148,7 @@ async def test_malformed_credentials_are_rejected(
         await tools.list_projects(headers)
 
 
-async def test_token_for_a_deleted_user_is_rejected(
-    tools: McpTools, tokens: SessionTokens
-) -> None:
+async def test_token_for_a_deleted_user_is_rejected(tools: McpTools, tokens: SessionTokens) -> None:
     """서명은 맞지만 사용자가 없는 토큰. 만료된 토큰과 같게 취급한다."""
     with pytest.raises(McpAuthError):
         await tools.list_projects(auth(tokens.issue_mcp(uuid4())))
@@ -199,251 +172,7 @@ async def test_foreign_project_is_invisible(
     assert await tools.list_projects(auth(tokens.issue_mcp(other_user.id))) == []
 
 
-async def test_tool_cannot_list_documents_of_a_foreign_project(
-    tools: McpTools, tokens: SessionTokens, other_user: User, project: Project
-) -> None:
-    """멤버가 아니면 프로젝트가 존재하지 않는 것처럼 보인다.
-
-    접근 거부가 아니라 '없음' 인 이유는 남의 프로젝트가 존재한다는 사실 자체를 숨기기
-    위해서다. REST 와 같은 검사를 지나므로 이 성질도 그대로 따라온다.
-    """
-    with pytest.raises(NotFound):
-        await tools.list_documents(
-            auth(tokens.issue_mcp(other_user.id)), project_id=str(project.id)
-        )
-
-
-async def test_tool_cannot_read_a_foreign_document(
-    tools: McpTools, tokens: SessionTokens, user: User, other_user: User, project: Project
-) -> None:
-    created = await tools.create_document(
-        auth(tokens.issue_mcp(user.id)),
-        project_id=str(project.id),
-        path="secret.rspdl",
-        title="비공개",
-        text=VALID_TEXT,
-    )
-
-    with pytest.raises(NotFound):
-        await tools.read_document(
-            auth(tokens.issue_mcp(other_user.id)), document_id=str(created["id"])
-        )
-
-
-async def test_viewer_cannot_create_a_document(
-    tools: McpTools,
-    tokens: SessionTokens,
-    workspace: WorkspaceService,
-    user: User,
-    other_user: User,
-    project: Project,
-) -> None:
-    """역할 검사도 MCP 를 그냥 통과하지 않는다."""
-    await workspace.add_member(
-        actor_id=user.id,
-        project_id=project.id,
-        user_id=other_user.id,
-        role=ProjectRole.VIEWER,
-    )
-
-    with pytest.raises(AccessDenied):
-        await tools.create_document(
-            auth(tokens.issue_mcp(other_user.id)),
-            project_id=str(project.id),
-            path="attempt.rspdl",
-            title="시도",
-            text=VALID_TEXT,
-        )
-
-
-async def test_actor_comes_from_the_token_not_from_arguments(
-    tools: McpTools, tokens: SessionTokens, user: User, project: Project
-) -> None:
-    """도구는 행위자를 인자로 받지 않는다.
-
-    받는 순간 호출자가 남의 사용자 id 를 적어 넣을 수 있다. 이 테스트는 그런 인자가
-    생기면 깨진다.
-    """
-    for tool in (tools.list_projects, tools.create_document, tools.compile_rspdl):
-        parameters = set(inspect.signature(tool).parameters)
-        assert not parameters & {"actor_id", "user_id", "user"}
-
-
 # --------------------------------------------------------------------- 왕복
-
-
-async def test_create_then_read_document(
-    tools: McpTools, tokens: SessionTokens, user: User, project: Project
-) -> None:
-    headers = auth(tokens.issue_mcp(user.id))
-
-    created = await tools.create_document(
-        headers,
-        project_id=str(project.id),
-        path="inventory.rspdl",
-        title="재고",
-        text=VALID_TEXT,
-    )
-    read = await tools.read_document(headers, document_id=str(created["id"]))
-
-    assert read["text"] == VALID_TEXT
-    assert read["path"] == "inventory.rspdl"
-    # 문서는 자기가 어느 문법으로 쓰였는지 기록한다 (ADR-0002).
-    assert read["target_rspdl_version"] == project.default_rspdl_version
-
-
-async def test_update_replaces_the_whole_text(
-    tools: McpTools, tokens: SessionTokens, user: User, project: Project
-) -> None:
-    headers = auth(tokens.issue_mcp(user.id))
-    created = await tools.create_document(
-        headers,
-        project_id=str(project.id),
-        path="inventory.rspdl",
-        title="재고",
-        text=VALID_TEXT,
-    )
-
-    await tools.update_document(
-        headers,
-        document_id=str(created["id"]),
-        text="@모듈 둘째(second)\n",
-        summary="모듈명 변경",
-    )
-
-    read = await tools.read_document(headers, document_id=str(created["id"]))
-    assert read["text"] == "@모듈 둘째(second)\n"
-
-
-async def test_documents_are_listed_without_their_text(
-    tools: McpTools, tokens: SessionTokens, user: User, project: Project
-) -> None:
-    headers = auth(tokens.issue_mcp(user.id))
-    await tools.create_document(
-        headers,
-        project_id=str(project.id),
-        path="inventory.rspdl",
-        title="재고",
-        text=VALID_TEXT,
-    )
-
-    listed = await tools.list_documents(headers, project_id=str(project.id))
-
-    assert [d["path"] for d in listed] == ["inventory.rspdl"]
-    assert "text" not in listed[0]
-
-
-async def test_structured_edit_tool_never_auto_saves_document(
-    tools: McpTools, tokens: SessionTokens, user: User, project: Project
-) -> None:
-    headers = auth(tokens.issue_mcp(user.id))
-    document = await tools.create_document(
-        headers,
-        project_id=str(project.id),
-        path="catalog.rspdl",
-        title="상품",
-        text=EDITABLE_TEXT,
-    )
-    current = await tools.get_project(headers, project_id=str(project.id))
-    read = await tools.read_document(headers, document_id=document["id"])
-
-    result = await tools.propose_planning_edit(
-        headers,
-        project_id=str(project.id),
-        document_id=document["id"],
-        base_project_revision=current["revision"],
-        base_source_hash=current["source_hash"],
-        expected_source_hash=read["source_hash"],
-        edit={
-            "operation": "update",
-            "screen_id": "catalog.product_form",
-            "element_id": "title",
-            "patch": {"text": "새 상품"},
-        },
-    )
-
-    assert result["supported"] is True
-    assert result["unsupported_reason"] is None
-    assert result["compiler_response"]["outcome"]["status"] == "applied"
-    assert "새 상품" in result["compiler_response"]["candidate_text"]
-    assert result["draft"] is not None
-    assert len(result["draft"]["candidate_documents"]) == 1
-    candidate = result["draft"]["candidate_documents"][0]
-    assert candidate["id"] == document["id"]
-    assert candidate["path"] == "catalog.rspdl"
-    assert candidate["title"] == "상품"
-    assert candidate["text"] == result["compiler_response"]["candidate_text"]
-    assert (await tools.read_document(headers, document_id=document["id"]))["text"] == EDITABLE_TEXT
-
-
-async def test_decision_resolution_tool_updates_existing_id(
-    tools: McpTools,
-    tokens: SessionTokens,
-    user: User,
-    project: Project,
-    session: AsyncSession,
-) -> None:
-    created = await SqlPlanningRepository(session).append_decision(
-        project.id,
-        expected_revision=0,
-        title="복구 경로",
-        rationale=None,
-        status="open",
-    )
-    assert created is not None
-    decision_id = created["item"]["id"]
-
-    result = await tools.resolve_planning_decision(
-        auth(tokens.issue_mcp(user.id)),
-        project_id=str(project.id),
-        decision_id=decision_id,
-        expected_revision=created["state"]["revision"],
-        status="deferred",
-        rationale="정책 확정 뒤 다시 본다.",
-    )
-
-    assert result["item"]["id"] == decision_id
-    assert result["item"]["status"] == "deferred"
-    assert len(result["state"]["decisions"]) == 1
-
-
-async def test_planning_ai_tool_never_exposes_frozen_source_or_checkpoints(
-    tools: McpTools, tokens: SessionTokens, user: User, project: Project
-) -> None:
-    headers = auth(tokens.issue_mcp(user.id))
-    created = await tools.create_planning_ai_job(
-        headers,
-        project_id=str(project.id),
-        request_id=str(uuid4()),
-        kind="interview",
-        instruction="정책을 검토해 주세요.",
-        expected_planning_revision=0,
-        selected_subject={
-            "kind": "screen",
-            "id": "inventory.list",
-            "source_path": "inventory.rspdl",
-            "stable_id": "inventory.list",
-        },
-    )
-
-    fetched = await tools.get_planning_ai_job(
-        headers, project_id=str(project.id), job_id=str(created["id"])
-    )
-    listed = await tools.list_planning_ai_jobs(headers, project_id=str(project.id))
-    for payload in (created, fetched, listed[0]):
-        assert "context" not in payload
-        assert "checkpoints" not in payload
-        assert "lease_token" not in payload
-        assert "lease_expires_at" not in payload
-
-
-@pytest.mark.parametrize("bad_id", ["not-a-uuid", "", "123"])
-async def test_malformed_id_is_a_clear_error(
-    tools: McpTools, tokens: SessionTokens, user: User, bad_id: str
-) -> None:
-    """LLM 은 id 를 지어내기도 한다. 무엇이 잘못됐는지 말해 주는 편이 낫다."""
-    with pytest.raises(ValueError, match="UUID"):
-        await tools.read_document(auth(tokens.issue_mcp(user.id)), document_id=bad_id)
 
 
 # ----------------------------------------------------------------- 프로젝트
@@ -460,9 +189,7 @@ async def test_create_project_makes_the_caller_the_owner(
     assert created["slug"] == "mcp-made"
     assert created["is_archived"] is False
     members = await tools.list_project_members(headers, project_id=created["id"])
-    assert members == [
-        {"project_id": created["id"], "user_id": str(user.id), "role": "owner"}
-    ]
+    assert members == [{"project_id": created["id"], "user_id": str(user.id), "role": "owner"}]
 
 
 async def test_created_project_defaults_to_the_server_rspdl_version(
@@ -492,9 +219,7 @@ async def test_malformed_slug_is_refused(
     tools: McpTools, tokens: SessionTokens, user: User, bad_slug: str
 ) -> None:
     with pytest.raises(Conflict, match="slug"):
-        await tools.create_project(
-            auth(tokens.issue_mcp(user.id)), slug=bad_slug, name="형식 오류"
-        )
+        await tools.create_project(auth(tokens.issue_mcp(user.id)), slug=bad_slug, name="형식 오류")
 
 
 async def test_get_project_hides_a_foreign_project(
@@ -502,15 +227,25 @@ async def test_get_project_hides_a_foreign_project(
 ) -> None:
     """남의 프로젝트는 '권한 없음' 이 아니라 '없음' 이다."""
     with pytest.raises(NotFound):
-        await tools.get_project(
-            auth(tokens.issue_mcp(other_user.id)), project_id=str(project.id)
-        )
+        await tools.get_project(auth(tokens.issue_mcp(other_user.id)), project_id=str(project.id))
+
+
+async def test_archive_project_marks_it_archived(
+    tools: McpTools, tokens: SessionTokens, user: User, project: Project
+) -> None:
+    headers = auth(tokens.issue_mcp(user.id))
+
+    archived = await tools.archive_project(headers, project_id=str(project.id))
+
+    assert archived["is_archived"] is True
+    # 보관은 삭제가 아니다. 단건 조회로는 여전히 닿는다.
+    assert (await tools.get_project(headers, project_id=str(project.id)))["is_archived"]
 
 
 async def test_only_the_owner_can_add_a_member(
     tools: McpTools,
     tokens: SessionTokens,
-    workspace: WorkspaceService,
+    workspace: ProjectService,
     user: User,
     other_user: User,
     project: Project,
@@ -541,9 +276,7 @@ async def test_added_member_can_reach_the_project(
 ) -> None:
     """멤버 추가가 실제로 접근을 여는지까지 본다."""
     with pytest.raises(NotFound):
-        await tools.get_project(
-            auth(tokens.issue_mcp(other_user.id)), project_id=str(project.id)
-        )
+        await tools.get_project(auth(tokens.issue_mcp(other_user.id)), project_id=str(project.id))
 
     await tools.add_project_member(
         auth(tokens.issue_mcp(user.id)),
@@ -577,54 +310,7 @@ async def test_unknown_role_says_what_is_allowed(
         )
 
 
-# ------------------------------------------------------------- 이력
-
-
-async def test_revisions_are_listed_without_their_text(
-    tools: McpTools, tokens: SessionTokens, user: User, project: Project
-) -> None:
-    """리비전은 전문을 보관한다. 목록에 본문까지 실으면 맥락이 같은 텍스트로 가득 찬다."""
-    headers = auth(tokens.issue_mcp(user.id))
-    created = await tools.create_document(
-        headers,
-        project_id=str(project.id),
-        path="history.rspdl",
-        title="이력",
-        text=VALID_TEXT,
-    )
-    await tools.update_document(
-        headers,
-        document_id=created["id"],
-        text=VALID_TEXT + "\n재고 항목의 수량은 0 이상이어야 한다.\n",
-        summary="제약 추가",
-    )
-
-    revisions = await tools.list_document_revisions(headers, document_id=created["id"])
-
-    assert [r["revision_no"] for r in revisions] == [2, 1]
-    assert revisions[0]["summary"] == "제약 추가"
-    assert all("text" not in r for r in revisions)
-
-
-async def test_revisions_of_a_foreign_document_are_unreachable(
-    tools: McpTools,
-    tokens: SessionTokens,
-    user: User,
-    other_user: User,
-    project: Project,
-) -> None:
-    created = await tools.create_document(
-        auth(tokens.issue_mcp(user.id)),
-        project_id=str(project.id),
-        path="private.rspdl",
-        title="남의 것",
-        text=VALID_TEXT,
-    )
-
-    with pytest.raises(NotFound):
-        await tools.list_document_revisions(
-            auth(tokens.issue_mcp(other_user.id)), document_id=created["id"]
-        )
+# ------------------------------------------------------------- 삭제와 이력
 
 
 # --------------------------------------------------------------------- 분석
@@ -684,9 +370,7 @@ async def test_empty_source_list_is_rejected(
 
 
 @asynccontextmanager
-async def mcp_over_http(
-    session: AsyncSession, tools: McpTools
-) -> AsyncIterator[httpx.AsyncClient]:
+async def mcp_over_http(session: AsyncSession, tools: McpTools) -> AsyncIterator[httpx.AsyncClient]:
     """MCP 가 마운트된 실제 FastAPI 앱.
 
     `mount_mcp` 가 lifespan 까지 이어 붙이는지가 여기서 드러난다 — 세션 매니저의 task
@@ -704,9 +388,10 @@ async def mcp_over_http(
     app.dependency_overrides[get_session] = _session_override
     mount_mcp(app, tools=tools)
 
-    async with app.router.lifespan_context(app), httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client,
+    ):
         yield client
 
 
@@ -720,9 +405,7 @@ def rpc(method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
 MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
 
 
-async def test_http_request_without_a_token_is_401(
-    session: AsyncSession, tools: McpTools
-) -> None:
+async def test_http_request_without_a_token_is_401(session: AsyncSession, tools: McpTools) -> None:
     """자격증명이 없는 요청은 핸드셰이크 전에 끊는다.
 
     도구 오류로 돌려주면 클라이언트가 '인증하라' 로 읽지 못한다.
@@ -745,132 +428,6 @@ async def test_http_request_with_a_session_token_is_401(
         )
 
     assert response.status_code == 401
-
-
-async def test_tools_are_advertised_over_http(
-    session: AsyncSession, tools: McpTools, tokens: SessionTokens, user: User
-) -> None:
-    async with mcp_over_http(session, tools) as mcp:
-        response = await mcp.post(
-            "/mcp",
-            json=rpc("tools/list"),
-            headers={**MCP_HEADERS, **auth(tokens.issue_mcp(user.id))},
-        )
-
-    assert response.status_code == 200
-    advertised = response.json()["result"]["tools"]
-    assert {tool["name"] for tool in advertised} == {
-        "create_project",
-        "get_project",
-        "list_project_members",
-        "add_project_member",
-        "list_projects",
-        "list_documents",
-        "read_document",
-        "create_document",
-        "update_document",
-        "list_document_revisions",
-        "rspdl_runtime",
-        "compile_rspdl",
-        "check_rspdl",
-        "find_bounded_model",
-        "propose_planning_edit",
-        "resolve_planning_decision",
-        "resolve_planning_proposal",
-        "create_planning_ai_job",
-        "get_planning_ai_job",
-        "list_planning_ai_jobs",
-        "cancel_planning_ai_job",
-        "retry_planning_ai_job",
-        "get_project_handoff",
-        # 작업 트리 (ADR-0008)
-        "ls",
-        "read",
-        "search",
-        "grep",
-        "compile",
-        "mkdir",
-        "add",
-        "edit",
-        "mv",
-        "delete",
-        "commit",
-        "unlock",
-    }
-    # 설명이 LLM 에게는 유일한 인터페이스다. 비어 있으면 도구가 없는 것과 같다.
-    assert all(tool["description"] for tool in advertised)
-
-
-async def test_tool_call_round_trip_over_http(
-    session: AsyncSession,
-    tools: McpTools,
-    tokens: SessionTokens,
-    user: User,
-    project: Project,
-) -> None:
-    """프로토콜을 거친 왕복 하나. 도구 → 유스케이스 → DB 가 실제로 이어지는지 본다."""
-    headers = {**MCP_HEADERS, **auth(tokens.issue_mcp(user.id))}
-
-    async with mcp_over_http(session, tools) as mcp:
-        created = await mcp.post(
-            "/mcp",
-            json=rpc(
-                "tools/call",
-                {
-                    "name": "create_document",
-                    "arguments": {
-                        "project_id": str(project.id),
-                        "path": "inventory.rspdl",
-                        "title": "재고",
-                        "text": VALID_TEXT,
-                    },
-                },
-            ),
-            headers=headers,
-        )
-        assert created.status_code == 200, created.text
-        assert not created.json()["result"].get("isError")
-        document = created.json()["result"]["structuredContent"]
-
-        read = await mcp.post(
-            "/mcp",
-            json=rpc(
-                "tools/call",
-                {"name": "read_document", "arguments": {"document_id": document["id"]}},
-            ),
-            headers=headers,
-        )
-
-    assert read.json()["result"]["structuredContent"]["text"] == VALID_TEXT
-
-
-async def test_a_foreign_project_is_unreachable_over_http(
-    session: AsyncSession,
-    tools: McpTools,
-    tokens: SessionTokens,
-    other_user: User,
-    project: Project,
-) -> None:
-    """토큰이 다른 사람이면 프로토콜을 거쳐도 남의 프로젝트에 닿지 못한다."""
-    async with mcp_over_http(session, tools) as mcp:
-        response = await mcp.post(
-            "/mcp",
-            json=rpc(
-                "tools/call",
-                {
-                    "name": "create_document",
-                    "arguments": {
-                        "project_id": str(project.id),
-                        "path": "intrusion.rspdl",
-                        "title": "침입",
-                        "text": VALID_TEXT,
-                    },
-                },
-            ),
-            headers={**MCP_HEADERS, **auth(tokens.issue_mcp(other_user.id))},
-        )
-
-    assert response.json()["result"]["isError"] is True
 
 
 async def test_mcp_token_endpoint_requires_a_session(
@@ -897,3 +454,104 @@ async def test_issued_mcp_token_works_as_a_bearer(
     # 엔드포인트는 서버 설정의 비밀로 서명하므로 테스트 도구의 비밀로는 검증할 수 없다.
     # 실제 배선이 같은 audience 로 같은 사용자를 지목하는지만 본다.
     assert get_session_tokens().verify_mcp(body["token"]) == user.id
+
+
+# ------------------------------------------------------------------ 작업 트리 도구의 경계
+
+
+async def test_viewer_cannot_write_to_the_tree(
+    tools: McpTools,
+    workspace: ProjectService,
+    tokens: SessionTokens,
+    user: User,
+    other_user: User,
+    project: Project,
+) -> None:
+    await workspace.add_member(
+        actor_id=user.id, project_id=project.id, user_id=other_user.id, role=ProjectRole.VIEWER
+    )
+    viewer = auth(tokens.issue_mcp(other_user.id))
+    assert await tools.tree_ls(viewer, project_id=str(project.id)) == []
+    with pytest.raises(AccessDenied):
+        await tools.tree_add(
+            viewer, project_id=str(project.id), parent="/", name="a.rspdl", content=""
+        )
+
+
+async def test_actor_comes_from_the_token_not_from_arguments(
+    tools: McpTools, tokens: SessionTokens, user: User, project: Project
+) -> None:
+    """도구 인자에는 행위자가 없다. 쓰기의 작성자와 잠금 보유자는 토큰의 사용자다."""
+    headers = auth(tokens.issue_mcp(user.id))
+    created = await tools.tree_add(
+        headers, project_id=str(project.id), parent="/", name="a.rspdl", content=""
+    )
+    assert created["updated_by"] == str(user.id)
+    listed = await tools.tree_ls(headers, project_id=str(project.id))
+    assert listed[0]["locked_by"] == f"mcp:{user.id}"
+
+
+async def test_malformed_id_is_a_clear_error(
+    tools: McpTools, tokens: SessionTokens, user: User
+) -> None:
+    with pytest.raises(ValueError, match="project_id"):
+        await tools.tree_ls(auth(tokens.issue_mcp(user.id)), project_id="not-a-uuid")
+
+
+async def test_tools_are_advertised_over_http(
+    session: AsyncSession, tools: McpTools, tokens: SessionTokens, user: User
+) -> None:
+    async with mcp_over_http(session, tools) as mcp:
+        response = await mcp.post(
+            "/mcp",
+            json=rpc("tools/list"),
+            headers={**MCP_HEADERS, **auth(tokens.issue_mcp(user.id))},
+        )
+    assert response.status_code == 200
+    advertised = response.json()["result"]["tools"]
+    assert {tool["name"] for tool in advertised} == {
+        "create_project",
+        "get_project",
+        "archive_project",
+        "list_project_members",
+        "add_project_member",
+        "list_projects",
+        "rspdl_runtime",
+        "compile_rspdl",
+        "check_rspdl",
+        "find_bounded_model",
+        # 작업 트리 (ADR-0008)
+        "ls",
+        "read",
+        "search",
+        "grep",
+        "compile",
+        "mkdir",
+        "add",
+        "edit",
+        "mv",
+        "delete",
+        "commit",
+        "unlock",
+    }
+    # 설명이 LLM 에게는 유일한 인터페이스다. 비어 있으면 도구가 없는 것과 같다.
+    assert all(tool["description"] for tool in advertised)
+
+
+async def test_a_foreign_project_is_unreachable_over_http(
+    session: AsyncSession,
+    tools: McpTools,
+    tokens: SessionTokens,
+    other_user: User,
+    project: Project,
+) -> None:
+    async with mcp_over_http(session, tools) as mcp:
+        response = await mcp.post(
+            "/mcp",
+            json=rpc("tools/call", {"name": "ls", "arguments": {"project_id": str(project.id)}}),
+            headers={**MCP_HEADERS, **auth(tokens.issue_mcp(other_user.id))},
+        )
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["isError"] is True
+    assert "프로젝트를 찾을 수 없다" in result["content"][0]["text"]

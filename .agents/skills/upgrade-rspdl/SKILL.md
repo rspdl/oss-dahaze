@@ -57,26 +57,23 @@ python3 scripts/rspdl_recompile_report.py --to 0.2.0
 
 ```console
 mkdir -p /tmp/dahaze-corpus
-# documents 테이블의 text 를 <id>.rspdl 로 내보내는 스크립트를 돌린 뒤
+# tree_files 테이블의 text 를 <id>.rspdl 로 내보내는 스크립트를 돌린 뒤
 python3 scripts/rspdl_recompile_report.py --to 0.2.0 --corpus /tmp/dahaze-corpus
 ```
 
-### 4. LLM 프롬프트와 출력 EBNF를 점검한다
+### 4. 에이전트 프롬프트와 EBNF 스냅샷을 점검한다
 
-`infrastructure/llm/prompts/` 의 문법 요약과 예제는 **컴파일러 버전과 함께 늙는다.**
-문법이 바뀌었는데 프롬프트를 그대로 두면 LLM이 옛 문법을 계속 만들어내고, 사용자는
-"AI가 만든 초안이 항상 컴파일 오류를 낸다" 는 형태로 겪는다.
+`infrastructure/llm/prompts/` 의 문법 요약·예제와 `infrastructure/llm/grammars/rspdl.ebnf` 는
+특정 컴파일러 버전의 문법에 맞춰 써 있다. 앱 AI 는 이 둘을 시스템 프롬프트로 받는다
+(ADR-0005 v4). 문법이 바뀌었는데 그대로 두면 AI 가 옛 문법으로 파일을 쓰고, 사용자는 "AI 가
+고친 파일마다 컴파일 오류가 남는다" 는 형태로 겪는다.
 
-`infrastructure/llm/grammars/rspdl.ebnf`도 같은 버전에 묶인다. 프롬프트만 새 문형을 설명하고
-constrained decoding 문법이 그 문형을 허용하지 않으면 모델은 올바른 출력을 만들 수 없다.
-
-**재컴파일 리포트로는 이 회귀가 드러나지 않는다.** 코퍼스는 이미 존재하는 문서를 검사할 뿐,
-앞으로 생성될 텍스트를 검사하지 않는다. 그러니 별도로 확인한다.
+**재컴파일 리포트로는 이 회귀가 드러나지 않는다.** 코퍼스는 이미 있는 원문을 검사할 뿐,
+앞으로 AI 가 쓸 원문을 검사하지 않는다. 그러니 별도로 확인한다.
 
 - 프롬프트의 예제를 새 버전으로 컴파일해 진단이 없는지 본다
-- EBNF가 OpenAI 전송용 Lark로 변환되는지 단위 테스트를 돌린다
-- 대표 생성 결과는 Python Lark가 아니라 새 버전의 RSPDL 컴파일러로 검증한다
-- CHANGELOG 에 문법 추가·변경이 있으면 프롬프트와 EBNF에 함께 반영한다
+- CHANGELOG 에 문법 추가·변경이 있으면 프롬프트와 EBNF 에 함께 반영한다
+- IR 모양이 바뀌었으면 `infrastructure/rspdl/indexer.py`(심볼 검색)를 점검한다
 - `PROMPT_RSPDL_VERSION`, `GRAMMAR_RSPDL_VERSION`, 설치된 컴파일러 버전이 같은지 확인한다
 
 ### 5. wire schema가 바뀌었다면

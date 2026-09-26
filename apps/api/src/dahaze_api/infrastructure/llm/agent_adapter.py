@@ -24,8 +24,8 @@ from dahaze_api.domain.agent import (
     ToolCall,
     ToolSpec,
 )
-from dahaze_api.infrastructure.llm.grammars import load_rspdl_grammar
-from dahaze_api.infrastructure.llm.openai_adapter import LlmNotConfigured, LlmUnavailable
+from dahaze_api.infrastructure.llm.errors import LlmNotConfigured, LlmUnavailable
+from dahaze_api.infrastructure.llm.grammars import load_rspdl_ebnf
 from dahaze_api.infrastructure.llm.prompts import build_agent_instructions
 
 DEFAULT_AGENT_TIMEOUT_S = 120.0
@@ -126,7 +126,7 @@ class OpenAiAgentLlm:
             "instructions": build_agent_instructions(
                 project_name=context.project_name,
                 planning=context.planning_profile,
-                grammar=load_rspdl_grammar().definition,
+                grammar=load_rspdl_ebnf(),
             ),
             "input": to_input(items),
             # 기록에 도구 호출이 있으면 도구 정의가 있어야 한다. 도구를 못 쓰게 할 때는

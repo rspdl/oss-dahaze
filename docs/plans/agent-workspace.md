@@ -208,6 +208,11 @@ AI 작업과 대화 기록을 모두 지운다. 로컬과 운영 DB에 모두 �
 운영 DB 초기화는 되돌릴 수 없으므로 마이그레이션 배포 전에 백업을 남기고, 릴리스 PR 본문에
 데이터 삭제를 명시한다.
 
+마이그레이션 `37bb036a2b97`(drop documents planning and snapshots)이 옛 테이블 7개와
+`projects.revision`·`source_hash`·`snapshot_version` 을 삭제한다. downgrade 는 빈 테이블만 다시
+만든다. LLM 설정 환경변수는 `OPENAI_PLANNING_*` 에서 `OPENAI_REASONING_EFFORT`,
+`OPENAI_AGENT_TIMEOUT_S` 로 바뀌었다. 배포 환경의 변수 이름도 함께 바꾼다.
+
 ## 삭제할 것
 
 - 기획 작업공간의 결정·보류·제안 상태와 그 화면
@@ -223,7 +228,7 @@ AI 작업과 대화 기록을 모두 지운다. 로컬과 운영 DB에 모두 �
 2. 도구 유스케이스와 MCP 노출
 3. 에이전트 루프: 도구 호출, 100회 상한, 잠금 해제, 이벤트 스트림
 4. 화면: 3단 레이아웃, 도구 카드와 diff, 변경 목록과 commit
-5. 옛 기능 삭제
+5. 옛 기능 삭제 — 백엔드 완료(옛 REST 33개, MCP 도구 15개). `apps/web` 의 옛 화면은 남아 있다
 
 ## 열린 질문
 

@@ -40,11 +40,9 @@ class Settings(BaseSettings):
 
     # --- LLM ---
     openai_api_key: str | None = None
-    # custom tool의 Lark grammar constrained decoding을 지원하는 Responses API 모델.
+    # function tool 과 스트리밍을 지원하는 Responses API 모델.
     openai_model: str = "gpt-5.4-mini"
-    openai_planning_timeout_s: float = 120.0
-    openai_planning_draft_timeout_s: float = 120.0
-    openai_planning_reasoning_effort: str | None = "low"
+    openai_reasoning_effort: str | None = "low"
     # AI 대화 턴의 모델 호출 한 번을 기다릴 한도.
     openai_agent_timeout_s: float = 120.0
 
