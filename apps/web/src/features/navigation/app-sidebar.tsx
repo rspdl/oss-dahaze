@@ -18,18 +18,21 @@ import { useSession } from '@/features/auth/use-session'
 import { useSidebarStore } from '@/shared/ui/sidebar-store'
 import { FolderIcon, PanelLeftIcon, XIcon } from '@/shared/ui/icons'
 import { ProjectSwitcher } from './project-switcher'
-import { PROJECT_VIEWS, activeRoute, viewHref, type ProjectViewId } from './views'
+import { activeRoute } from './views'
 
 /**
  * 왼쪽 내비게이션.
  *
- * 두 층으로 나뉜다. 위에서 **어느 프로젝트인지**를 고르고, 아래에서 **그 프로젝트를 어떻게
- * 볼지**를 고른다. 두 가지를 한 트리에 섞어 두면 뷰가 늘어날 때마다 프로젝트 목록과 뷰
- * 목록이 같은 자리를 다투고, 결국 둘 다 읽기 어려워진다.
+ * 두 층으로 나뉜다. 위에서 **어느 프로젝트인지**를 고르고, 아래에는 화면이 넘긴 `content` 를
+ * 둔다. 프로젝트 안에서는 작업공간이 문서 파일 트리를 넘긴다. 뷰 선택은 메인 영역 위쪽에 있다
+ * (`features/navigation/views.ts`).
  *
- * 도메인(프로젝트·뷰)을 알기 때문에 `packages/ui` 가 아니라 여기 산다 (UI 패키지 스킬).
+ * 트리를 여기서 import 하지 않고 슬롯으로 받는다. 내비게이션이 workspace feature 를 알면
+ * workspace → shared/ui/app-shell → navigation → workspace 로 import 가 한 바퀴 돈다.
+ *
+ * 도메인(프로젝트)을 알기 때문에 `packages/ui` 가 아니라 여기 산다 (UI 패키지 스킬).
  */
-export function AppSidebar() {
+export function AppSidebar({ content }: { content?: ReactNode }) {
   const pathname = usePathname()
   const session = useSession()
   const collapsed = useSidebarStore((state) => state.collapsed)
@@ -154,30 +157,43 @@ export function AppSidebar() {
               />
             </div>
 
-            <nav
-              aria-label="프로젝트 메뉴"
-              className={cn(
-                'flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-3',
-                railed ? 'md:items-center md:px-1.5' : 'px-2',
-              )}
-            >
-              {active.projectId === null ? (
-                <p
-                  className={cn(
-                    'px-2 py-1 text-xs leading-relaxed text-text-subtle',
-                    railed && 'md:hidden',
-                  )}
-                >
-                  프로젝트를 고르면 메뉴가 나옵니다.
-                </p>
-              ) : (
-                <ProjectViewNav
-                  projectId={active.projectId}
-                  activeView={active.view}
-                  railed={railed}
-                />
-              )}
-            </nav>
+            {active.projectId !== null && content !== undefined ? (
+              <>
+                {/*
+                  접힌 기둥(3.5rem)에는 파일 이름이 들어가지 않는다. 트리를 숨기고 펼치는 버튼만
+                  둔다. 좁은 화면의 서랍은 늘 펼친 폭이라 `md:` 에서만 숨긴다.
+                */}
+                <div className={cn('flex min-h-0 flex-1 flex-col', railed && 'md:hidden')}>
+                  {content}
+                </div>
+                {railed ? (
+                  <div className="hidden flex-1 justify-center py-3 md:flex">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="파일 트리 펼치기"
+                          onClick={toggleCollapsed}
+                        >
+                          <FolderIcon />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">파일 트리 펼치기</TooltipContent>
+                    </Tooltip>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <p
+                className={cn(
+                  'flex-1 px-4 py-4 text-xs leading-relaxed text-text-subtle',
+                  railed && 'md:hidden',
+                )}
+              >
+                프로젝트를 고르면 문서 트리가 나옵니다.
+              </p>
+            )}
           </>
         ) : (
           <nav
@@ -211,92 +227,6 @@ export function AppSidebar() {
         </div>
       </aside>
     </TooltipProvider>
-  )
-}
-
-/** 뷰마다의 아이콘. 뜻은 옆 글자가 전하고, 기둥이 좁을 때만 아이콘만 보인다. */
-const VIEW_ICONS: Record<ProjectViewId, ReactNode> = {
-  workspace: <FolderIcon className="size-4 shrink-0" />,
-}
-
-function ProjectViewNav({
-  projectId,
-  activeView,
-  railed,
-}: {
-  projectId: string
-  activeView: ProjectViewId | null
-  railed: boolean
-}) {
-  return (
-    <>
-      {PROJECT_VIEWS.map((view) => (
-        <NavRow
-          key={view.id}
-          href={viewHref(projectId, view.id)}
-          railed={railed}
-          isActive={view.id === activeView}
-          tooltip={view.label}
-          icon={VIEW_ICONS[view.id]}
-        >
-          {view.label}
-        </NavRow>
-      ))}
-    </>
-  )
-}
-
-/**
- * 내비게이션 한 줄.
- *
- * 지금 위치를 색으로만 말하지 않는다. `aria-current` 로도 말해야 스크린 리더 사용자가 어디에
- * 있는지 알고, 왼쪽 세로 막대가 색각 이상 사용자에게 같은 사실을 전한다.
- */
-function NavRow({
-  href,
-  icon,
-  children,
-  isActive,
-  railed,
-  tooltip,
-}: {
-  href: string
-  icon: ReactNode
-  children: ReactNode
-  isActive: boolean
-  railed: boolean
-  tooltip?: string
-}) {
-  const row = (
-    <Link
-      href={href}
-      aria-current={isActive ? 'page' : undefined}
-      className={cn(
-        'group relative flex items-center rounded-control text-sm transition-colors duration-200 ease-out-expo',
-        railed ? 'md:size-9 md:justify-center md:px-0' : 'gap-2 px-2 py-1.5',
-        isActive
-          ? 'bg-accent-subtle font-medium text-text'
-          : 'text-text-muted hover:bg-surface-raised hover:text-text',
-      )}
-    >
-      {isActive ? (
-        <span
-          aria-hidden
-          className="absolute top-1.5 bottom-1.5 -left-0.5 w-0.5 rounded-full bg-accent"
-        />
-      ) : null}
-      {icon}
-      <span className={cn('truncate', railed && 'md:hidden')}>{children}</span>
-    </Link>
-  )
-
-  if (tooltip === undefined || !railed) return row
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{row}</TooltipTrigger>
-      <TooltipContent side="right">{tooltip}</TooltipContent>
-    </Tooltip>
   )
 }
 

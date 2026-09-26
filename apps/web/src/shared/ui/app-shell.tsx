@@ -45,6 +45,11 @@ export function AppShell({
    * 여백 대신 열 경계가 구획을 나누는 화면만 켠다. `fullBleed`·`lockToViewport` 와 함께 쓴다.
    */
   flush = false,
+  /**
+   * 왼쪽 기둥의 프로젝트 전환기 아래에 둘 내용. 프로젝트 안의 작업공간이 문서 파일 트리를 넘긴다.
+   * 주지 않으면 기둥이 안내 문구만 보여준다.
+   */
+  sidebar,
 }: {
   children: ReactNode
   breadcrumb?: ReactNode
@@ -52,6 +57,7 @@ export function AppShell({
   fullBleed?: boolean
   lockToViewport?: boolean
   flush?: boolean
+  sidebar?: ReactNode
 }) {
   const setMobileOpen = useSidebarStore((state) => state.setMobileOpen)
 
@@ -62,7 +68,7 @@ export function AppShell({
         lockToViewport && 'h-dvh overflow-hidden',
       )}
     >
-      <AppSidebar />
+      <AppSidebar content={sidebar} />
 
       {/* `min-w-0` 이 없으면 편집기처럼 넓은 자식이 그리드 칸을 밀어내 가로 스크롤이 생긴다. */}
       <div

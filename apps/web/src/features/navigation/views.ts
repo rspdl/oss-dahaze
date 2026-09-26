@@ -1,26 +1,32 @@
 /**
  * 프로젝트 하나를 보는 뷰.
  *
- * 이 목록이 왼쪽 메뉴의 원본이고 라우트 조각의 원본이기도 하다. 뷰를 추가할 때 고칠 곳이
- * 하나여야 메뉴와 주소가 어긋나지 않는다.
+ * 이 목록이 메인 영역 위쪽 뷰 선택 바의 원본이고 라우트 조각의 원본이기도 하다. 뷰를 추가할 때
+ * 고칠 곳이 하나여야 선택 바와 주소가 어긋나지 않는다.
  *
  * 뷰를 주소에 담는 이유: 새로고침·공유·뒤로가기가 전부 뷰 단위로 보존된다.
  *
- * 지금은 작업공간 하나다. 옛 검토·명세·관리 뷰는 공유 작업 트리로 옮기면서 삭제했다
- * (docs/plans/agent-workspace.md "삭제할 것").
+ * 소스는 전부 작업 트리의 문서다. 뷰는 같은 작업 트리를 다르게 보여줄 뿐이고, 왼쪽 파일 트리와
+ * 오른쪽 AI 대화는 뷰를 바꿔도 그대로 남는다. 그래서 모든 뷰가 `app/projects/[projectId]/layout.tsx`
+ * 하나를 공유한다 (docs/plans/agent-workspace.md "화면").
  */
 export const PROJECT_VIEWS = [
   {
-    id: 'workspace',
-    label: '작업공간',
-    description: '파일을 고르고 고치며 AI와 대화로 문서를 만든다',
+    id: 'documents',
+    label: '문서',
+    description: '파일을 열어 고치고, commit 과 도구 호출의 diff 를 본다',
+  },
+  {
+    id: 'ia',
+    label: 'IA',
+    description: '작업 트리를 컴파일한 정보구조와 화면 흐름을 계층으로 본다',
   },
 ] as const
 
 export type ProjectViewId = (typeof PROJECT_VIEWS)[number]['id']
 
 /** 프로젝트에 들어갔을 때 처음 보는 뷰. `/projects/{id}` 가 여기로 간다. */
-export const DEFAULT_PROJECT_VIEW: ProjectViewId = 'workspace'
+export const DEFAULT_PROJECT_VIEW: ProjectViewId = 'documents'
 
 export function viewHref(projectId: string, view: ProjectViewId): string {
   return `/projects/${projectId}/${view}`
