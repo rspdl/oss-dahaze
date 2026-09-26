@@ -483,3 +483,110 @@ class CommitChangeRow(Base):
     text: Mapped[str | None] = mapped_column(Text)
 
     commit: Mapped[CommitRow] = relationship(back_populates="changes")
+
+
+class AgentSessionRow(TimestampMixin, Base):
+    """AI 대화 세션. Claude Code 의 대화 하나에 해당한다."""
+
+    __tablename__ = "agent_sessions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_by: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+
+
+class AgentTurnRow(TimestampMixin, Base):
+    """사용자 메시지 하나에 대한 AI 작업. worker 가 lease 를 잡고 실행한다."""
+
+    __tablename__ = "agent_turns"
+    __table_args__ = (
+        UniqueConstraint("session_id", "request_id", name="uq_agent_turn_request"),
+        Index("ix_agent_turns_claim", "status", "lease_expires_at", "created_at"),
+        # 세션 하나에 진행 중인 턴은 하나뿐이다. 두 턴이 같은 대화 기록에 번갈아 쓰면
+        # 모델에게 가는 입력이 섞인다.
+        Index(
+            "uq_agent_turn_active",
+            "session_id",
+            unique=True,
+            postgresql_where="status IN ('queued', 'running', 'awaiting_approval')",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("agent_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    request_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    tool_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    stop_reason: Mapped[str | None] = mapped_column(String(20))
+    pending_approval: Mapped[dict[str, object] | None] = mapped_column(JsonB)
+    approval: Mapped[bool | None] = mapped_column()
+    cancel_requested: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
+    )
+    error: Mapped[str | None] = mapped_column(Text)
+    lease_token: Mapped[UUID | None] = mapped_column(Uuid)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AgentItemRow(Base):
+    """대화 기록 한 줄. 턴은 이 기록만 읽고 이어서 실행할 수 있다."""
+
+    __tablename__ = "agent_items"
+    __table_args__ = (UniqueConstraint("session_id", "seq", name="uq_agent_item_seq"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("agent_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    turn_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("agent_turns.id", ondelete="SET NULL")
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ProjectEventRow(Base):
+    """프로젝트 이벤트. SSE 가 `seq` 순서로 읽는다."""
+
+    __tablename__ = "project_events"
+    __table_args__ = (Index("ix_project_events_project_seq", "project_id", "seq"),)
+
+    seq: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    type: Mapped[str] = mapped_column(String(40), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class UserAgentSettingsRow(Base):
+    __tablename__ = "user_agent_settings"
+
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    auto_approve_recursive_delete: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
+    )

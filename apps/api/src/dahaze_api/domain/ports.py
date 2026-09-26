@@ -6,11 +6,24 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
 
+from dahaze_api.domain.agent import (
+    AgentContext,
+    AgentItem,
+    AgentSession,
+    AgentSettings,
+    AgentStep,
+    AgentTurn,
+    ItemKind,
+    PendingApproval,
+    StopReason,
+    ToolSpec,
+    TurnStatus,
+)
 from dahaze_api.domain.entities import (
     Document,
     DocumentRevision,
@@ -21,6 +34,7 @@ from dahaze_api.domain.entities import (
     ProjectRole,
     User,
 )
+from dahaze_api.domain.events import ProjectEvent
 from dahaze_api.domain.llm import EbnfGrammar
 from dahaze_api.domain.planning import DecisionResolutionOutcome
 from dahaze_api.domain.rspdl import (
@@ -551,6 +565,18 @@ class TreeRepositoryPort(Protocol):
 
     async def release_locks(self, *, holder: str, project_id: UUID | None = None) -> int: ...
 
+    async def locked_projects(self, holder: str) -> list[UUID]:
+        """보유자가 잠금을 가진 프로젝트."""
+        ...
+
+    async def touch_locks(self, *, holder: str, now: datetime) -> int:
+        """보유자의 잠금 전부의 마지막 쓰기 시각을 `now` 로 바꾼다. 승인 대기 뒤 재개할 때 쓴다."""
+        ...
+
+    async def oldest_lock_write(self, holder: str) -> datetime | None:
+        """보유자의 잠금 중 가장 오래된 마지막 쓰기 시각."""
+        ...
+
     async def create_commit(
         self,
         *,
@@ -582,4 +608,113 @@ class PatternMatcherPort(Protocol):
 
     def compile(self, pattern: str) -> Callable[[str], bool]:
         """줄 하나가 패턴에 맞는지 보는 함수. 잘못된 패턴이면 `InvalidPattern`."""
+        ...
+
+
+class ProjectEventsPort(Protocol):
+    """프로젝트 이벤트 기록. 기록과 함께 구독자에게 알린다."""
+
+    async def append(
+        self, *, project_id: UUID, type: str, payload: Mapping[str, Any]
+    ) -> None: ...
+
+    async def list_after(
+        self, *, project_id: UUID, after_seq: int, limit: int
+    ) -> list[ProjectEvent]: ...
+
+
+class AgentRepositoryPort(Protocol):
+    """AI 대화 세션, 대화 항목, 턴."""
+
+    async def create_session(
+        self, *, project_id: UUID, created_by: UUID, title: str
+    ) -> AgentSession: ...
+
+    async def list_sessions(self, project_id: UUID) -> list[AgentSession]:
+        """최근에 쓴 세션이 먼저."""
+        ...
+
+    async def get_session(self, session_id: UUID) -> AgentSession | None: ...
+
+    async def append_item(
+        self,
+        *,
+        session_id: UUID,
+        turn_id: UUID | None,
+        kind: ItemKind,
+        payload: Mapping[str, Any],
+    ) -> AgentItem: ...
+
+    async def list_items(self, session_id: UUID, *, after_seq: int = 0) -> list[AgentItem]: ...
+
+    async def create_turn(
+        self, *, session_id: UUID, project_id: UUID, actor_id: UUID, request_id: UUID
+    ) -> AgentTurn: ...
+
+    async def turn_by_request(self, session_id: UUID, request_id: UUID) -> AgentTurn | None: ...
+
+    async def get_turn(self, turn_id: UUID) -> AgentTurn | None: ...
+
+    async def active_turn(self, session_id: UUID) -> AgentTurn | None: ...
+
+    async def list_turns(self, session_id: UUID) -> list[AgentTurn]: ...
+
+    async def claim_turn(self, *, now: datetime, lease_seconds: int) -> AgentTurn | None:
+        """실행할 턴 하나를 lease 와 함께 가져온다. 대기 중이거나 lease 가 끝난 실행 중 턴."""
+        ...
+
+    async def update_turn(
+        self,
+        turn_id: UUID,
+        *,
+        lease_token: UUID,
+        now: datetime,
+        lease_seconds: int | None = None,
+        status: TurnStatus | None = None,
+        tool_calls: int | None = None,
+        stop_reason: StopReason | None = None,
+        pending_approval: PendingApproval | None = None,
+        clear_pending: bool = False,
+        error: str | None = None,
+    ) -> bool:
+        """lease 가 아직 내 것일 때만 바꾼다. `lease_seconds` 를 주면 lease 를 늘린다."""
+        ...
+
+    async def request_cancel(self, turn_id: UUID) -> AgentTurn | None: ...
+
+    async def resolve_approval(self, turn_id: UUID, *, approved: bool) -> AgentTurn | None:
+        """승인을 기다리는 턴이면 결정을 기록하고 다시 대기열에 넣는다."""
+        ...
+
+    async def cancel_waiting(self, turn_id: UUID, *, now: datetime) -> AgentTurn | None:
+        """승인을 기다리는 턴을 worker 없이 바로 취소한다."""
+        ...
+
+
+class AgentSettingsPort(Protocol):
+    async def get(self, user_id: UUID) -> AgentSettings: ...
+
+    async def put(self, user_id: UUID, settings: AgentSettings) -> AgentSettings: ...
+
+
+class AgentLlmPort(Protocol):
+    """도구를 부르는 대화 모델. 구현체는 `infrastructure/llm/` 에만 둔다."""
+
+    @property
+    def model(self) -> str: ...
+
+    async def step(
+        self,
+        *,
+        context: AgentContext,
+        items: Sequence[AgentItem],
+        tools: Sequence[ToolSpec],
+        allow_tools: bool,
+        on_text: Callable[[str], Awaitable[None]],
+    ) -> AgentStep:
+        """대화 기록을 입력으로 다음 응답 하나를 만든다.
+
+        답변 텍스트는 만들어지는 대로 `on_text` 로 흘려보내고, 끝나면 전체 텍스트와 도구
+        호출을 돌려준다. `allow_tools` 가 거짓이면 도구를 부르지 않고 답변만 만든다.
+        """
         ...

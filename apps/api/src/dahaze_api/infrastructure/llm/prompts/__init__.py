@@ -82,3 +82,31 @@ def build_user_prompt(
 
     blocks.append("# 출력\n\nRSPDL 소스 전문만 출력한다.")
     return "\n\n".join(blocks)
+
+
+_GRAMMAR_HEADING = "# 문법 요약"
+
+
+def _grammar_reference(*, planning: bool) -> str:
+    """`system_ko.md` 에서 출력 규칙을 뺀 문법 설명.
+
+    출력 규칙("RSPDL 전문 하나만 낸다")은 한 번에 문서 하나를 만드는 저작 호출용이다. 도구를
+    부르며 대화하는 에이전트에게는 맞지 않으므로 문법 요약부터 쓴다.
+    """
+    text = _profile_text("system_ko.md", planning=planning)
+    _, heading, rest = text.partition(_GRAMMAR_HEADING)
+    return f"{heading}{rest}".strip()
+
+
+def build_agent_instructions(*, project_name: str, planning: bool, grammar: str) -> str:
+    """앱 AI 의 시스템 프롬프트. 역할·도구 규칙, 문법 요약, 예시, EBNF 스냅샷 순서다."""
+    return "\n\n".join(
+        [
+            _read("agent_system_ko.md").strip(),
+            f"# 현재 프로젝트\n\n{project_name}",
+            _grammar_reference(planning=planning),
+            _profile_text("examples_ko.md", planning=planning),
+            "# RSPDL EBNF 참고\n\n아래 EBNF 는 문법 참고용이다. 판정은 컴파일러가 한다.\n\n"
+            f"```ebnf\n{grammar.strip()}\n```",
+        ]
+    )

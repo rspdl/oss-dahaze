@@ -21,6 +21,239 @@
         "title": "AddMemberRequest",
         "type": "object"
       },
+      "AgentItemResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "user_message",
+              "assistant_message",
+              "tool_call",
+              "tool_result"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "description": "종류별 내용. 메시지는 {text}, 도구 호출은 {call_id, name, arguments}, 도구 결과는 {call_id, name, ok, output, changes[{path_before, path_after, text_before, text_after}]}",
+            "title": "Payload",
+            "type": "object"
+          },
+          "seq": {
+            "description": "세션 안에서 1부터 늘어나는 순번",
+            "title": "Seq",
+            "type": "integer"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Id"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "turn_id",
+          "seq",
+          "kind",
+          "payload",
+          "created_at"
+        ],
+        "title": "AgentItemResponse",
+        "type": "object"
+      },
+      "AgentSessionResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "마지막 대화 항목이 기록된 시각",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "created_by",
+          "title",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AgentSessionResponse",
+        "type": "object"
+      },
+      "AgentSettingsBody": {
+        "properties": {
+          "auto_approve_recursive_delete": {
+            "description": "비어 있지 않은 폴더 삭제를 묻지 않고 진행한다",
+            "title": "Auto Approve Recursive Delete",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "auto_approve_recursive_delete"
+        ],
+        "title": "AgentSettingsBody",
+        "type": "object"
+      },
+      "AgentTurnResponse": {
+        "properties": {
+          "actor_id": {
+            "format": "uuid",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "pending_approval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingApprovalResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "awaiting_approval",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "done",
+                  "tool_limit",
+                  "lock_conflict",
+                  "lock_expired",
+                  "cancelled",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Reason"
+          },
+          "tool_calls": {
+            "description": "이 턴에서 부른 도구 수. 상한은 100",
+            "title": "Tool Calls",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "project_id",
+          "actor_id",
+          "status",
+          "tool_calls",
+          "stop_reason",
+          "pending_approval",
+          "cancel_requested",
+          "error",
+          "created_at"
+        ],
+        "title": "AgentTurnResponse",
+        "type": "object"
+      },
       "AnalysisResponse": {
         "description": "컴파일러 응답 하나.\n\n`result` 는 RSPDL SDK 가 준 그대로다. 모양은 컴파일러가 소유하고\n`wire_schema_version` 으로 버전이 매겨진다 — dahaze 가 재작성하지 않는다 (ADR-0003).\n진단은 예외가 아니라 이 안에 담겨 온다.",
         "properties": {
@@ -798,6 +1031,25 @@
           "operation"
         ],
         "title": "ConnectCompilerEdit",
+        "type": "object"
+      },
+      "CreateAgentSessionRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "비우면 '새 대화'",
+            "title": "Title"
+          }
+        },
+        "title": "CreateAgentSessionRequest",
         "type": "object"
       },
       "CreateDocumentRequest": {
@@ -2207,6 +2459,36 @@
         "title": "PatchPlanningMetadataRequest",
         "type": "object"
       },
+      "PendingApprovalResponse": {
+        "properties": {
+          "arguments": {
+            "additionalProperties": true,
+            "title": "Arguments",
+            "type": "object"
+          },
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "description": "사용자에게 보여줄 승인 대상 설명",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "call_id",
+          "name",
+          "arguments",
+          "reason"
+        ],
+        "title": "PendingApprovalResponse",
+        "type": "object"
+      },
       "PlanningAiErrorResponse": {
         "properties": {
           "code": {
@@ -3152,6 +3434,38 @@
         "title": "ProjectCompileResponse",
         "type": "object"
       },
+      "ProjectEventResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "seq": {
+            "description": "프로젝트 이벤트 순번. SSE 의 id 와 같다",
+            "title": "Seq",
+            "type": "integer"
+          },
+          "type": {
+            "description": "tree.changed · locks.released · commit.created · agent.item · agent.text_delta · agent.turn",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "type",
+          "payload",
+          "created_at"
+        ],
+        "title": "ProjectEventResponse",
+        "type": "object"
+      },
       "ProjectMemberResponse": {
         "properties": {
           "project_id": {
@@ -3672,6 +3986,19 @@
         "title": "RegisterRequest",
         "type": "object"
       },
+      "ResolveApprovalRequest": {
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "approved"
+        ],
+        "title": "ResolveApprovalRequest",
+        "type": "object"
+      },
       "ResolvePlanningDecisionRequest": {
         "properties": {
           "expected_revision": {
@@ -3944,6 +4271,28 @@
           "content"
         ],
         "title": "SaveFileRequest",
+        "type": "object"
+      },
+      "SendAgentMessageRequest": {
+        "properties": {
+          "request_id": {
+            "description": "클라이언트가 만든 요청 ID. 같은 값으로 다시 보내면 메시지를 한 번만 기록한다",
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "request_id"
+        ],
+        "title": "SendAgentMessageRequest",
         "type": "object"
       },
       "SourceIn": {
@@ -4415,6 +4764,402 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/agent/sessions/{session_id}": {
+      "get": {
+        "operationId": "get_agent_session",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Session",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/sessions/{session_id}/items": {
+      "get": {
+        "operationId": "list_agent_items",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "이 순번 이후만 돌려준다",
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "이 순번 이후만 돌려준다",
+              "minimum": 0,
+              "title": "After Seq",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentItemResponse"
+                  },
+                  "title": "Response List Agent Items",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agent Items",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/sessions/{session_id}/messages": {
+      "post": {
+        "description": "메시지를 기록하고 턴을 대기열에 넣는다. AI 가 아직 응답 중이면 409.",
+        "operationId": "send_agent_message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendAgentMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send Agent Message",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/sessions/{session_id}/turns": {
+      "get": {
+        "operationId": "list_agent_turns",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentTurnResponse"
+                  },
+                  "title": "Response List Agent Turns",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agent Turns",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/turns/{turn_id}/approval": {
+      "post": {
+        "operationId": "resolve_agent_approval",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "turn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Turn Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Agent Approval",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/turns/{turn_id}/cancel": {
+      "post": {
+        "operationId": "cancel_agent_turn",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "turn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Turn Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Agent Turn",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
     "/api/analysis/check": {
       "post": {
         "description": "runtime record 에 대해 제약과 정책을 검사한다.",
@@ -5338,6 +6083,112 @@
         ]
       }
     },
+    "/api/me/agent-settings": {
+      "get": {
+        "operationId": "get_agent_settings",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSettingsBody"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Settings",
+        "tags": [
+          "agent"
+        ]
+      },
+      "put": {
+        "operationId": "update_agent_settings",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSettingsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSettingsBody"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Agent Settings",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
     "/api/planning/drafts/{draft_id}": {
       "get": {
         "operationId": "get_planning_draft",
@@ -5643,6 +6494,137 @@
         "summary": "Get Project",
         "tags": [
           "workspace"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/agent/sessions": {
+      "get": {
+        "description": "최근에 대화한 세션이 먼저.",
+        "operationId": "list_agent_sessions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentSessionResponse"
+                  },
+                  "title": "Response List Agent Sessions",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agent Sessions",
+        "tags": [
+          "agent"
+        ]
+      },
+      "post": {
+        "operationId": "create_agent_session",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Agent Session",
+        "tags": [
+          "agent"
         ]
       }
     },
@@ -6023,6 +7005,93 @@
         "summary": "Create Document",
         "tags": [
           "workspace"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/events": {
+      "get": {
+        "description": "SSE 와 같은 이벤트를 JSON 으로 돌려준다. 재접속 전 따라잡기와 타입 생성용이다.",
+        "operationId": "list_project_events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After Seq",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dahaze_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dahaze Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectEventResponse"
+                  },
+                  "title": "Response List Project Events",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Project Events",
+        "tags": [
+          "agent"
         ]
       }
     },

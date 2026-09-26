@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     openai_planning_timeout_s: float = 120.0
     openai_planning_draft_timeout_s: float = 120.0
     openai_planning_reasoning_effort: str | None = "low"
+    # AI 대화 턴의 모델 호출 한 번을 기다릴 한도.
+    openai_agent_timeout_s: float = 120.0
 
     @property
     def cors_origins(self) -> list[str]:

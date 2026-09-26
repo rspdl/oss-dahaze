@@ -39,6 +39,7 @@ from dahaze_api.domain.entities import (
 )
 from dahaze_api.domain.ports import RspdlCompilerPort
 from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlSource, source_fingerprint
+from dahaze_api.infrastructure.agent_scope import build_tree
 from dahaze_api.infrastructure.auth.session import SessionTokens
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
 from dahaze_api.infrastructure.db.planning_ai_repository import SqlPlanningAiJobRepository
@@ -49,7 +50,6 @@ from dahaze_api.infrastructure.db.repositories import (
     SqlUserRepository,
 )
 from dahaze_api.infrastructure.db.session import get_session_factory
-from dahaze_api.infrastructure.db.tree_repository import SqlTreeRepository
 from dahaze_api.infrastructure.rspdl.indexer import LocalRspdlIndexer
 from dahaze_api.infrastructure.text import Re2PatternMatcher
 from dahaze_api.interface.mcp.auth import (
@@ -787,9 +787,8 @@ class McpTools:
                 compiler=self._compiler,
             )
             analyzer = AnalyzeWorkspace(compiler=self._compiler, cache=SqlAnalysisCache(session))
-            tree = TreeService(
-                projects=SqlProjectRepository(session), tree=SqlTreeRepository(session)
-            )
+            # REST·앱 AI 와 같은 조립이다. 변경은 프로젝트 이벤트로 기록되어 화면에 바로 보인다.
+            tree = build_tree(session)
             yield _Actor(
                 user=user,
                 workspace=workspace,

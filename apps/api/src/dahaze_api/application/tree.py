@@ -26,8 +26,14 @@ from dahaze_api.application.errors import (
     NotFound,
 )
 from dahaze_api.domain.entities import ProjectMembership
-from dahaze_api.domain.ports import ProjectRepositoryPort, TreeRepositoryPort
+from dahaze_api.domain.events import EventType
+from dahaze_api.domain.ports import (
+    ProjectEventsPort,
+    ProjectRepositoryPort,
+    TreeRepositoryPort,
+)
 from dahaze_api.domain.tree import (
+    LOCK_TTL,
     ROOT,
     ChangeKind,
     Commit,
@@ -86,10 +92,13 @@ class TreeService:
         *,
         projects: ProjectRepositoryPort,
         tree: TreeRepositoryPort,
+        events: ProjectEventsPort | None = None,
         clock: Clock = _utcnow,
     ) -> None:
         self._projects = projects
         self._tree = tree
+        # 변경을 화면에 실시간으로 알린다. 없으면 기록하지 않는다(테스트용).
+        self._events = events
         self._clock = clock
 
     # ------------------------------------------------------------------ 읽기
@@ -160,7 +169,9 @@ class TreeService:
             raise Conflict(f"폴더 경로가 올바르지 않다: {path!r}")
         self._require_parent(snap, path)
         self._require_free(snap, path)
-        return await self._tree.create_folder(project_id=project_id, path=path)
+        folder = await self._tree.create_folder(project_id=project_id, path=path)
+        await self._tree_changed(project_id, [path], actor_id=actor_id, holder=None)
+        return folder
 
     async def add(
         self,
@@ -182,6 +193,7 @@ class TreeService:
             project_id=project_id, path=path, text=content, actor_id=actor_id
         )
         await self._claim(snap, [created], actor_id=actor_id, holder=holder)
+        await self._tree_changed(project_id, [path], actor_id=actor_id, holder=holder)
         return created
 
     async def edit(
@@ -197,7 +209,9 @@ class TreeService:
         snap = await self._begin_write(actor_id, project_id)
         file = self._file(snap, path)
         await self._claim(snap, [file], actor_id=actor_id, holder=holder)
-        return await self._tree.update_file(file.id, actor_id=actor_id, text=content)
+        updated = await self._tree.update_file(file.id, actor_id=actor_id, text=content)
+        await self._tree_changed(project_id, [path], actor_id=actor_id, holder=holder)
+        return updated
 
     async def move(
         self,
@@ -222,7 +236,9 @@ class TreeService:
                 raise Conflict(f"파일 경로가 올바르지 않다: {target!r} (.rspdl 로 끝나야 한다)")
             file = snap.live[source]
             await self._claim(snap, [file], actor_id=actor_id, holder=holder)
-            return [await self._tree.update_file(file.id, actor_id=actor_id, path=target)]
+            moved_file = await self._tree.update_file(file.id, actor_id=actor_id, path=target)
+            await self._tree_changed(project_id, [source, target], actor_id=actor_id, holder=holder)
+            return [moved_file]
 
         if source not in snap.folders:
             raise NotFound(f"경로가 없다: {source}")
@@ -236,12 +252,14 @@ class TreeService:
         for path, folder in snap.folders.items():
             if path == source or is_under(path, source):
                 await self._tree.move_folder(folder.id, path=rebase(path, source, target))
-        return [
+        moved = [
             await self._tree.update_file(
                 file.id, actor_id=actor_id, path=rebase(file.path, source, target)
             )
             for file in files
         ]
+        await self._tree_changed(project_id, [source, target], actor_id=actor_id, holder=holder)
+        return moved
 
     async def delete(
         self,
@@ -261,6 +279,7 @@ class TreeService:
             file = snap.live[path]
             await self._claim(snap, [file], actor_id=actor_id, holder=holder)
             await self._discard(file, actor_id=actor_id)
+            await self._tree_changed(project_id, [path], actor_id=actor_id, holder=holder)
             return [path]
 
         if path not in snap.folders:
@@ -278,6 +297,7 @@ class TreeService:
             await self._discard(file, actor_id=actor_id)
         for folder in [*folders, snap.folders[path]]:
             await self._tree.delete_folder(folder.id)
+        await self._tree_changed(project_id, [path], actor_id=actor_id, holder=holder)
         return [file.path for file in files]
 
     async def commit(
@@ -319,6 +339,12 @@ class TreeService:
                 await self._tree.remove_file(file.id)
             else:
                 await self._tree.mark_committed(file.id)
+        if self._events is not None:
+            await self._events.append(
+                project_id=project_id,
+                type=EventType.COMMIT_CREATED,
+                payload={"commit_id": str(commit.id), "seq": commit.seq},
+            )
         return commit
 
     async def release_locks(self, *, holder: str, project_id: UUID | None = None) -> int:
@@ -327,7 +353,34 @@ class TreeService:
         접근 검사를 하지 않는다. 자기 `holder` 를 아는 쪽만 부를 수 있고, 푸는 것은 남의
         데이터를 바꾸지 않는다.
         """
-        return await self._tree.release_locks(holder=holder, project_id=project_id)
+        projects = (
+            [project_id] if project_id is not None else await self._tree.locked_projects(holder)
+        )
+        released = await self._tree.release_locks(holder=holder, project_id=project_id)
+        if released and self._events is not None:
+            for affected in projects:
+                await self._events.append(
+                    project_id=affected, type=EventType.LOCKS_RELEASED, payload={"holder": holder}
+                )
+        return released
+
+    async def touch_locks(self, *, holder: str) -> None:
+        """보유자 잠금의 마지막 쓰기 시각을 지금으로 바꾼다. 승인 대기 시간을 만료에 넣지 않는다."""
+        await self._tree.touch_locks(holder=holder, now=self._clock())
+
+    async def locks_expired(self, *, holder: str) -> bool:
+        """보유자의 잠금 가운데 만료된 것이 있는가. 만료되면 AI 작업을 멈춘다 (ADR-0008)."""
+        oldest = await self._tree.oldest_lock_write(holder)
+        return oldest is not None and self._clock() - oldest >= LOCK_TTL
+
+    async def require_member(
+        self, *, actor_id: UUID, project_id: UUID, write: bool = False
+    ) -> ProjectMembership:
+        """트리를 다루는 다른 유스케이스(AI 세션 등)가 같은 접근 검사를 쓴다."""
+        membership = await self._require_member(actor_id, project_id)
+        if write and not membership.role.can_write:
+            raise AccessDenied("이 프로젝트에 쓰기 권한이 없다")
+        return membership
 
     # ------------------------------------------------------------------ 내부
 
@@ -423,6 +476,17 @@ class TreeService:
                 raise Locked(
                     f"다른 작업이 잠근 파일이다: {file.path}", paths=[file.path], holders=[]
                 )
+
+    async def _tree_changed(
+        self, project_id: UUID, paths: list[str], *, actor_id: UUID, holder: str | None
+    ) -> None:
+        if self._events is None:
+            return
+        await self._events.append(
+            project_id=project_id,
+            type=EventType.TREE_CHANGED,
+            payload={"paths": paths, "actor_id": str(actor_id), "holder": holder},
+        )
 
     async def _discard(self, file: TreeFile, *, actor_id: UUID) -> None:
         # commit 된 적 없는 파일은 이력에 남길 것이 없다. 행째 없앤다.

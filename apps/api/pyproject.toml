@@ -66,6 +66,7 @@ files = ["src", "tests", "scripts"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-# google-re2 는 타입 정보를 배포하지 않는다. 쓰는 곳은 infrastructure/text/ 한 파일이다.
-module = ["re2"]
+# 둘 다 타입 정보를 배포하지 않는다. re2 는 infrastructure/text/, asyncpg 는 이벤트 LISTEN
+# (infrastructure/event_feed.py)에서만 직접 쓴다.
+module = ["re2", "asyncpg"]
 ignore_missing_imports = true

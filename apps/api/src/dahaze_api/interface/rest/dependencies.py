@@ -12,6 +12,7 @@ from uuid import UUID
 from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dahaze_api.application.agent import AgentService
 from dahaze_api.application.analysis import AnalyzeWorkspace, CompileProject
 from dahaze_api.application.auth import (
     RegisterWithPassword,
@@ -31,11 +32,18 @@ from dahaze_api.domain.ports import (
     LlmPort,
     OAuthProviderPort,
     PasswordHasherPort,
+    ProjectEventsPort,
     RspdlCompilerPort,
+)
+from dahaze_api.infrastructure.agent_scope import (
+    build_agent_scope,
+    build_inspector,
+    build_tree,
 )
 from dahaze_api.infrastructure.auth.password import ScryptPasswordHasher
 from dahaze_api.infrastructure.auth.registry import build_providers
 from dahaze_api.infrastructure.auth.session import InvalidToken, SessionTokens
+from dahaze_api.infrastructure.db.agent_repository import SqlProjectEvents
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
 from dahaze_api.infrastructure.db.planning_ai_repository import SqlPlanningAiJobRepository
 from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
@@ -45,13 +53,11 @@ from dahaze_api.infrastructure.db.repositories import (
     SqlProjectRepository,
     SqlUserRepository,
 )
-from dahaze_api.infrastructure.db.session import get_session
-from dahaze_api.infrastructure.db.tree_repository import SqlTreeRepository
+from dahaze_api.infrastructure.db.session import get_session, get_session_factory
+from dahaze_api.infrastructure.event_feed import PgEventListener, ProjectEventFeed
 from dahaze_api.infrastructure.llm import LlmNotConfigured, OpenAiLlm
 from dahaze_api.infrastructure.llm.grammars import load_rspdl_grammar
 from dahaze_api.infrastructure.rspdl import LocalRspdlCompiler
-from dahaze_api.infrastructure.rspdl.indexer import LocalRspdlIndexer
-from dahaze_api.infrastructure.text import Re2PatternMatcher
 
 SESSION_COOKIE = "dahaze_session"
 
@@ -161,23 +167,46 @@ PlanningAi = Annotated[PlanningAiService, Depends(get_planning_ai)]
 
 
 def get_tree(session: DbSession) -> TreeService:
-    return TreeService(projects=SqlProjectRepository(session), tree=SqlTreeRepository(session))
+    # 사람의 저장·MCP·AI 가 같은 방법으로 조립한다. 변경은 프로젝트 이벤트로 기록된다.
+    return build_tree(session)
 
 
 Tree = Annotated[TreeService, Depends(get_tree)]
 
 
-def get_tree_inspector(tree: Tree, analyzer: Analyzer, compiler: Compiler) -> TreeInspector:
-    return TreeInspector(
-        tree=tree,
-        analyzer=analyzer,
-        indexer=LocalRspdlIndexer(),
-        matcher=Re2PatternMatcher(),
-        runtime=compiler.runtime,
-    )
+def get_tree_inspector(session: DbSession, tree: Tree, compiler: Compiler) -> TreeInspector:
+    return build_inspector(session, tree, compiler)
 
 
 Inspector = Annotated[TreeInspector, Depends(get_tree_inspector)]
+
+
+def get_agent_service(session: DbSession, compiler: Compiler) -> AgentService:
+    return AgentService(build_agent_scope(session, compiler))
+
+
+Agents = Annotated[AgentService, Depends(get_agent_service)]
+
+
+def get_project_events(session: DbSession) -> ProjectEventsPort:
+    return SqlProjectEvents(session)
+
+
+ProjectEvents = Annotated[ProjectEventsPort, Depends(get_project_events)]
+
+
+@lru_cache
+def get_event_listener() -> PgEventListener:
+    """프로세스당 LISTEN 연결 하나."""
+    return PgEventListener(get_settings().database_url)
+
+
+def get_event_feed() -> ProjectEventFeed:
+    """SSE 가 쓰는 피드. 요청 세션을 쓰지 않고 조회마다 짧은 세션을 연다."""
+    return ProjectEventFeed(sessions=get_session_factory(), listener=get_event_listener())
+
+
+EventFeed = Annotated[ProjectEventFeed, Depends(get_event_feed)]
 
 
 def get_project_compiler(

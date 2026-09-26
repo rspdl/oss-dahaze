@@ -221,6 +221,24 @@ class SqlTreeRepository:
         result = await self._session.execute(stmt)
         return int(getattr(result, "rowcount", 0) or 0)
 
+    async def locked_projects(self, holder: str) -> list[UUID]:
+        rows = await self._session.scalars(
+            select(FileLockRow.project_id).where(FileLockRow.holder == holder).distinct()
+        )
+        return list(rows)
+
+    async def touch_locks(self, *, holder: str, now: datetime) -> int:
+        result = await self._session.execute(
+            update(FileLockRow).where(FileLockRow.holder == holder).values(last_write_at=now)
+        )
+        return int(getattr(result, "rowcount", 0) or 0)
+
+    async def oldest_lock_write(self, holder: str) -> datetime | None:
+        oldest: datetime | None = await self._session.scalar(
+            select(func.min(FileLockRow.last_write_at)).where(FileLockRow.holder == holder)
+        )
+        return oldest
+
     # ------------------------------------------------------------------ commit
 
     async def create_commit(
