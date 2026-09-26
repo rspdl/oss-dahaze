@@ -1,5 +1,5 @@
 import * as React from "react"
-import { OctagonXIcon } from "lucide-react"
+import { ErrorIcon } from "./icons"
 
 import { cn } from "../lib/cn"
 
@@ -39,13 +39,13 @@ function ErrorState({
       data-slot="error-state"
       role="status"
       className={cn(
-        "flex flex-col items-center justify-center gap-2 rounded-panel border border-diagnostic-error bg-diagnostic-error-subtle px-6 py-12 text-center",
+        "flex flex-col items-center justify-center gap-2 rounded-panel bg-diagnostic-error-subtle px-6 py-12 text-center",
         className
       )}
       {...props}
     >
-      <OctagonXIcon aria-hidden className="size-8 text-diagnostic-error" />
-      <p className="text-sm font-medium text-text">{title}</p>
+      <ErrorIcon className="size-8 text-diagnostic-error" />
+      <p className="text-[17px] leading-[26px] font-semibold tracking-[-0.01em] text-text">{title}</p>
       {description ? (
         <p className="max-w-prose text-sm text-text-muted">{description}</p>
       ) : null}

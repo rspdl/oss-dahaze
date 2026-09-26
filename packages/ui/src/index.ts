@@ -13,6 +13,9 @@
 
 export { cn } from './lib/cn'
 
+/* --- 아이콘 (jwdesign: Phosphor Bold 한 세트) --- */
+export * from './components/icons'
+
 /* --- shadcn 프리미티브 --- */
 export {
   AlertDialog,
@@ -39,6 +42,7 @@ export {
   CardHeader,
   CardTitle,
 } from './components/card'
+export { Checkbox } from './components/checkbox'
 export {
   Dialog,
   DialogClose,

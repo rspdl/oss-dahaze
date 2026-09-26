@@ -33,17 +33,17 @@ function EmptyState({
     <div
       data-slot="empty-state"
       className={cn(
-        "flex flex-col items-center justify-center gap-2 rounded-panel border border-dashed px-6 py-12 text-center",
+        "flex flex-col items-center justify-center gap-2 rounded-panel border border-dashed border-border-strong px-6 py-12 text-center",
         className
       )}
       {...props}
     >
       {icon ? (
-        <span aria-hidden className="text-text-subtle [&_svg]:size-8">
+        <span aria-hidden className="mb-2 inline-flex size-14 items-center justify-center rounded-panel bg-surface-raised text-text-subtle [&_svg]:size-7">
           {icon}
         </span>
       ) : null}
-      <p className="text-sm font-medium text-text">{title}</p>
+      <p className="text-[17px] leading-[26px] font-semibold tracking-[-0.01em] text-text">{title}</p>
       {description ? (
         <p className="max-w-prose text-sm text-text-muted">{description}</p>
       ) : null}

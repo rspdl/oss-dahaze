@@ -1,11 +1,29 @@
 /**
  * dahaze 테마. Tailwind v4 는 CSS 가 설정이므로 (ADR-0006) 스타일 설정의 원본이 여기 하나다.
  *
+ * 값은 jwdesign 디자인 시스템에서 온다 (jwsong98/jwplugin 의 `skills/jwdesign`). 이 파일은
+ * dahaze 가 써 온 **의미 이름**(canvas, surface, text-muted, diagnostic-error …)을 그대로 두고,
+ * 각 이름이 가리키는 값만 jwdesign 토큰(`--jw-*`)으로 연결한다. 그래서 컴포넌트와 화면의
+ * 클래스 이름은 바뀌지 않고, 색·반경·그림자·글꼴이 jwdesign 을 따른다.
+ *
  * 이 파일이 Tailwind 를 가져오고 스캔 범위까지 정한다. 앱은 이 파일 한 줄만 import 한다 —
  * 두 번째 앱이 생겨도 `@source` 목록을 복제하지 않기 위해서다.
  */
 
 @import "tailwindcss";
+
+/*
+ * 웹폰트. Pretendard 는 한글 글리프가 많아 전체 파일이 2MB 다. dynamic-subset 은 유니코드
+ * 범위별로 잘게 나눈 파일을 화면에 실제로 나온 글자만큼만 받는다.
+ */
+@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
+@import "@fontsource-variable/jetbrains-mono";
+
+/*
+ * jwdesign 원본 토큰. 이름에 `--jw-` 접두사가 붙어 있어 Tailwind 의 `--color-*`·`--radius-*`·
+ * `--shadow-*` 네임스페이스와 겹치지 않는다. 라이트가 기본이고 `.dark` 조상 아래에서 다크 값이 된다.
+ */
+@import "./jwdesign/tokens.jw.css";
 
 /**
  * Tailwind 는 클래스 이름을 소스 파일에서 훑어 찾는다. 자동 탐지 범위에 워크스페이스
@@ -17,107 +35,191 @@
 @source "../../ui/src";
 @source "../../rspdl-editor/src";
 
-/**
- * Tailwind 는 클래스 이름을 소스에서 훑어 찾는다. 기본 스캔 범위는 이 CSS 가 속한
- * 프로젝트뿐이라, 워크스페이스 패키지 안에서만 쓰인 클래스는 앱 빌드에서 **조용히 빠진다.**
- * 스타일이 없는 채로 렌더링되므로 빌드는 성공하고 화면만 깨진다.
+@custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * dahaze 의미 이름 → jwdesign 토큰.
  *
- * 새 워크스페이스 패키지가 클래스를 쓰기 시작하면 여기에 추가해야 한다.
+ * `inline` 이라 유틸리티가 `var(--jw-…)` 를 직접 참조한다. 그래서 `.dark` 가 문서 중간
+ * 요소에만 붙어도 그 아래는 다크 값으로 칠해진다 — 테마 전환 시 이 블록은 손대지 않는다.
+ *
+ * | dahaze            | jwdesign            | 쓰임 |
+ * |-------------------|---------------------|------|
+ * | canvas            | bg                  | 페이지 바탕 |
+ * | surface           | surface             | 카드·패널·사이드바 |
+ * | surface-raised    | fill                | 옅은 채움: 보조 버튼, 표 머리, hover, 칩 |
+ * | text / -muted / -subtle | text-primary / -secondary / -tertiary | 본문 / 설명 / 힌트 |
+ * | accent-fg         | on-accent           | accent 채움 위 글자 |
+ * | accent-subtle     | accent-soft         | 연한 강조 배경 |
+ * | diagnostic-*      | danger/warning/info-text | 진단 글자·아이콘·단색 배경 |
+ * | diagnostic-*-subtle | *-soft            | 진단 배너 배경 |
+ * | overlay           | scrim               | 모달 뒤 막 |
+ * | radius-control / panel / indicator | radius-md / lg / xs | 10 / 14 / 4px |
  */
-
-@custom-variant dark (&:where(.dark, .dark *));
-
-@theme {
+@theme inline {
   /* --- 표면과 글자 --- */
-  --color-canvas: oklch(99% 0.002 250);
-  --color-surface: oklch(100% 0 0);
-  --color-surface-raised: oklch(97.5% 0.003 250);
-  --color-border: oklch(91% 0.005 250);
-  --color-border-strong: oklch(84% 0.008 250);
+  --color-canvas: var(--jw-bg);
+  --color-canvas-subtle: var(--jw-bg-subtle);
+  --color-surface: var(--jw-surface);
+  --color-surface-raised: var(--jw-fill);
+  --color-surface-raised-hover: var(--jw-fill-hover);
+  --color-surface-overlay: var(--jw-surface-raised);
+  --color-surface-inverse: var(--jw-surface-inverse);
+  --color-state-hover: var(--jw-state-hover);
+  --color-state-pressed: var(--jw-state-pressed);
+  --color-selected: var(--jw-selected);
+  --color-border: var(--jw-border);
+  --color-border-strong: var(--jw-border-strong);
+  /* 입력·체크박스 테두리. 면 위에서 3:1 이상이라 border 보다 진하다. */
+  --color-border-control: var(--jw-border-control);
 
-  --color-text: oklch(21% 0.015 250);
-  --color-text-muted: oklch(52% 0.012 250);
-  --color-text-subtle: oklch(64% 0.01 250);
+  --color-text: var(--jw-text-primary);
+  --color-text-muted: var(--jw-text-secondary);
+  --color-text-subtle: var(--jw-text-tertiary);
+  --color-text-disabled: var(--jw-text-disabled);
+  --color-text-inverse: var(--jw-text-inverse);
 
-  /* --- 강조 --- */
-  --color-accent: oklch(55% 0.16 255);
-  --color-accent-hover: oklch(49% 0.17 255);
-  --color-accent-fg: oklch(99% 0 0);
-  --color-accent-subtle: oklch(95% 0.03 255);
+  /* --- 강조 (jwdesign 브랜드 그린) --- */
+  --color-accent: var(--jw-accent);
+  --color-accent-hover: var(--jw-accent-hover);
+  --color-accent-pressed: var(--jw-accent-pressed);
+  --color-accent-fg: var(--jw-on-accent);
+  --color-accent-subtle: var(--jw-accent-soft);
+  --color-accent-subtle-hover: var(--jw-accent-soft-hover);
+  /*
+   * 글자로 쓰는 강조색. accent(#07854A)는 다크 바탕 위 글자로 4.1:1 이라 작은 글자에 모자란다.
+   * 링크·강조 글자는 이 토큰을 쓴다 (라이트·다크 모두 4.5:1 이상).
+   */
+  --color-accent-text: var(--jw-accent-text);
 
   /*
    * --- 진단 ---
    * 심각도는 색으로만 구분하지 않는다. 아이콘과 텍스트를 함께 쓴다 (ADR-0006, UI 스킬).
-   * 색각 이상 사용자가 error 와 warning 을 구분하지 못하면 제품의 핵심 기능이 죽는다.
+   * jwdesign 의 `*-text` 토큰은 bg·surface·해당 `-soft` 위에서 라이트·다크 모두 4.5:1 이상이고,
+   * 단색 배경으로 깔았을 때 `on-solid` 글자와도 4.5:1 이상이다.
    */
-  --color-diagnostic-error: oklch(55% 0.19 27);
-  --color-diagnostic-error-subtle: oklch(95% 0.03 27);
-  /*
-   * 명도 66% 는 warning-subtle 위에서 2.83:1 이라 AA(4.5:1) 에 못 미쳤다. 54% 로 내리면
-   * subtle 위 4.55:1, surface 위 5.16:1 이 된다. 진단 심각도는 읽히지 않으면 없는 것과 같다.
-   */
-  --color-diagnostic-warning: oklch(54% 0.15 75);
-  --color-diagnostic-warning-subtle: oklch(96% 0.04 75);
-  --color-diagnostic-info: oklch(58% 0.11 235);
-  --color-diagnostic-info-subtle: oklch(95% 0.025 235);
+  --color-diagnostic-error: var(--jw-danger-text);
+  --color-diagnostic-error-subtle: var(--jw-danger-soft);
+  --color-diagnostic-warning: var(--jw-warning-text);
+  --color-diagnostic-warning-subtle: var(--jw-warning-soft);
+  --color-diagnostic-info: var(--jw-info-text);
+  --color-diagnostic-info-subtle: var(--jw-info-soft);
+  --color-success: var(--jw-success-text);
+  --color-success-subtle: var(--jw-success-soft);
 
-  /* --- 타이포 --- */
-  --font-sans: "Pretendard Variable", Pretendard, system-ui, sans-serif;
-  /* RSPDL 소스는 한글과 라틴 문자가 섞인다. 한글 글리프가 있는 등폭 글꼴을 앞에 둔다. */
-  --font-mono: "D2Coding", "Sarasa Mono K", ui-monospace, "SFMono-Regular", monospace;
-
-  /*
-   * 단색 배경 위에 얹는 글자색. 라이트 테마 solid 위에서는 흰 글자가 4.77~5.19:1,
-   * 다크 테마 solid 위에서는 어두운 글자가 6.64~9.37:1 이라 서로 뒤집힌다.
-   * `--color-accent-fg` 와 값이 같지만 이름이 쓰임을 드러내야 해서 따로 둔다 —
-   * diagnostic-error 배경 위 글자에 `accent-fg` 를 쓰면 읽는 사람이 멈칫한다.
-   */
-  --color-on-solid: oklch(99% 0 0);
+  /* 파괴적 행동 버튼(삭제 확정). 진단 색과 달리 두 테마 모두 채움이 같고 글자는 흰색이다. */
+  --color-danger: var(--jw-danger);
+  --color-danger-hover: var(--jw-danger-hover);
+  --color-on-danger: var(--jw-on-danger);
 
   /*
-   * 모달 뒤에 까는 막. **이 토큰은 테마를 따라 뒤집지 않는다.** 다크 테마에서 밝은 막을
-   * 깔면 뒤 내용이 가려지는 게 아니라 오히려 눈에 띈다. 막의 역할은 항상 어둡게 덮는 것이다.
+   * 진단 단색 배경 위 글자. 라이트에서는 흰 글자, 다크에서는 진단색이 밝아지므로 어두운 글자.
+   * accent 채움 위 글자는 `accent-fg` 를 쓴다 — accent 는 두 테마에서 같은 초록이라 늘 흰 글자다.
    */
-  --color-overlay: oklch(17% 0.012 250 / 55%);
+  --color-on-solid: var(--dz-on-solid);
 
-  --radius-control: 0.5rem;
-  --radius-panel: 0.75rem;
-  /* 메뉴 항목·인디케이터처럼 작은 요소. control 반경은 이 크기에 과하다. */
-  --radius-indicator: 0.25rem;
+  /*
+   * 모달 뒤에 까는 막. 두 테마 모두 어둡다. 다크 테마에서 밝은 막을 깔면 뒤 내용이 가려지는 게
+   * 아니라 오히려 눈에 띈다.
+   */
+  --color-overlay: var(--jw-scrim);
 
   /*
    * --- 구문 강조 ---
    * RSPDL 은 한국어 산문에 가까운 문법이라 강조를 절제한다. 기계가 읽는 부분(메타데이터,
-   * 라틴 식별자, 수치)만 구분하고 한글 산문은 칠하지 않는다 — 산문을 칠하면 읽기 어려워진다.
+   * 라틴 식별자, 수치)만 구분하고 한글 산문은 칠하지 않는다. jwdesign 에 없는 제품 고유 값이라
+   * 아래 `--dz-*` 에서 테마별로 정한다.
    */
-  --color-syntax-meta: oklch(52% 0.14 300);
-  --color-syntax-identifier: oklch(48% 0.12 255);
-  --color-syntax-number: oklch(50% 0.13 150);
-  --color-syntax-comment: oklch(58% 0.02 250);
+  --color-syntax-meta: var(--dz-syntax-meta);
+  --color-syntax-identifier: var(--dz-syntax-identifier);
+  --color-syntax-number: var(--dz-syntax-number);
+  --color-syntax-comment: var(--dz-syntax-comment);
 
+  /* 스켈레톤 위를 훑고 지나가는 빛. */
+  --color-shimmer: var(--dz-shimmer);
+
+  /* --- 타이포 --- */
+  --font-sans: var(--jw-font-sans);
   /*
-   * 스켈레톤 위를 훑고 지나가는 빛. 표면보다 밝아야 움직임이 보인다. 다크에서 같은 밝기를
-   * 쓰면 화면이 번쩍이므로 알파를 크게 낮춘다.
+   * RSPDL 소스는 한글과 라틴 문자가 섞인다. 한글 글리프가 있는 등폭 글꼴을 앞에 둔다.
+   * jwdesign 의 코드 글꼴 JetBrains Mono 는 한글이 없어 그 뒤에 둔다 — 한글 등폭 글꼴이
+   * 설치되지 않은 환경에서 라틴 글자만이라도 jwdesign 과 같게 보이게.
    */
-  --color-shimmer: oklch(100% 0 0 / 75%);
+  --font-mono: "D2Coding", "Sarasa Mono K", "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", monospace;
 
+  /* jwdesign 타입 스케일. `text-body` 한 클래스로 크기·행간·굵기·자간이 함께 들어간다. */
+  --text-title-1: 32px;
+  --text-title-1--line-height: 42px;
+  --text-title-1--font-weight: 700;
+  --text-title-1--letter-spacing: -0.022em;
+  --text-title-2: 26px;
+  --text-title-2--line-height: 35px;
+  --text-title-2--font-weight: 700;
+  --text-title-2--letter-spacing: -0.02em;
+  --text-title-3: 22px;
+  --text-title-3--line-height: 31px;
+  --text-title-3--font-weight: 600;
+  --text-title-3--letter-spacing: -0.018em;
+  --text-headline: 18px;
+  --text-headline--line-height: 27px;
+  --text-headline--font-weight: 600;
+  --text-headline--letter-spacing: -0.012em;
+  --text-body: 15px;
+  --text-body--line-height: 24px;
+  --text-body--letter-spacing: -0.006em;
+  --text-body-sm: 14px;
+  --text-body-sm--line-height: 21px;
+  --text-label: 15px;
+  --text-label--line-height: 22px;
+  --text-label--font-weight: 600;
+  --text-label--letter-spacing: -0.006em;
+  --text-label-sm: 13px;
+  --text-label-sm--line-height: 18px;
+  --text-label-sm--font-weight: 600;
+  --text-caption: 13px;
+  --text-caption--line-height: 19px;
+
+  /* --- 모서리 · 그림자 (jwdesign 스케일로 Tailwind 기본값을 덮는다) --- */
+  --radius-control: var(--jw-radius-md);
+  --radius-panel: var(--jw-radius-lg);
+  /* 메뉴 항목·인디케이터처럼 작은 요소. control 반경은 이 크기에 과하다. */
+  --radius-indicator: var(--jw-radius-xs);
+  --radius-xs: var(--jw-radius-xs);
+  --radius-sm: var(--jw-radius-sm);
+  --radius-md: var(--jw-radius-md);
+  --radius-lg: var(--jw-radius-lg);
+  --radius-xl: var(--jw-radius-xl);
+  --radius-2xl: var(--jw-radius-2xl);
+
+  /* 경계는 1px 선이 먼저다. 그림자는 메뉴·모달·토스트처럼 실제로 떠 있는 면에만. */
+  --shadow-xs: var(--jw-shadow-xs);
+  --shadow-sm: var(--jw-shadow-sm);
+  --shadow-md: var(--jw-shadow-md);
+  --shadow-lg: var(--jw-shadow-lg);
+  --shadow-xl: var(--jw-shadow-lg);
+
+  --ease-out-expo: var(--jw-ease-out);
+  --ease-standard: var(--jw-ease-standard);
+  --ease-spring: var(--jw-ease-spring);
+}
+
+@theme {
   /*
    * --- 레이아웃 ---
    * 왼쪽 내비게이션의 폭. 상태는 둘뿐이다 — 펼친 것과 아이콘만 남긴 것. 중간값을 허용하면
    * 글자가 잘리는 폭이 생기고, 그 폭에서 어떻게 보일지 아무도 확인하지 않는다.
+   * 펼친 폭은 jwdesign `sidebar-width`(248px).
    */
-  --spacing-sidebar: 15rem;
+  --spacing-sidebar: 15.5rem;
   --spacing-sidebar-rail: 3.5rem;
 
   /*
    * --- 모션 ---
-   * 감속이 강한 곡선 하나로 통일한다. 화면마다 다른 이징을 쓰면 같은 제품이 아니게 들린다.
-   * 애니메이션은 `transform` 과 `opacity` 만 건드린다 — 폭이나 위치를 직접 애니메이션하면
-   * 매 프레임 레이아웃이 다시 계산된다.
+   * 감속이 강한 곡선 하나로 통일한다(jwdesign `ease-out`). 애니메이션은 `transform` 과
+   * `opacity` 만 건드린다 — 폭이나 위치를 직접 애니메이션하면 매 프레임 레이아웃이 다시 계산된다.
    */
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --animate-rise: rise 0.34s var(--ease-out-expo) both;
-  --animate-shimmer: shimmer 1.4s var(--ease-out-expo) infinite;
+  --animate-rise: rise 0.36s var(--jw-ease-out) both;
+  --animate-shimmer: shimmer 1.4s var(--jw-ease-out) infinite;
 
   @keyframes rise {
     from {
@@ -140,47 +242,108 @@
   }
 }
 
-/*
- * 다크 테마는 토큰 값만 바꾼다. 컴포넌트는 어느 테마인지 몰라야 한다 —
- * 컴포넌트 안에 `dark:` 분기가 쌓이기 시작하면 토큰이 없다는 뜻이다.
- */
+/* 키보드 포커스 링: 면 색 2px 간격 + 강조색 2px 실선 (jwdesign `focus-ring`). */
+@utility focus-ring {
+  box-shadow: var(--jw-focus-ring);
+}
+
 @layer base {
-  .dark {
-    --color-canvas: oklch(17% 0.012 250);
-    --color-surface: oklch(21% 0.014 250);
-    --color-surface-raised: oklch(25% 0.016 250);
-    --color-border: oklch(30% 0.014 250);
-    --color-border-strong: oklch(38% 0.016 250);
+  /*
+   * jwdesign 에 없는 dahaze 고유 값. 다크 테마는 토큰 값만 바꾼다 — 컴포넌트는 어느 테마인지
+   * 몰라야 한다. 컴포넌트 안에 `dark:` 분기가 쌓이기 시작하면 토큰이 없다는 뜻이다.
+   */
+  :root {
+    --dz-on-solid: var(--jw-gray-0);
+    --dz-shimmer: oklch(100% 0 0 / 75%);
+    --dz-syntax-meta: oklch(52% 0.14 300);
+    --dz-syntax-identifier: oklch(48% 0.12 255);
+    --dz-syntax-number: oklch(50% 0.13 150);
+    --dz-syntax-comment: oklch(58% 0.02 250);
+  }
 
-    --color-text: oklch(96% 0.004 250);
-    --color-text-muted: oklch(73% 0.012 250);
-    --color-text-subtle: oklch(60% 0.012 250);
-
-    --color-accent: oklch(70% 0.14 255);
-    --color-accent-hover: oklch(76% 0.13 255);
-    --color-accent-fg: oklch(17% 0.012 250);
-    --color-accent-subtle: oklch(28% 0.05 255);
-
-    --color-diagnostic-error: oklch(70% 0.17 27);
-    --color-diagnostic-error-subtle: oklch(28% 0.06 27);
-    --color-diagnostic-warning: oklch(78% 0.14 75);
-
-    --color-diagnostic-warning-subtle: oklch(29% 0.05 75);
-    --color-diagnostic-info: oklch(72% 0.11 235);
-    --color-diagnostic-info-subtle: oklch(27% 0.05 235);
-
-    /* solid 위 글자는 다크 테마에서 어두워진다. 위 계산 근거는 @theme 주석 참고. */
-    --color-on-solid: oklch(17% 0.012 250);
-
+  .dark,
+  [data-theme="dark"] {
+    --dz-on-solid: var(--jw-gray-1000);
     /* 어두운 표면 위에서는 같은 빛이 번쩍임이 된다. 존재만 느껴질 정도로 낮춘다. */
-    --color-shimmer: oklch(100% 0 0 / 7%);
+    --dz-shimmer: oklch(100% 0 0 / 7%);
+    --dz-syntax-meta: oklch(76% 0.13 300);
+    --dz-syntax-identifier: oklch(74% 0.11 255);
+    --dz-syntax-number: oklch(76% 0.12 150);
+    --dz-syntax-comment: oklch(62% 0.02 250);
+  }
 
-    /* --color-overlay 는 여기서 재정의하지 않는다. 막은 두 테마 모두 어두워야 한다. */
-
-    --color-syntax-meta: oklch(76% 0.13 300);
-    --color-syntax-identifier: oklch(74% 0.11 255);
-    --color-syntax-number: oklch(76% 0.12 150);
-    --color-syntax-comment: oklch(58% 0.02 250);
+  /*
+   * 위 `@theme inline` 은 유틸리티 안에 값을 직접 넣으므로, 코드가 `var(--color-accent)` 처럼
+   * 변수를 직접 참조하는 곳(React Flow 선 색, CodeMirror 테마, 스켈레톤 빛)을 위해 같은 변수를
+   * 여기서도 선언한다. 테마 경계마다 다시 선언해야 `.dark` 아래에서 다크 값으로 풀린다.
+   */
+  :root,
+  .light,
+  [data-theme="light"],
+  .dark,
+  [data-theme="dark"] {
+    --color-canvas: var(--jw-bg);
+    --color-canvas-subtle: var(--jw-bg-subtle);
+    --color-surface: var(--jw-surface);
+    --color-surface-raised: var(--jw-fill);
+    --color-surface-raised-hover: var(--jw-fill-hover);
+    --color-surface-overlay: var(--jw-surface-raised);
+    --color-surface-inverse: var(--jw-surface-inverse);
+    --color-state-hover: var(--jw-state-hover);
+    --color-state-pressed: var(--jw-state-pressed);
+    --color-selected: var(--jw-selected);
+    --color-border: var(--jw-border);
+    --color-border-strong: var(--jw-border-strong);
+    --color-border-control: var(--jw-border-control);
+    --color-text: var(--jw-text-primary);
+    --color-text-muted: var(--jw-text-secondary);
+    --color-text-subtle: var(--jw-text-tertiary);
+    --color-text-disabled: var(--jw-text-disabled);
+    --color-text-inverse: var(--jw-text-inverse);
+    --color-accent: var(--jw-accent);
+    --color-accent-hover: var(--jw-accent-hover);
+    --color-accent-pressed: var(--jw-accent-pressed);
+    --color-accent-fg: var(--jw-on-accent);
+    --color-accent-subtle: var(--jw-accent-soft);
+    --color-accent-subtle-hover: var(--jw-accent-soft-hover);
+    --color-accent-text: var(--jw-accent-text);
+    --color-diagnostic-error: var(--jw-danger-text);
+    --color-diagnostic-error-subtle: var(--jw-danger-soft);
+    --color-diagnostic-warning: var(--jw-warning-text);
+    --color-diagnostic-warning-subtle: var(--jw-warning-soft);
+    --color-diagnostic-info: var(--jw-info-text);
+    --color-diagnostic-info-subtle: var(--jw-info-soft);
+    --color-success: var(--jw-success-text);
+    --color-success-subtle: var(--jw-success-soft);
+    --color-danger: var(--jw-danger);
+    --color-danger-hover: var(--jw-danger-hover);
+    --color-on-danger: var(--jw-on-danger);
+    --color-on-solid: var(--dz-on-solid);
+    --color-overlay: var(--jw-scrim);
+    --color-syntax-meta: var(--dz-syntax-meta);
+    --color-syntax-identifier: var(--dz-syntax-identifier);
+    --color-syntax-number: var(--dz-syntax-number);
+    --color-syntax-comment: var(--dz-syntax-comment);
+    --color-shimmer: var(--dz-shimmer);
+    --font-sans: var(--jw-font-sans);
+    --font-mono: "D2Coding", "Sarasa Mono K", "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", monospace;
+    --radius-control: var(--jw-radius-md);
+    --radius-panel: var(--jw-radius-lg);
+    --radius-indicator: var(--jw-radius-xs);
+    --radius-xs: var(--jw-radius-xs);
+    --radius-sm: var(--jw-radius-sm);
+    --radius-md: var(--jw-radius-md);
+    --radius-lg: var(--jw-radius-lg);
+    --radius-xl: var(--jw-radius-xl);
+    --radius-2xl: var(--jw-radius-2xl);
+    --shadow-xs: var(--jw-shadow-xs);
+    --shadow-sm: var(--jw-shadow-sm);
+    --shadow-md: var(--jw-shadow-md);
+    --shadow-lg: var(--jw-shadow-lg);
+    --shadow-xl: var(--jw-shadow-lg);
+    --ease-out-expo: var(--jw-ease-out);
+    --ease-standard: var(--jw-ease-standard);
+    --ease-spring: var(--jw-ease-spring);
   }
 
   * {
@@ -191,12 +354,21 @@
     background-color: var(--color-canvas);
     color: var(--color-text);
     font-family: var(--font-sans);
+    letter-spacing: -0.006em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  /* 키보드 사용자가 지금 어디에 있는지 항상 보여야 한다. */
+  /* 키보드 사용자가 지금 어디에 있는지 항상 보여야 한다. 강조색 실선은 모든 면 위 3:1 이상. */
   :focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
+  }
+
+  /* 숫자가 세로로 비교되는 곳은 고정폭 숫자. */
+  table,
+  time {
+    font-variant-numeric: tabular-nums;
   }
 
   /*
