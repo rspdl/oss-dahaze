@@ -27,12 +27,14 @@ export interface ToolResult {
 }
 
 export type AgentRow =
-  | { kind: 'user'; id: string; seq: number; text: string }
-  | { kind: 'assistant'; id: string; seq: number; text: string }
+  | { kind: 'user'; id: string; seq: number; createdAt: string; text: string }
+  | { kind: 'assistant'; id: string; seq: number; createdAt: string; text: string }
   | {
       kind: 'tool'
       id: string
       seq: number
+      /** 결과가 기록되면 결과 시각으로 바뀐다. */
+      createdAt: string
       callId: string
       name: string
       arguments: Record<string, unknown>
@@ -70,6 +72,7 @@ export function toAgentRows(items: readonly AgentItemResponse[]): AgentRow[] {
         kind: item.kind === 'user_message' ? 'user' : 'assistant',
         id: item.id,
         seq: item.seq,
+        createdAt: item.created_at,
         text: stringOrNull(payload.text) ?? '',
       })
       continue
@@ -83,6 +86,7 @@ export function toAgentRows(items: readonly AgentItemResponse[]): AgentRow[] {
         kind: 'tool',
         id: item.id,
         seq: item.seq,
+        createdAt: item.created_at,
         callId,
         name,
         arguments: isRecord(payload.arguments) ? payload.arguments : {},
@@ -102,11 +106,13 @@ export function toAgentRows(items: readonly AgentItemResponse[]): AgentRow[] {
     const call = toolRows.get(callId)
     if (call !== undefined) {
       call.result = result
+      call.createdAt = item.created_at
     } else {
       rows.push({
         kind: 'tool',
         id: item.id,
         seq: item.seq,
+        createdAt: item.created_at,
         callId,
         name,
         arguments: {},
@@ -116,6 +122,28 @@ export function toAgentRows(items: readonly AgentItemResponse[]): AgentRow[] {
   }
 
   return rows
+}
+
+export type AgentBlock =
+  | { kind: 'user'; id: string; row: Extract<AgentRow, { kind: 'user' }> }
+  | { kind: 'ai'; id: string; rows: Exclude<AgentRow, { kind: 'user' }>[] }
+
+/**
+ * 사용자 메시지 사이의 AI 행(답변·도구 카드)을 한 묶음으로 모은다. 화면은 묶음이 끝나는 곳에
+ * 마지막 행의 시각을 적어 AI 응답이 끝났음을 보여준다.
+ */
+export function toAgentBlocks(rows: readonly AgentRow[]): AgentBlock[] {
+  const blocks: AgentBlock[] = []
+  for (const row of rows) {
+    if (row.kind === 'user') {
+      blocks.push({ kind: 'user', id: row.id, row })
+      continue
+    }
+    const last = blocks.at(-1)
+    if (last?.kind === 'ai') last.rows.push(row)
+    else blocks.push({ kind: 'ai', id: row.id, rows: [row] })
+  }
+  return blocks
 }
 
 /** 도구 결과가 바꾼 줄 수의 합. 카드에 `+12 −3` 으로 보인다. */

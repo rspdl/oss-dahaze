@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   getGetAgentSettingsQueryKey,
   getListAgentItemsQueryKey,
@@ -45,6 +45,7 @@ import {
 } from '@dahaze/ui'
 
 import { errorMessage } from '@/shared/api/errors'
+import { formatDateTime } from '@/shared/format'
 import {
   ChatIcon,
   CheckIcon,
@@ -57,7 +58,14 @@ import {
   WarningIcon,
 } from '@/shared/ui/icons'
 import { Markdown } from '@/shared/ui/markdown'
-import { changeStats, resultSummary, toAgentRows, toolTitle, type AgentRow } from './agent-model'
+import {
+  changeStats,
+  resultSummary,
+  toAgentBlocks,
+  toAgentRows,
+  toolTitle,
+  type AgentRow,
+} from './agent-model'
 import { DiffStat } from './diff-view'
 import { useWorkspaceStore } from './workspace-store'
 
@@ -260,12 +268,14 @@ function Conversation({ sessionId }: { sessionId: string }) {
   const resolve = useResolveAgentApproval()
 
   const rows = useMemo(() => toAgentRows(items.data ?? []), [items.data])
+  const blocks = useMemo(() => toAgentBlocks(rows), [rows])
   const latestTurn = useMemo(
     () => [...(turns.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at))[0],
     [turns.data],
   )
   const active = latestTurn !== undefined && ACTIVE_STATUSES.has(latestTurn.status)
   const partial = latestTurn === undefined ? undefined : streaming[latestTurn.id]
+  const streamingText = partial !== undefined && partial !== '' ? partial : null
 
   // 새 항목이 오면 맨 아래로. 사용자가 위로 올려 읽는 중이면 끌어내리지 않는다.
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -319,20 +329,38 @@ function Conversation({ sessionId }: { sessionId: string }) {
         }}
         className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
       >
-        <ol className="flex flex-col gap-3" aria-label="대화 기록">
-          {rows.map((row) => (
-            <li key={row.id}>
-              <Row
-                row={row}
-                running={active}
-                selected={center.kind === 'call' && row.kind === 'tool' && center.callId === row.callId}
-                onOpen={(callId) => openCall(sessionId, callId)}
-              />
-            </li>
-          ))}
-          {partial !== undefined && partial !== '' ? (
+        <ol className="flex flex-col gap-5" aria-label="대화 기록">
+          {blocks.map((block, index) =>
+            block.kind === 'user' ? (
+              <li key={block.id}>
+                <Row row={block.row} running={active} selected={false} onOpen={() => {}} />
+              </li>
+            ) : (
+              <li key={block.id}>
+                <AiBlock
+                  endedAt={active && index === blocks.length - 1 ? null : (block.rows.at(-1)?.createdAt ?? null)}
+                >
+                  {block.rows.map((row) => (
+                    <Row
+                      key={row.id}
+                      row={row}
+                      running={active}
+                      selected={center.kind === 'call' && row.kind === 'tool' && center.callId === row.callId}
+                      onOpen={(callId) => openCall(sessionId, callId)}
+                    />
+                  ))}
+                  {streamingText !== null && index === blocks.length - 1 ? (
+                    <Markdown>{streamingText}</Markdown>
+                  ) : null}
+                </AiBlock>
+              </li>
+            ),
+          )}
+          {streamingText !== null && blocks.at(-1)?.kind !== 'ai' ? (
             <li>
-              <Markdown>{partial}</Markdown>
+              <AiBlock endedAt={null}>
+                <Markdown>{streamingText}</Markdown>
+              </AiBlock>
             </li>
           ) : null}
         </ol>
@@ -369,6 +397,23 @@ function Conversation({ sessionId }: { sessionId: string }) {
   )
 }
 
+/**
+ * 사용자 메시지 사이의 AI 행 묶음. 패널 너비를 다 쓰고, 응답이 끝나면 마지막 행의 시각을 아래에
+ * 적는다. 턴이 아직 진행 중인 마지막 묶음은 `endedAt` 이 null 이라 시각을 적지 않는다.
+ */
+function AiBlock({ endedAt, children }: { endedAt: string | null; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3">
+      {children}
+      {endedAt === null ? null : (
+        <time dateTime={endedAt} className="text-caption text-text-subtle tabular-nums">
+          {formatDateTime(endedAt)}
+        </time>
+      )}
+    </div>
+  )
+}
+
 function Row({
   row,
   running,
@@ -382,7 +427,7 @@ function Row({
 }) {
   if (row.kind === 'user') {
     return (
-      <div className="ml-8 rounded-panel bg-surface-raised px-3.5 py-2.5 text-body whitespace-pre-wrap text-text">
+      <div className="ml-auto w-fit max-w-[85%] rounded-panel bg-surface-raised px-3.5 py-2.5 text-body break-words whitespace-pre-wrap text-text">
         {row.text}
       </div>
     )

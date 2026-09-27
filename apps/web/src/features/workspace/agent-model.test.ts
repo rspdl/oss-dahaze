@@ -1,7 +1,7 @@
 import type { AgentItemResponse } from '@dahaze/api-client'
 import { describe, expect, it } from 'vitest'
 
-import { changeStats, resultSummary, toAgentRows, toolTitle } from './agent-model'
+import { changeStats, resultSummary, toAgentBlocks, toAgentRows, toolTitle } from './agent-model'
 
 let seq = 0
 function item(kind: AgentItemResponse['kind'], payload: Record<string, unknown>): AgentItemResponse {
@@ -84,5 +84,29 @@ describe('resultSummary', () => {
     expect(resultSummary({ ok: true, output: [1, 2, 3], changes: [] })).toBe('3건')
     expect(resultSummary({ ok: false, output: { message: '잠긴 파일이에요' }, changes: [] })).toBe('잠긴 파일이에요')
     expect(resultSummary({ ok: true, output: { files: [] }, changes: [] })).toBeNull()
+  })
+})
+
+describe('toAgentBlocks', () => {
+  it('사용자 메시지 사이의 답변과 도구 카드를 한 묶음으로 모은다', () => {
+    const rows = toAgentRows([
+      item('user_message', { text: '만들어 줘' }),
+      item('tool_call', { call_id: 'c1', name: 'ls', arguments: {} }),
+      item('tool_result', { call_id: 'c1', ok: true, output: [] }),
+      item('assistant_message', { text: '만들었어요' }),
+      item('user_message', { text: '고마워' }),
+      item('assistant_message', { text: '네' }),
+    ])
+
+    const blocks = toAgentBlocks(rows)
+
+    expect(blocks.map((block) => block.kind)).toEqual(['user', 'ai', 'user', 'ai'])
+    expect(blocks[1]?.kind === 'ai' && blocks[1].rows.map((row) => row.kind)).toEqual(['tool', 'assistant'])
+  })
+
+  it('사용자 메시지 없이 시작하는 AI 행도 묶음 하나로 둔다', () => {
+    const rows = toAgentRows([item('assistant_message', { text: '앞 대화 이어서' })])
+
+    expect(toAgentBlocks(rows).map((block) => block.kind)).toEqual(['ai'])
   })
 })
