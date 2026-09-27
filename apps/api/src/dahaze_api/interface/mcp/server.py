@@ -68,8 +68,8 @@ dahaze 는 RSPDL 로 쓴 제품 기획을 저장하고, 컴파일러로 검증�
   존재하지 않는 것처럼 보인다.
 - 문서는 프로젝트 안에 산다. 담을 프로젝트가 없으면 `create_project` 로 먼저 만들고, 있으면
   `list_projects` 로 골라라 — 프로젝트를 새로 만들지, 기존 것에 넣을지는 사람에게 물어라.
-- 지우는 도구(`delete_document`, `archive_project`)는 사람이 명시적으로 요청했을 때만 쓴다.
-  이 도구들로는 되돌릴 수 없다.
+- 문서 삭제와 프로젝트 보관은 사람이 화면에서 직접 결정한다. 필요한 경우 대상과 이유를
+  설명하되 도구 호출로 실행하지 않는다.
 """
 
 # 도구 호출 하나가 쓸 DB 세션의 수명을 여는 함수. 테스트가 자기 세션을 밀어 넣는 지점이다.
@@ -258,16 +258,6 @@ class McpTools:
             )
             return _project_payload(project)
 
-    async def archive_project(
-        self, headers: Mapping[str, str] | None, *, project_id: str
-    ) -> dict[str, Any]:
-        async with self._acting(headers) as actor:
-            project = await actor.workspace.archive_project(
-                actor_id=actor.user.id,
-                project_id=_uuid(project_id, field="project_id"),
-            )
-            return _project_payload(project)
-
     async def list_project_members(
         self, headers: Mapping[str, str] | None, *, project_id: str
     ) -> list[dict[str, Any]]:
@@ -354,17 +344,6 @@ class McpTools:
                 summary=summary,
             )
             return _document_payload(document, include_text=True)
-
-    async def delete_document(
-        self, headers: Mapping[str, str] | None, *, document_id: str
-    ) -> dict[str, Any]:
-        async with self._acting(headers) as actor:
-            await actor.workspace.delete_document(
-                actor_id=actor.user.id,
-                document_id=_uuid(document_id, field="document_id"),
-            )
-            # `None` 을 돌려주면 호출자는 성공과 "도구가 아무 일도 안 함" 을 구분하지 못한다.
-            return {"deleted": True, "document_id": document_id}
 
     async def list_document_revisions(
         self, headers: Mapping[str, str] | None, *, document_id: str
@@ -701,16 +680,6 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         return await tools.get_project(ctx.headers, project_id=project_id)
 
     @mcp.tool(
-        name="archive_project",
-        description=(
-            "프로젝트를 보관 처리한다. 기본 목록에서 빠질 뿐 문서와 이력은 지워지지 않는다. "
-            "되돌리는 도구는 아직 없으므로, 사람이 명시적으로 요청했을 때만 부른다."
-        ),
-    )
-    async def archive_project(project_id: str, ctx: Context) -> dict[str, Any]:
-        return await tools.archive_project(ctx.headers, project_id=project_id)
-
-    @mcp.tool(
         name="list_project_members",
         description=(
             "프로젝트 멤버와 각자의 역할(owner·editor·viewer)을 돌려준다. 문서를 고치기 "
@@ -925,18 +894,6 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
     )
     async def retry_planning_ai_job(project_id: str, job_id: str, ctx: Context) -> dict[str, Any]:
         return await tools.retry_planning_ai_job(ctx.headers, project_id=project_id, job_id=job_id)
-
-    @mcp.tool(
-        name="delete_document",
-        description=(
-            "문서를 삭제한다. **사람이 명시적으로 삭제를 요청했을 때만 부른다.** 정리나 "
-            "재작성을 위해 스스로 판단해 지우지 마라 — 지운 문서는 이 도구들로 되살릴 수 "
-            "없고, 그 문서의 저장 이력도 함께 닿을 수 없게 된다. 내용을 바꾸려는 것이라면 "
-            "`update_document` 를 쓴다."
-        ),
-    )
-    async def delete_document(document_id: str, ctx: Context) -> dict[str, Any]:
-        return await tools.delete_document(ctx.headers, document_id=document_id)
 
     @mcp.tool(
         name="rspdl_runtime",

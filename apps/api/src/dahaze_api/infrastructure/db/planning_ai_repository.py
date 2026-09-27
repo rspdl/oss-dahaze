@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dahaze_api.domain.planning import ActivePlanningAiJob
 from dahaze_api.infrastructure.db.models import (
     DocumentRow,
     PlanningAiJobRow,
@@ -110,6 +111,18 @@ class SqlPlanningAiJobRepository:
             ).scalar_one_or_none()
             if existing_retry is not None:
                 return _payload(existing_retry)
+        active = (
+            await self._session.execute(
+                select(PlanningAiJobRow.id)
+                .where(
+                    PlanningAiJobRow.project_id == project_id,
+                    PlanningAiJobRow.status.in_(("queued", "running")),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if active is not None:
+            raise ActivePlanningAiJob
         if project.revision != frozen_project_revision or project.source_hash != frozen_source_hash:
             return None
 

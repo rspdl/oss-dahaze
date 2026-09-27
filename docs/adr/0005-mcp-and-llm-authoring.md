@@ -3,7 +3,7 @@ id: mcp-and-llm-authoring
 title: MCP Server and LLM Authoring Loop
 type: adr
 status: accepted
-version: "3"
+version: "4"
 summary: Serves MCP and a provider-independent, grammar-constrained LLM authoring loop from the API, and requires every generated draft to pass the compiler before a human sees it.
 topics:
   - mcp
@@ -14,7 +14,7 @@ related:
   - rspdl-compiler-integration
   - document-storage-model
   - monorepo-structure-and-stack
-last_updated: "2026-09-23"
+last_updated: "2026-09-27"
 owners:
   - rspdl-maintainers
 ---
@@ -101,6 +101,9 @@ compiler를 거친 결과와 함께만 노출한다. AI가 추천한 정책도 �
 기록에서 따로 추적한다.
 
 프로젝트 AI 작업은 PostgreSQL 행으로 먼저 enqueue하고 별도 worker가 lease를 얻어 실행한다.
+초기 제품은 한 프로젝트에서 한 번에 하나의 AI 작업만 진행한다. 이미 대기·실행 중인 작업이
+있으면 새 작업을 받지 않으며, 같은 요청 ID의 재전송은 기존 작업을 돌려준다. 이 범위에서
+여러 AI 작업을 동시에 조정하는 사용자 경험은 제공하지 않는다.
 요청 ID는 사용자 메시지 저장과 작업 생성을 함께 중복 제거한다. worker의 heartbeat가 끊기면
 다른 worker가 회수할 수 있고, 모든 checkpoint·완료 쓰기는 lease token으로 fencing한다.
 문서별 생성 결과는 compiler를 지난 뒤에만 checkpoint하며 원문은 작업 조회 응답에 싣지 않는다.
@@ -111,6 +114,11 @@ compiler를 거친 결과와 함께만 노출한다. AI가 추천한 정책도 �
 기획 상태에 미정 항목으로 보관하고, 사용자가 채택한 결정과 명시적 지시만 생성의 규범 근거가
 된다. 생성된 여러 문서는 프로젝트 전체 compiler gate를 거친 하나의 변경 초안으로 보관하며
 확정 원문은 명시적 apply 전까지 바뀌지 않는다.
+
+AI의 문서 변경 계획은 추가·수정만 포함한다. 문서 삭제가 필요해 보이면 대상과 이유를
+질문으로 제시하고, 삭제와 프로젝트 보관은 사용자가 화면에서 직접 수행한다. MCP에는
+직접 삭제·보관 도구를 노출하지 않는다. 요소 삭제 후보는 초안으로 검토할 수 있지만
+확정 원문에 적용하는 결정은 사용자에게 남는다.
 
 ### 프롬프트는 rspdl 버전에 묶인다
 

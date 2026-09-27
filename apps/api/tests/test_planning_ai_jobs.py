@@ -96,6 +96,57 @@ async def _project(client: httpx.AsyncClient, slug: str) -> dict[str, Any]:
     return cast(dict[str, Any], response.json())
 
 
+async def test_one_active_ai_job_per_project(
+    client: httpx.AsyncClient, session: AsyncSession
+) -> None:
+    project = await _project(client, "single-ai-job")
+    url = f"/api/projects/{project['id']}/planning/ai-jobs"
+    first = await client.post(
+        url,
+        json={
+            "request_id": str(uuid4()),
+            "kind": "interview",
+            "expected_planning_revision": 0,
+            "instruction": "환불 규칙을 검토해 주세요.",
+        },
+    )
+    assert first.status_code == 202, first.text
+    planning = (await client.get(f"/api/projects/{project['id']}/planning")).json()
+    second = await client.post(
+        url,
+        json={
+            "request_id": str(uuid4()),
+            "kind": "generate",
+            "expected_planning_revision": planning["revision"],
+            "instruction": "명세 초안을 만들어 주세요.",
+        },
+    )
+    assert second.status_code == 409
+    assert "진행 중인 AI 작업" in second.text
+    unchanged = (await client.get(f"/api/projects/{project['id']}/planning")).json()
+    assert unchanged["revision"] == planning["revision"]
+    assert len(unchanged["messages"]) == 1
+
+    await session.commit()
+    llm = FakePlanningLlm()
+    worker = PlanningAiWorker(
+        sessions=_factory(), compiler=LocalRspdlCompiler(), llm=llm, planning_llm=llm
+    )
+    assert await worker.run_once() is True
+    session.expire_all()
+    current = (await client.get(f"/api/projects/{project['id']}/planning")).json()
+    after_finish = await client.post(
+        url,
+        json={
+            "request_id": str(uuid4()),
+            "kind": "interview",
+            "expected_planning_revision": current["revision"],
+            "instruction": "다음 규칙을 검토해 주세요.",
+        },
+    )
+    assert after_finish.status_code == 202, after_finish.text
+
+
 async def test_interview_job_is_idempotent_and_persists_structured_result(
     client: httpx.AsyncClient, session: AsyncSession
 ) -> None:
@@ -302,12 +353,18 @@ async def test_generation_from_draft_keeps_original_accepted_base_result(
 
 
 @pytest.mark.parametrize(
-    ("path", "title"),
-    [("../export.rspdl", "내보내기"), ("notes.txt", "메모"), ("valid.rspdl", "가" * 201)],
+    ("operation", "path", "title"),
+    [
+        ("upsert", "../export.rspdl", "내보내기"),
+        ("upsert", "notes.txt", "메모"),
+        ("upsert", "valid.rspdl", "가" * 201),
+        ("delete", "inventory.rspdl", "재고"),
+    ],
 )
-async def test_invalid_generated_file_identity_fails_before_document_llm(
+async def test_invalid_generated_plan_fails_before_document_llm(
     client: httpx.AsyncClient,
     session: AsyncSession,
+    operation: str,
     path: str,
     title: str,
 ) -> None:
@@ -332,7 +389,7 @@ async def test_invalid_generated_file_identity_fails_before_document_llm(
                 "questions": [],
                 "changes": [
                     {
-                        "operation": "upsert",
+                        "operation": operation,
                         "path": path,
                         "title": title,
                         "instruction": "작성",
