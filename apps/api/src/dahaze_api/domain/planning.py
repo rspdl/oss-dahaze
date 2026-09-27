@@ -8,6 +8,10 @@ from enum import StrEnum
 from typing import Any
 
 
+class ActivePlanningAiJob(Exception):
+    """한 프로젝트에서 진행 중인 AI 작업이 이미 있다."""
+
+
 class DecisionResolutionStatus(StrEnum):
     UPDATED = "updated"
     STALE = "stale"

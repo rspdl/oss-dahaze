@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from dahaze_api.application.errors import AccessDenied, Conflict, NotFound
 from dahaze_api.application.workspace import WorkspaceService
+from dahaze_api.domain.planning import ActivePlanningAiJob
 from dahaze_api.domain.ports import PlanningAiJobRepositoryPort, PlanningRepositoryPort
 
 AI_JOB_KINDS = frozenset({"interview", "generate"})
@@ -70,21 +71,24 @@ class PlanningAiService:
         context: dict[str, Any] = {
             "selected_subject": None if selected_subject is None else dict(selected_subject)
         }
-        result = await self._jobs.enqueue(
-            project_id=project_id,
-            actor_id=actor_id,
-            request_id=request_id,
-            kind=kind,
-            instruction=instruction,
-            expected_planning_revision=expected_planning_revision,
-            frozen_project_revision=project.revision,
-            frozen_source_hash=project.source_hash,
-            context=context,
-            source_draft_id=source_draft_id,
-            retry_of_job_id=None,
-            attempt=1,
-            max_attempts=MAX_JOB_ATTEMPTS,
-        )
+        try:
+            result = await self._jobs.enqueue(
+                project_id=project_id,
+                actor_id=actor_id,
+                request_id=request_id,
+                kind=kind,
+                instruction=instruction,
+                expected_planning_revision=expected_planning_revision,
+                frozen_project_revision=project.revision,
+                frozen_source_hash=project.source_hash,
+                context=context,
+                source_draft_id=source_draft_id,
+                retry_of_job_id=None,
+                attempt=1,
+                max_attempts=MAX_JOB_ATTEMPTS,
+            )
+        except ActivePlanningAiJob as exc:
+            raise Conflict("진행 중인 AI 작업이 끝난 뒤 다시 요청해 주세요") from exc
         if result is None:
             raise Conflict("기획 상태가 다른 곳에서 변경되었다")
         return result
@@ -130,26 +134,29 @@ class PlanningAiService:
         if attempt > int(original["max_attempts"]):
             raise Conflict("AI 작업의 최대 재시도 횟수를 넘었다")
         state = await self._planning.get_state(project_id)
-        result = await self._jobs.enqueue(
-            project_id=project_id,
-            actor_id=actor_id,
-            request_id=uuid4(),
-            kind=str(original["kind"]),
-            instruction=str(original["request"]["instruction"]),
-            expected_planning_revision=int(state["revision"]),
-            frozen_project_revision=int(original["frozen_project_revision"]),
-            frozen_source_hash=str(original["frozen_source_hash"]),
-            context={
-                **original["context"],
-                "preserve_source": True,
-                "retry_checkpoints": original.get("checkpoints", {}),
-            },
-            source_draft_id=original.get("source_draft_id"),
-            retry_of_job_id=job_id,
-            attempt=attempt,
-            max_attempts=int(original["max_attempts"]),
-            append_user_message=False,
-        )
+        try:
+            result = await self._jobs.enqueue(
+                project_id=project_id,
+                actor_id=actor_id,
+                request_id=uuid4(),
+                kind=str(original["kind"]),
+                instruction=str(original["request"]["instruction"]),
+                expected_planning_revision=int(state["revision"]),
+                frozen_project_revision=int(original["frozen_project_revision"]),
+                frozen_source_hash=str(original["frozen_source_hash"]),
+                context={
+                    **original["context"],
+                    "preserve_source": True,
+                    "retry_checkpoints": original.get("checkpoints", {}),
+                },
+                source_draft_id=original.get("source_draft_id"),
+                retry_of_job_id=job_id,
+                attempt=attempt,
+                max_attempts=int(original["max_attempts"]),
+                append_user_message=False,
+            )
+        except ActivePlanningAiJob as exc:
+            raise Conflict("진행 중인 AI 작업이 끝난 뒤 다시 요청해 주세요") from exc
         if result is None:
             raise Conflict("기획 상태가 다른 곳에서 변경되었다")
         return result

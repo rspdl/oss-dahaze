@@ -507,18 +507,6 @@ async def test_get_project_hides_a_foreign_project(
         )
 
 
-async def test_archive_project_marks_it_archived(
-    tools: McpTools, tokens: SessionTokens, user: User, project: Project
-) -> None:
-    headers = auth(tokens.issue_mcp(user.id))
-
-    archived = await tools.archive_project(headers, project_id=str(project.id))
-
-    assert archived["is_archived"] is True
-    # 보관은 삭제가 아니다. 단건 조회로는 여전히 닿는다.
-    assert (await tools.get_project(headers, project_id=str(project.id)))["is_archived"]
-
-
 async def test_only_the_owner_can_add_a_member(
     tools: McpTools,
     tokens: SessionTokens,
@@ -589,56 +577,7 @@ async def test_unknown_role_says_what_is_allowed(
         )
 
 
-# ------------------------------------------------------------- 삭제와 이력
-
-
-async def test_deleted_document_becomes_unreachable(
-    tools: McpTools, tokens: SessionTokens, user: User, project: Project
-) -> None:
-    headers = auth(tokens.issue_mcp(user.id))
-    created = await tools.create_document(
-        headers,
-        project_id=str(project.id),
-        path="throwaway.rspdl",
-        title="지울 것",
-        text=VALID_TEXT,
-    )
-
-    result = await tools.delete_document(headers, document_id=created["id"])
-
-    # `None` 을 돌려주면 호출자가 성공과 무동작을 구분하지 못한다.
-    assert result == {"deleted": True, "document_id": created["id"]}
-    with pytest.raises(NotFound):
-        await tools.read_document(headers, document_id=created["id"])
-    assert await tools.list_documents(headers, project_id=str(project.id)) == []
-
-
-async def test_viewer_cannot_delete_a_document(
-    tools: McpTools,
-    tokens: SessionTokens,
-    workspace: WorkspaceService,
-    user: User,
-    other_user: User,
-    project: Project,
-) -> None:
-    created = await tools.create_document(
-        auth(tokens.issue_mcp(user.id)),
-        project_id=str(project.id),
-        path="protected.rspdl",
-        title="지켜야 할 것",
-        text=VALID_TEXT,
-    )
-    await workspace.add_member(
-        actor_id=user.id,
-        project_id=project.id,
-        user_id=other_user.id,
-        role=ProjectRole.VIEWER,
-    )
-
-    with pytest.raises(AccessDenied):
-        await tools.delete_document(
-            auth(tokens.issue_mcp(other_user.id)), document_id=created["id"]
-        )
+# ------------------------------------------------------------- 이력
 
 
 async def test_revisions_are_listed_without_their_text(
@@ -823,7 +762,6 @@ async def test_tools_are_advertised_over_http(
     assert {tool["name"] for tool in advertised} == {
         "create_project",
         "get_project",
-        "archive_project",
         "list_project_members",
         "add_project_member",
         "list_projects",
@@ -832,7 +770,6 @@ async def test_tools_are_advertised_over_http(
         "create_document",
         "update_document",
         "list_document_revisions",
-        "delete_document",
         "rspdl_runtime",
         "compile_rspdl",
         "check_rspdl",

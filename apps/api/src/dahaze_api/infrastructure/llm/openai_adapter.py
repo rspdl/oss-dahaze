@@ -225,7 +225,7 @@ class OpenAiLlm:
                         "additionalProperties": False,
                         "required": ["operation", "path", "title", "instruction"],
                         "properties": {
-                            "operation": {"type": "string", "enum": ["upsert", "delete"]},
+                            "operation": {"type": "string", "enum": ["upsert"]},
                             "path": {"type": "string", "maxLength": 500},
                             "title": {"type": ["string", "null"], "maxLength": 200},
                             "instruction": {

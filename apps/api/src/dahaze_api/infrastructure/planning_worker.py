@@ -224,7 +224,7 @@ class PlanningAiWorker:
                 if await self._cancelled(job):
                     return
                 try:
-                    _validate_change_plan(generated_plan, job["context"])
+                    _validate_change_plan(generated_plan)
                     break
                 except (Conflict, LlmUnavailable) as exc:
                     if plan_attempt == MAX_PLAN_ATTEMPTS:
@@ -256,7 +256,7 @@ class PlanningAiWorker:
                 job, checkpoints, "planned", 0, 1, "변경 계획을 저장했다"
             ):
                 return
-        _validate_change_plan(plan, job["context"])
+        _validate_change_plan(plan)
         changes = plan.get("changes")
         if not isinstance(changes, list):
             raise LlmUnavailable(
@@ -315,7 +315,7 @@ class PlanningAiWorker:
                 )
             path = raw_change.get("path")
             operation = raw_change.get("operation")
-            if not isinstance(path, str) or operation not in {"upsert", "delete"}:
+            if not isinstance(path, str) or operation != "upsert":
                 raise LlmUnavailable(
                     code="invalid_output",
                     message="AI 문서 변경 경로가 올바르지 않다.",
@@ -327,62 +327,55 @@ class PlanningAiWorker:
                 return
             if not await self._progress(job, "generating", index, total, f"{path} 작성 중"):
                 return
-            if operation == "delete":
-                candidate.pop(path, None)
-                outcome = await self._await_guarded(job, self._compile(candidate))
+            title = raw_change.get("title")
+            instruction = raw_change.get("instruction")
+            if not isinstance(title, str) or not title or not isinstance(instruction, str):
+                raise LlmUnavailable(
+                    code="invalid_output",
+                    message="AI upsert 계획이 올바르지 않다.",
+                    retryable=True,
+                )
+            current = candidate.get(path, {}).get("text")
+            diagnostics: list[Mapping[str, Any]] = []
+            for repair_attempt in range(MAX_REPAIR_ATTEMPTS + 1):
+                text = await self._await_guarded(
+                    job,
+                    self._llm.draft_document(
+                        instruction=instruction,
+                        current_text=current if isinstance(current, str) else None,
+                        diagnostics=diagnostics,
+                        grammar=contract.grammar,
+                        system_prompt=contract.system_prompt,
+                    ),
+                )
                 if await self._cancelled(job):
                     return
-                compiler_result = outcome
-            else:
-                title = raw_change.get("title")
-                instruction = raw_change.get("instruction")
-                if not isinstance(title, str) or not title or not isinstance(instruction, str):
-                    raise LlmUnavailable(
-                        code="invalid_output",
-                        message="AI upsert 계획이 올바르지 않다.",
-                        retryable=True,
+                candidate[path] = {
+                    "id": candidate.get(path, {}).get("id"),
+                    "path": path,
+                    "title": title,
+                    "text": text,
+                    "target_rspdl_version": runtime.rspdl_version,
+                }
+                compiler_result = await self._await_guarded(job, self._compile(candidate))
+                if await self._cancelled(job):
+                    return
+                diagnostics = _error_diagnostics(compiler_result)
+                current = text
+                error_count = len(diagnostics)
+                if error_count and repair_attempt < MAX_REPAIR_ATTEMPTS:
+                    repair_message = (
+                        f"{path} 컴파일 오류 {error_count}건 · "
+                        f"수정 시도 {repair_attempt + 2}/{MAX_REPAIR_ATTEMPTS + 1}"
                     )
-                current = candidate.get(path, {}).get("text")
-                diagnostics: list[Mapping[str, Any]] = []
-                for repair_attempt in range(MAX_REPAIR_ATTEMPTS + 1):
-                    text = await self._await_guarded(
-                        job,
-                        self._llm.draft_document(
-                            instruction=instruction,
-                            current_text=current if isinstance(current, str) else None,
-                            diagnostics=diagnostics,
-                            grammar=contract.grammar,
-                            system_prompt=contract.system_prompt,
-                        ),
-                    )
-                    if await self._cancelled(job):
-                        return
-                    candidate[path] = {
-                        "id": candidate.get(path, {}).get("id"),
-                        "path": path,
-                        "title": title,
-                        "text": text,
-                        "target_rspdl_version": runtime.rspdl_version,
-                    }
-                    compiler_result = await self._await_guarded(job, self._compile(candidate))
-                    if await self._cancelled(job):
-                        return
-                    diagnostics = _error_diagnostics(compiler_result)
-                    current = text
-                    error_count = len(diagnostics)
-                    if error_count and repair_attempt < MAX_REPAIR_ATTEMPTS:
-                        repair_message = (
-                            f"{path} 컴파일 오류 {error_count}건 · "
-                            f"수정 시도 {repair_attempt + 2}/{MAX_REPAIR_ATTEMPTS + 1}"
-                        )
-                    else:
-                        repair_message = f"{path} 컴파일 완료 · 오류 {error_count}건"
-                    if not await self._progress(
-                        job, "generating", index, total, repair_message
-                    ):
-                        return
-                    if not diagnostics:
-                        break
+                else:
+                    repair_message = f"{path} 컴파일 완료 · 오류 {error_count}건"
+                if not await self._progress(
+                    job, "generating", index, total, repair_message
+                ):
+                    return
+                if not diagnostics:
+                    break
             completed.add(path)
             checkpoints.update(
                 completed_paths=sorted(completed),
@@ -648,7 +641,7 @@ def _base_documents(context: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return candidate
 
 
-def _validate_change_plan(plan: Mapping[str, Any], context: Mapping[str, Any]) -> None:
+def _validate_change_plan(plan: Mapping[str, Any]) -> None:
     """Reject provider-authored file identities before source generation or persistence."""
     changes = plan.get("changes")
     if not isinstance(changes, list):
@@ -658,7 +651,6 @@ def _validate_change_plan(plan: Mapping[str, Any], context: Mapping[str, Any]) -
             retryable=True,
         )
     paths: set[str] = set()
-    available = set(_candidate_from_checkpoint({}, context))
     for item in changes:
         if not isinstance(item, Mapping):
             raise LlmUnavailable(
@@ -667,7 +659,7 @@ def _validate_change_plan(plan: Mapping[str, Any], context: Mapping[str, Any]) -
                 retryable=True,
             )
         path, operation = item.get("path"), item.get("operation")
-        if not isinstance(path, str) or operation not in {"upsert", "delete"}:
+        if not isinstance(path, str) or operation != "upsert":
             raise LlmUnavailable(
                 code="invalid_output",
                 message="AI 문서 변경 경로가 올바르지 않다.",
@@ -680,30 +672,19 @@ def _validate_change_plan(plan: Mapping[str, Any], context: Mapping[str, Any]) -
                 retryable=False,
             )
         paths.add(path)
-        if operation == "upsert":
-            title, instruction = item.get("title"), item.get("instruction")
-            if (
-                not isinstance(title, str)
-                or not isinstance(instruction, str)
-                or not instruction
-                or len(instruction) > 2000
-            ):
-                raise LlmUnavailable(
-                    code="invalid_output",
-                    message="AI upsert 계획이 올바르지 않다.",
-                    retryable=True,
-                )
-            validate_document_identity(path=path, title=title)
-            available.add(path)
-        else:
-            validate_document_identity(path=path, title="삭제")
-            if path not in available:
-                raise LlmUnavailable(
-                    code="invalid_output",
-                    message="AI 문서 변경 계획이 존재하지 않는 문서를 삭제하려 한다.",
-                    retryable=False,
-                )
-            available.remove(path)
+        title, instruction = item.get("title"), item.get("instruction")
+        if (
+            not isinstance(title, str)
+            or not isinstance(instruction, str)
+            or not instruction
+            or len(instruction) > 2000
+        ):
+            raise LlmUnavailable(
+                code="invalid_output",
+                message="AI upsert 계획이 올바르지 않다.",
+                retryable=True,
+            )
+        validate_document_identity(path=path, title=title)
 
 
 def _diff_documents(

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import {
   useArchiveProject,
+  useDeleteDocument,
   useGetProject,
   useListDocuments,
   type DocumentSummaryResponse,
@@ -233,12 +234,12 @@ function DocumentList({ projectId }: { projectId: string }) {
       {documents.data?.map((document, index) => (
         <li
           key={document.id}
-          className="animate-rise"
+          className="animate-rise flex items-center gap-3"
           style={{ animationDelay: `${Math.min(index, 10) * 35}ms` }}
         >
           <Link
             href={documentHref(projectId, document.id)}
-            className="group flex items-start gap-4 py-4 transition-colors duration-200 ease-out-expo hover:bg-surface-raised"
+            className="group flex min-w-0 flex-1 items-start gap-4 py-4 transition-colors duration-200 ease-out-expo hover:bg-surface-raised"
           >
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -268,8 +269,45 @@ function DocumentList({ projectId }: { projectId: string }) {
               className="mt-0.5 size-4 shrink-0 text-text-subtle transition-transform duration-200 ease-out-expo group-hover:translate-x-0.5"
             />
           </Link>
+          <DeleteDocumentButton document={document} />
         </li>
       ))}
     </ul>
+  )
+}
+
+function DeleteDocumentButton({ document }: { document: DocumentSummaryResponse }) {
+  const queryClient = useQueryClient()
+  const remove = useDeleteDocument()
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="ghost" size="sm" disabled={remove.isPending}>삭제</Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>문서 &quot;{document.title}&quot;을(를) 삭제할까요?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {document.path} 문서를 프로젝트에서 삭제합니다. 삭제 전에 대상 문서를 확인해 주세요.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>취소</AlertDialogCancel>
+          <AlertDialogAction onClick={() => remove.mutate(
+            { documentId: document.id },
+            {
+              onSuccess: async () => {
+                await queryClient.invalidateQueries()
+                toast.success('문서를 삭제했습니다')
+              },
+              onError: (error) => toast.error('문서를 삭제하지 못했습니다', {
+                description: errorMessage(error),
+              }),
+            },
+          )}>삭제</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
