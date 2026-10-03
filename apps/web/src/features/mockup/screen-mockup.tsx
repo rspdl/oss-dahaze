@@ -52,6 +52,7 @@ export const DEFAULT_VIEWPORT_DIMENSIONS: Record<MockupViewport, MockupDimension
 export interface ScreenMockupFrameProps {
   screen: ScreenMockup
   viewport?: MockupViewport
+  showCaption?: boolean
   dimensions?: MockupDimensions
   mode?: PrototypeMode
   sampleVariant?: SampleVariant
@@ -76,7 +77,7 @@ export interface ScreenMockupFrameProps {
   className?: string
 }
 
-interface ElementContext extends Omit<ScreenMockupFrameProps, 'screen' | 'viewport' | 'dimensions' | 'className'> {
+interface ElementContext extends Omit<ScreenMockupFrameProps, 'screen' | 'viewport' | 'dimensions' | 'className' | 'showCaption'> {
   screenKey: string
 }
 
@@ -413,6 +414,7 @@ function selectedSampleValue(context: ElementContext, fieldId: string): string |
 export function ScreenMockupFrame({
   screen,
   viewport = 'desktop',
+  showCaption = true,
   className,
   dimensions,
   mode = 'edit', sampleVariant = 'normal', samples, outcomesByElementId,
@@ -433,14 +435,14 @@ export function ScreenMockupFrame({
       )}
       style={{ width: viewportDimensions.width + FRAME_HORIZONTAL_BORDER }}
     >
-      <figcaption className="flex items-baseline gap-2 border-b border-border bg-surface px-4 py-2">
+      {showCaption ? <figcaption className="flex items-baseline gap-2 border-b border-border bg-surface px-4 py-2">
         <span className="text-xs font-semibold text-text">
           {screen.screenName ?? screen.screenId}
         </span>
         {screen.kind === null ? null : (
           <span className="text-[10px] text-text-subtle">{screen.kind}</span>
         )}
-      </figcaption>
+      </figcaption> : null}
 
       {controls.length === 0 ? null : <div aria-label="결과 시나리오 선택" className="flex min-w-0 flex-wrap gap-2 border-b border-border bg-surface-raised px-4 py-2 text-[11px] text-text-muted">{controls.map((control) => <label key={control.elementId} className="flex min-w-0 flex-1 flex-wrap items-center gap-2"><span className="min-w-0 break-words">{control.name} 결과 시나리오</span><select aria-label={`${control.name} 결과 시나리오`} value={outcomeForPreviewAction(control.outcomes, selectedOutcomeIdByElementId?.[control.elementId])?.id ?? ''} onChange={(event) => onOutcomeSelect?.(control.elementId, event.target.value)} className="min-w-0 max-w-full flex-[1_1_12rem] rounded border border-border-strong bg-surface px-2 py-1 text-text"><option value="" disabled>결과 선택</option>{control.outcomes.map((outcome) => <option key={outcome.id} value={outcome.id}>{outcome.label}</option>)}</select></label>)}</div>}
 

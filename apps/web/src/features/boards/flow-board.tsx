@@ -12,7 +12,7 @@ import { DEFAULT_VIEWPORT_DIMENSIONS, ScreenMockupFrame, type MockupViewport, ty
 import type { FlowEdge, FlowGraph, FlowNode } from './flow-graph'
 
 export const FLOW_CARD_WIDTH = 360
-export const FLOW_CARD_HEIGHT = 308
+export const FLOW_CARD_HEIGHT = 288
 const PREVIEW_HEIGHT = 260
 
 interface FlowNodeData extends Record<string, unknown> {
@@ -20,7 +20,6 @@ interface FlowNodeData extends Record<string, unknown> {
   viewport: MockupViewport
   selected: boolean
   related: boolean
-  zoom: number
   prototype: Omit<ScreenMockupFrameProps, 'screen' | 'viewport'>
   connections: FlowEdge[]
   onSelect: (id: string) => void
@@ -29,28 +28,24 @@ interface FlowNodeData extends Record<string, unknown> {
 type ScreenFlowNode = Node<FlowNodeData, 'screen'>
 
 const ScreenNodeCard = memo(function ScreenNodeCard({ data }: NodeProps<ScreenFlowNode>) {
-  const { node, viewport, selected, related, prototype, connections, onSelect, zoom } = data
+  const { node, viewport, selected, related, prototype, connections, onSelect } = data
   const dimensions = prototype.dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
   const experience = prototype.mode === 'experience'
-  const overview = zoom < 0.65
-  const readableFontSize = overview ? Math.min(32, 12 / zoom) : 12
-  const scale = Math.min((FLOW_CARD_WIDTH - 24) / (dimensions.width + 2), (PREVIEW_HEIGHT - 20) / (dimensions.height + 32))
+  const scale = Math.min((FLOW_CARD_WIDTH - 24) / (dimensions.width + 2), (PREVIEW_HEIGHT - 20) / (dimensions.height + 2))
   const frame = node.mockup === null
     ? <div className="flex items-center justify-center rounded border border-dashed bg-surface text-sm text-text-subtle" style={dimensions}>선언된 레이아웃이 없습니다</div>
-    : <ScreenMockupFrame screen={node.mockup} viewport={viewport} {...prototype} />
+    : <ScreenMockupFrame screen={node.mockup} viewport={viewport} {...prototype} showCaption={experience} />
   if (experience) return frame
 
-  return <article aria-label={`화면: ${node.screen.name}`} className={cn('rounded-xl border-2 bg-surface shadow-sm transition-[border-color,opacity]', selected ? 'border-accent shadow-lg' : related ? 'border-border-strong' : 'border-border opacity-40')} style={{ width: FLOW_CARD_WIDTH }}>
-    <header className="screen-drag-handle flex h-11 cursor-grab items-center gap-2 rounded-t-xl border-b bg-surface px-3 active:cursor-grabbing">
-      <Handle id="in" type="target" position={Position.Left} style={{ top: 22 }} className="!size-2.5 !border-2 !border-surface !bg-accent" />
-      <span aria-hidden className="text-text-subtle">▤</span>
-      <button type="button" style={{ fontSize: readableFontSize }} className="nodrag min-w-0 flex-1 truncate text-left font-semibold" onClick={(event) => { event.stopPropagation(); onSelect(node.id) }}>{node.screen.name}</button>
-      {overview ? null : <span className="text-[10px] text-text-subtle">{dimensions.width} × {dimensions.height}</span>}
-    </header>
-    <div className="relative overflow-hidden rounded-b-[10px] bg-canvas" style={{ height: PREVIEW_HEIGHT }}>
-      <div className="absolute top-2.5" style={{ left: (FLOW_CARD_WIDTH - (dimensions.width + 2) * scale) / 2, width: dimensions.width + 2, transform: `scale(${scale})`, transformOrigin: 'top left' }}>{frame}</div>
+  return <article aria-label={`화면: ${node.screen.name}`} className={cn('screen-drag-handle cursor-grab active:cursor-grabbing', !related && !selected && 'opacity-40')} style={{ width: FLOW_CARD_WIDTH }}>
+    <Handle id="in" type="target" position={Position.Left} style={{ top: 2 + PREVIEW_HEIGHT / 2 }} className="!size-2.5 !border-2 !border-surface !bg-accent" />
+    <div className={cn('relative overflow-hidden rounded-xl border-2 bg-canvas shadow-sm transition-[border-color]', selected ? 'border-accent shadow-lg' : related ? 'border-border-strong' : 'border-border')} style={{ height: PREVIEW_HEIGHT + 4 }}>
+      <div className="absolute top-2.5" style={{ left: (FLOW_CARD_WIDTH - 4 - (dimensions.width + 2) * scale) / 2, width: dimensions.width + 2, transform: `scale(${scale})`, transformOrigin: 'top left' }}>{frame}</div>
     </div>
-    {connections.map((edge, index) => <Handle key={edge.id} id={edge.id} type="source" position={Position.Right} style={{ top: 44 + PREVIEW_HEIGHT * (index + 1) / (connections.length + 1) }} className="!size-2.5 !border-2 !border-surface !bg-accent" />)}
+    <div className="flex h-6 items-center px-1">
+      <button type="button" className="nodrag max-w-full truncate text-left text-[11px] font-normal text-text-subtle" onClick={(event) => { event.stopPropagation(); onSelect(node.id) }}>{node.screen.name}</button>
+    </div>
+    {connections.map((edge, index) => <Handle key={edge.id} id={edge.id} type="source" position={Position.Right} style={{ top: 2 + PREVIEW_HEIGHT * (index + 1) / (connections.length + 1) }} className="!size-2.5 !border-2 !border-surface !bg-accent" />)}
   </article>
 })
 
@@ -94,7 +89,6 @@ export function FlowBoard({ graph, viewport, selectedId, onSelect, prototype = {
   onPositionChange?: (screenKey: string, position: { x: number; y: number }) => void
 }) {
   const instanceRef = useRef<ReactFlowInstance<ScreenFlowNode, Edge> | null>(null)
-  const [zoom, setZoom] = useState(1)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const selectNode = useCallback((id: string | null) => { setSelectedEdgeId(null); onSelect(id) }, [onSelect])
   const [dragPositions, setDragPositions] = useState<Record<string, { x: number; y: number }>>({})
@@ -120,11 +114,11 @@ export function FlowBoard({ graph, viewport, selectedId, onSelect, prototype = {
         initialWidth: experience ? dimensions.width + 2 : FLOW_CARD_WIDTH,
         initialHeight: experience ? dimensions.height + 48 : FLOW_CARD_HEIGHT,
         ariaLabel: node.screen.name,
-        data: { node, viewport, selected: false, related: selectedId === null || neighbors.has(node.id), zoom, prototype: config, connections, onSelect: selectNode },
+        data: { node, viewport, selected: false, related: selectedId === null || neighbors.has(node.id), prototype: config, connections, onSelect: selectNode },
       }
     })
     return { nodes: applyFlowNodeSelection(baseNodes, selectedId), edges: experience ? [] : flowBoardEdges(graph, selectedId, selectedEdgeId) }
-  }, [graph, viewport, experience, experienceId, selectedId, prototype, prototypeForNode, dragPositions, selectNode, selectedEdgeId, zoom])
+  }, [graph, viewport, experience, experienceId, selectedId, prototype, prototypeForNode, dragPositions, selectNode, selectedEdgeId])
 
   const nodeSetKey = graph.nodes.map((node) => node.id).join('|')
   const dimensions = prototype.dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
@@ -143,7 +137,6 @@ export function FlowBoard({ graph, viewport, selectedId, onSelect, prototype = {
       nodes={nodes} edges={edges} nodeTypes={nodeTypes}
       fitView fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
       onInit={(instance) => { instanceRef.current = instance }}
-      onMove={(_, state) => setZoom(state.zoom)}
       minZoom={0.08} maxZoom={4} nodesConnectable={false} nodesDraggable={editable}
       onNodeDrag={(_, node) => setDragPositions((current) => ({ ...current, [node.id]: node.position }))}
       onNodeDragStop={(_, node) => { onPositionChange?.(node.id, node.position); setDragPositions((current) => { const next = { ...current }; delete next[node.id]; return next }) }}
