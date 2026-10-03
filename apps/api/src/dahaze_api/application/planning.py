@@ -560,7 +560,7 @@ class PlanningService:
             raise Conflict("프로젝트 또는 기획 상태가 다른 곳에서 변경되었다")
         return captured
 
-    async def handoff(
+    async def snapshot(
         self, *, actor_id: UUID, project_id: UUID, revision: int
     ) -> Mapping[str, Any]:
         await self._workspace.get_project(actor_id=actor_id, project_id=project_id)

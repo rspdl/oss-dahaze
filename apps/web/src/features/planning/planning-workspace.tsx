@@ -17,15 +17,14 @@ export interface PlanningWorkspaceProps {
   onSelectDraft?: (id: string | null) => void
   onApplyDraft?: (id: string) => void
   onRestoreSnapshot?: (revision: number) => void
-  onInspectSnapshot?: (revision: number) => void
   onOpenSource?: (path: string) => void
   onResolveDecision?: (id: string, action: 'adopt' | 'defer', reason: string) => Promise<boolean>
   onResolveProposal?: (id: string, action: 'adopt' | 'defer', reason: string) => Promise<boolean>
   draftArtifacts?: React.ReactNode
-  handoff?: React.ReactNode
+  metadataEditor?: React.ReactNode
 }
 
-export function PlanningWorkspace({ model, initialSubject, busy = false, onSendMessage, onGenerateDraft, onCancelJob, onRetryJob, onSelectDraft, onApplyDraft, onRestoreSnapshot, onInspectSnapshot, onOpenSource, onResolveDecision, onResolveProposal, draftArtifacts, handoff }: PlanningWorkspaceProps) {
+export function PlanningWorkspace({ model, initialSubject, busy = false, onSendMessage, onGenerateDraft, onCancelJob, onRetryJob, onSelectDraft, onApplyDraft, onRestoreSnapshot, onOpenSource, onResolveDecision, onResolveProposal, draftArtifacts, metadataEditor }: PlanningWorkspaceProps) {
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
   const [subject, setSubject] = useState<PlanningSubject | undefined>(initialSubject)
@@ -65,8 +64,8 @@ export function PlanningWorkspace({ model, initialSubject, busy = false, onSendM
         <section className="border-b p-4"><h3 className="text-sm font-semibold">작업 초안</h3><div className="mt-3 space-y-1"><button type="button" onClick={() => onSelectDraft?.(null)} className={cn('w-full border-l-2 px-3 py-2 text-left', model.selectedDraftId === null ? 'border-accent bg-accent-subtle' : 'border-transparent hover:bg-surface-raised')}><span className="block text-sm font-medium">저장 명세 진단 보기</span><span className="mt-0.5 block text-xs text-text-subtle">선택한 초안 없이 저장된 문서의 컴파일 응답을 봅니다.</span></button>{model.drafts.length === 0 ? <p className="px-3 py-2 text-sm text-text-muted">저장된 초안이 없습니다.</p> : model.drafts.map((draft) => <button type="button" key={draft.id} onClick={() => onSelectDraft?.(draft.id)} className={cn('w-full border-l-2 px-3 py-2 text-left', selectedDraft?.id === draft.id ? 'border-accent bg-accent-subtle' : 'border-transparent hover:bg-surface-raised')}><span className="block text-sm font-medium">{draft.summary}</span><span className="mt-0.5 block text-xs text-text-subtle">기준 버전 {draft.baseRevision} · {draft.status === 'applied' ? '적용됨' : '검토 대기'}</span></button>)}</div></section>
         {selectedDraft === null ? null : <DraftPreview draft={selectedDraft} busy={busy} onApply={onApplyDraft} />}
         {selectedDraft === null ? null : draftArtifacts}
-        <section className="p-4"><h3 className="text-sm font-semibold">프로젝트 버전</h3><div className="mt-3 divide-y border-y">{model.snapshots.map((snapshot) => <div key={snapshot.revision} className="flex items-center gap-2 py-2"><button type="button" onClick={() => onInspectSnapshot?.(snapshot.revision)} className="min-w-0 flex-1 text-left"><span className="block text-sm">스냅샷 {snapshot.revision}</span><span className="block truncate text-xs text-text-subtle">{snapshot.changeKind} · {snapshot.sourceHash.slice(0, 10)}</span></button><Button size="sm" variant="ghost" disabled={busy || onRestoreSnapshot === undefined} onClick={() => onRestoreSnapshot?.(snapshot.revision)}>복원</Button></div>)}</div></section>
-        {handoff}
+        <section className="p-4"><h3 className="text-sm font-semibold">프로젝트 버전</h3><div className="mt-3 divide-y border-y">{model.snapshots.map((snapshot) => <div key={snapshot.revision} className="flex items-center gap-2 py-2"><div className="min-w-0 flex-1 text-left"><span className="block text-sm">스냅샷 {snapshot.revision}</span><span className="block truncate text-xs text-text-subtle">{snapshot.changeKind} · {snapshot.sourceHash.slice(0, 10)}</span></div><Button size="sm" variant="ghost" disabled={busy || onRestoreSnapshot === undefined} onClick={() => onRestoreSnapshot?.(snapshot.revision)}>복원</Button></div>)}</div></section>
+        {metadataEditor}
       </div>
     </aside>
   </div>

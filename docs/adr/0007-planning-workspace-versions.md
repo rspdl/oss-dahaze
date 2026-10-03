@@ -3,7 +3,7 @@ id: planning-workspace-versions
 title: Planning Workspace Versions
 type: adr
 status: accepted
-version: "2"
+version: "3"
 summary: Separates editable planning context, compiled candidate changes, accepted source revisions, and immutable whole-project handoff snapshots.
 topics:
   - storage
@@ -12,7 +12,7 @@ topics:
 related:
   - document-storage-model
   - mcp-and-llm-authoring
-last_updated: "2026-09-27"
+last_updated: "2026-10-03"
 owners:
   - rspdl-maintainers
 ---
@@ -73,14 +73,14 @@ compiler 버전·wire schema·locale, 당시 컴파일 결과를 담는다. 이�
 디자인·대화 수정도 조용히 유실되지 않는다. 과거 compiler 결과는 당시 버전의 결과로
 표시하며 현재 런타임에서 다시 검증한 결과로 표시하지 않는다.
 
-### 전달 계약
+### 버전 이력과 전달본 기능 제거 (2026-10-03)
 
-읽기 전용 화면·다운로드·MCP는 같은 스냅샷 버전의 전체 프로젝트를 전달한다. 각 채널은
-같은 application 유스케이스와 권한 검사를 사용한다. 미정 사항과 compiler 진단도 함께
-전달하며 임의의 완료 점수나 준비 완료 판정을 만들지 않는다.
+개발 전달본 생성·검수·비교·JSON 다운로드 화면과 전용 REST `/planning/handoff`,
+MCP `get_project_handoff` 도구를 제거한다. 현재 화면과 관련 명세는 화면 흐름 보드에서 검토한다.
 
-목록에는 버전과 요약을 제공하고 원문·컴파일 결과 전문은 선택한 버전에서 조회한다.
-버전 비교는 원문과 사용자 작성 상태의 차이를 보여주며 의미상 충돌을 자체 판정하지 않는다.
+프로젝트 버전 목록·복원과 원자적 변경 전후 스냅샷은 복구 기능으로 유지한다. 저장된 스냅샷
+조회·캡처 API도 버전 관리 계약으로 유지하며 DB 이력을 삭제하지 않는다. 환경·샘플 설정은
+기획 워크스페이스의 독립 설정으로 계속 제공한다.
 
 ## 검증과 한계
 

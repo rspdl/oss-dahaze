@@ -6,12 +6,10 @@ import {
   useCancelPlanningAiJob,
   useCompileProject,
   useCreatePlanningAiJob,
-  useCaptureProjectSnapshot,
   useResolvePlanningDecision,
   useResolvePlanningProposal,
   useGetPlanningDraft,
   useGetPlanningState,
-  useGetProjectSnapshot,
   useListPlanningAiJobs,
   useListPlanningDrafts,
   useListPlanningMetadataHistory,
@@ -26,11 +24,10 @@ import {
   type PlanningStateResponse,
   type PlanningMetadataRevisionResponse,
   type ProjectCompileResponse,
-  type ProjectSnapshotResponse,
   type ProjectSnapshotSummaryResponse,
 } from '@dahaze/api-client'
 import { useQueryClient } from '@tanstack/react-query'
-import { Button, ErrorState, Skeleton, toast } from '@dahaze/ui'
+import { ErrorState, Skeleton, toast } from '@dahaze/ui'
 import { useRouter } from 'next/navigation'
 
 import { RequireSession } from '../auth/require-session'
@@ -41,7 +38,6 @@ import { renderDiagnosticMessage, renderDiagnosticTitle } from '../../shared/rsp
 import type { RspdlDiagnostic } from '@dahaze/rspdl-editor'
 import type { PlanningAiJob, PlanningCompilerReview, PlanningCompilerState, PlanningDraft, PlanningItem, PlanningProposal, PlanningSubject, PlanningWorkspaceModel } from './planning-types'
 import { PlanningWorkspace } from './planning-workspace'
-import { HandoffInspector } from './handoff-inspector'
 import { MetadataEditor } from './metadata-editor'
 import { toMetadataCatalog } from './metadata-catalog'
 import { DraftResultInspector } from './draft-result-inspector'
@@ -62,14 +58,8 @@ function PlanningLoader({ projectId, initialSubject }: { projectId: string; init
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null)
   const activeDraftId = selectedDraftId
   const selectedDraft = useGetPlanningDraft<PlanningDraftResponse>(activeDraftId ?? '', { query: { enabled: activeDraftId !== null } })
-  const [selectedSnapshotVersion, setSelectedSnapshotVersion] = useState<number | null>(null)
-  const [compareSnapshotVersion, setCompareSnapshotVersion] = useState<number | null>(null)
-  const [snapshotSummary, setSnapshotSummary] = useState('')
-  const selectedSnapshot = useGetProjectSnapshot<ProjectSnapshotResponse>(projectId, selectedSnapshotVersion ?? 0, { query: { enabled: selectedSnapshotVersion !== null } })
-  const compareSnapshot = useGetProjectSnapshot<ProjectSnapshotResponse>(projectId, compareSnapshotVersion ?? 0, { query: { enabled: compareSnapshotVersion !== null } })
   const queryClient = useQueryClient()
   const apply = useApplyPlanningDraft()
-  const captureSnapshot = useCaptureProjectSnapshot()
   const restore = useRestoreProjectSnapshot()
   const createAiJob = useCreatePlanningAiJob()
   const cancelAiJob = useCancelPlanningAiJob()
@@ -130,10 +120,9 @@ function PlanningLoader({ projectId, initialSubject }: { projectId: string; init
     onSelectDraft={setSelectedDraftId}
     onApplyDraft={(draftId) => apply.mutate({ draftId, data: { expected_project_revision: model.projectRevision, expected_source_hash: model.sourceHash } }, { onSuccess: async (result) => { if (result.applied) setSelectedDraftId(null); await refresh(); toast[result.applied ? 'success' : 'error'](result.applied ? '변경안을 적용했습니다' : '변경안이 적용되지 않았습니다') }, onError: (error) => toast.error('변경안을 적용하지 못했습니다', { description: errorMessage(error) }) })}
     onOpenSource={canOpenAcceptedSource ? (path) => { const href = acceptedCompilerDocumentHref(projectId, model.compiler, path); if (href !== null) router.push(href) } : undefined}
-    onInspectSnapshot={(version) => { setSelectedSnapshotVersion(version); if (compareSnapshotVersion === version) setCompareSnapshotVersion(null) }}
     onRestoreSnapshot={(snapshotVersion) => restore.mutate({ projectId, revision: snapshotVersion, data: { expected_planning_revision: model.revision, expected_project_revision: model.projectRevision, expected_source_hash: model.sourceHash } }, { onSuccess: async () => { await refresh(); toast.success('선택한 버전을 새 프로젝트 버전으로 복원했습니다') }, onError: (error) => toast.error('버전을 복원하지 못했습니다', { description: errorMessage(error) }) })}
     draftArtifacts={selectedDraft.data === undefined ? null : <DraftResultInspector draft={selectedDraft.data} planningState={state.data} />}
-    handoff={<><section className="border-t p-4"><h3 className="text-sm font-semibold">개발 전달본 만들기</h3><div className="mt-2 flex gap-2"><input aria-label="전달본 요약" value={snapshotSummary} onChange={(event) => setSnapshotSummary(event.target.value)} placeholder="이번 전달본의 변경 요약" className="min-w-0 flex-1 rounded border bg-surface px-2 text-xs" /><Button size="sm" disabled={captureSnapshot.isPending} onClick={() => captureSnapshot.mutate({ projectId, data: { expected_planning_revision: model.revision, expected_project_revision: model.projectRevision, expected_source_hash: model.sourceHash, summary: snapshotSummary || null } }, { onSuccess: async (snapshot) => { setSelectedSnapshotVersion(snapshot.snapshot_version); setSnapshotSummary(''); await refresh(); toast.success('현재 상태로 전달본을 만들었습니다') }, onError: (error) => toast.error('전달본을 만들지 못했습니다', { description: errorMessage(error) }) })}>현재 상태로 만들기</Button></div></section>{metadataEditor}{selectedSnapshot.data ? <><label className="mx-4 mt-3 block text-xs">비교 버전 <select value={compareSnapshotVersion ?? ''} onChange={(event) => setCompareSnapshotVersion(event.target.value === '' ? null : Number(event.target.value))} className="ml-2 rounded border bg-surface px-2 py-1"><option value="">선택 안 함</option>{model.snapshots.filter((entry) => entry.revision !== selectedSnapshotVersion).map((entry) => <option key={entry.revision} value={entry.revision}>스냅샷 {entry.revision}</option>)}</select></label><HandoffInspector snapshot={selectedSnapshot.data} compare={compareSnapshot.data} /></> : null}</>}
+    metadataEditor={metadataEditor}
   />
 }
 

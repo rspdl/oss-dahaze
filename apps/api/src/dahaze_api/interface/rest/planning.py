@@ -465,7 +465,7 @@ async def get_project_snapshot(
 ) -> ProjectSnapshotResponse:
     try:
         return ProjectSnapshotResponse.model_validate(
-            await planning.handoff(
+            await planning.snapshot(
                 actor_id=user.id, project_id=project_id, revision=snapshot_version
             )
         )
@@ -519,18 +519,6 @@ async def restore_project_snapshot(
                 expected_source_hash=body.expected_source_hash,
                 expected_planning_revision=body.expected_planning_revision,
             )
-        )
-    except (NotFound, AccessDenied, Conflict) as exc:
-        _raise(exc)
-
-
-@router.get("/projects/{project_id}/planning/handoff", name="get_project_handoff")
-async def get_project_handoff(
-    project_id: UUID, user: CurrentUser, planning: Planning, revision: int = Query(ge=0)
-) -> ProjectSnapshotResponse:
-    try:
-        return ProjectSnapshotResponse.model_validate(
-            await planning.handoff(actor_id=user.id, project_id=project_id, revision=revision)
         )
     except (NotFound, AccessDenied, Conflict) as exc:
         _raise(exc)
