@@ -39,8 +39,13 @@ export interface ElementSelection extends DesignBinding {
 }
 
 export interface ElementDesign {
+  /** Presentation only. Coordinates are relative to the containing mockup element. */
+  x?: number
+  y?: number
   width?: number
   height?: number
+  layout?: 'column' | 'row' | 'grid'
+  gap?: number
 }
 
 export interface DesignChange {

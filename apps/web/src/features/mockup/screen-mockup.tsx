@@ -23,12 +23,14 @@ import type {
   SemanticProposal,
 } from './prototype-contract'
 import { designBindingKey } from './prototype-contract'
+import { containerDesignStyle } from './element-design'
+import { DesignElement } from './design-element'
 
 /**
  * 선언된 레이아웃을 화면처럼 그린다.
  *
- * **여기에 LLM 이 없다.** 구조는 문서가 선언한 것이고 렌더링은 결정적이다. 같은 IR 은 언제나
- * 같은 그림을 낸다.
+ * **여기에 LLM 이 없다.** 의미 구조는 문서가 선언한 것이고, 배치는 별도 디자인 상태다.
+ * 같은 IR·디자인·샘플 상태는 같은 그림을 낸다.
  *
  * 그리는 것은 **목업**이지 동작하는 폼이 아니다. 그래서 입력칸은 진짜 `input` 이 아니라
  * 입력칸처럼 보이는 상자다. 보드 위 노드 안에 진짜 폼 컨트롤을 넣으면 캔버스를 키보드로
@@ -241,7 +243,7 @@ function ListElement({
  */
 function Placeholder({ text }: { text: string }) {
   return (
-    <div className="flex min-h-20 items-center justify-center rounded-md border border-dashed border-border-strong bg-surface-raised">
+    <div className="flex h-full min-h-20 items-center justify-center rounded-md border border-dashed border-border-strong bg-surface-raised">
       <span className="text-[11px] text-text-subtle">{text}</span>
     </div>
   )
@@ -285,11 +287,19 @@ function Element({ element, path, context }: { element: MockupElement; path: str
   }
   const design = context.designByElementPath?.[designBindingKey(binding)]
   const selected = context.selectedElementPath === path && context.selectedElementScreenKey === context.screenKey
+  const containerStyle = (children: MockupElement[], childPath: string): React.CSSProperties => {
+    // Absolute children must still reserve a usable canvas inside an auto-sized group.
+    const bottom = children.reduce((height, child, index) => {
+      const childDesign = context.designByElementPath?.[designBindingKey({ screenKey: context.screenKey, sourceHash: context.sourceHash, elementId: child.id ?? undefined, elementPath: `${childPath}.${index}` })]
+      return childDesign?.x === undefined && childDesign?.y === undefined ? height : Math.max(height, (childDesign?.y ?? 0) + (childDesign?.height ?? 80) + 12)
+    }, 0)
+    return { ...containerDesignStyle(design), ...(bottom > 0 ? { minHeight: Math.max(design?.height ?? 0, bottom) } : {}) }
+  }
   const child = (() => {
   switch (element.kind) {
     case 'header':
       return (
-        <header className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-raised px-4 py-3">
+        <header style={containerStyle(element.children, `${path}.children`)} className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-raised px-4 py-3">
           {element.children.map((child, index) => (
             <Element key={index} element={child} path={`${path}.children.${index}`} context={context} />
           ))}
@@ -297,7 +307,7 @@ function Element({ element, path, context }: { element: MockupElement; path: str
       )
     case 'section':
       return (
-        <section className="flex flex-col gap-3 px-4 py-3">
+        <section style={containerStyle(element.children, `${path}.children`)} className="flex flex-col gap-3 px-4 py-3">
           {element.children.map((child, index) => (
             <Element key={index} element={child} path={`${path}.children.${index}`} context={context} />
           ))}
@@ -309,7 +319,7 @@ function Element({ element, path, context }: { element: MockupElement; path: str
       )
     case 'form':
       return (
-        <div className="flex flex-col gap-3 rounded-md border border-border bg-surface p-3">
+        <div style={containerStyle(element.inputs, `${path}.inputs`)} className="flex flex-col gap-3 rounded-md border border-border bg-surface p-3">
           {element.inputs.map((input, index) => (
             <Element key={index} element={input} path={`${path}.inputs.${index}`} context={context} />
           ))}
@@ -325,13 +335,13 @@ function Element({ element, path, context }: { element: MockupElement; path: str
       return <ListElement modelId={element.modelId} modelName={element.modelName} fields={element.fields} records={supplied?.variants[variant] ?? fallback} isExample={supplied === undefined} selectedId={context.selectedSampleIdByModel?.[element.modelId]} onSelect={context.onSampleSelect} />
     }
     case 'button': {
-      if (context.mode !== 'experience') return <span className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text">{element.name}</span>
-      if (element.id === null) return <button type="button" disabled title="안정적 요소 ID가 없어 체험할 수 없습니다" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text opacity-50">{element.name}</button>
+      if (context.mode !== 'experience') return <span style={{ width: design?.width === undefined ? undefined : '100%', height: design?.height === undefined ? undefined : '100%' }} className="inline-flex min-h-8 items-center justify-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text">{element.name}</span>
+      if (element.id === null) return <button type="button" disabled title="안정적 요소 ID가 없어 체험할 수 없습니다" style={{ width: design?.width === undefined ? undefined : '100%', height: design?.height === undefined ? undefined : '100%' }} className="inline-flex min-h-8 items-center justify-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text opacity-50">{element.name}</button>
       const elementId = element.id
       const outcomes = context.outcomesByElementId?.[elementId] ?? []
-      if (outcomes.length === 0) return <button type="button" disabled title="선언된 결과가 없어 체험할 수 없습니다" className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text opacity-50">{element.name}</button>
+      if (outcomes.length === 0) return <button type="button" disabled title="선언된 결과가 없어 체험할 수 없습니다" style={{ width: design?.width === undefined ? undefined : '100%', height: design?.height === undefined ? undefined : '100%' }} className="inline-flex min-h-8 items-center justify-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text opacity-50">{element.name}</button>
       const selectedOutcome = outcomeForPreviewAction(outcomes, context.selectedOutcomeIdByElementId?.[elementId])
-      return <button type="button" disabled={selectedOutcome === undefined} title={selectedOutcome === undefined ? '결과 시나리오를 먼저 선택하세요' : undefined} className="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text disabled:opacity-50" onClick={(event) => { event.stopPropagation(); dispatchPreviewAction(context.onAction, context.screenKey, elementId, outcomes, context.selectedOutcomeIdByElementId?.[elementId]) }}>{element.name}</button>
+      return <button type="button" disabled={selectedOutcome === undefined} title={selectedOutcome === undefined ? '결과 시나리오를 먼저 선택하세요' : undefined} style={{ width: design?.width === undefined ? undefined : '100%', height: design?.height === undefined ? undefined : '100%' }} className="inline-flex min-h-8 items-center justify-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text disabled:opacity-50" onClick={(event) => { event.stopPropagation(); dispatchPreviewAction(context.onAction, context.screenKey, elementId, outcomes, context.selectedOutcomeIdByElementId?.[elementId]) }}>{element.name}</button>
     }
     case 'placeholder':
       return <Placeholder text={element.text} />
@@ -339,7 +349,7 @@ function Element({ element, path, context }: { element: MockupElement; path: str
       return <Unrecognized rawKind={element.rawKind} reason={element.reason} />
   }
   })()
-  return <div data-element-path={path} className={cn('relative', selected && 'ring-2 ring-accent')} style={{ width: design?.width, minHeight: design?.height }} onClick={(event) => { if (context.mode !== 'edit') return; event.stopPropagation(); context.onElementSelect?.(selection) }}>{child}{selected && context.mode === 'edit' ? <div className="nodrag absolute top-1 right-1 flex gap-1 rounded bg-surface p-1 shadow"><label className="text-[10px]">W <input aria-label="요소 너비" type="number" className="w-14 border" value={design?.width ?? ''} onChange={(event) => context.onDesignChange?.({ binding, patch: { width: Number(event.target.value) || undefined } })} /></label><label className="text-[10px]">H <input aria-label="요소 높이" type="number" className="w-14 border" value={design?.height ?? ''} onChange={(event) => context.onDesignChange?.({ binding, patch: { height: Number(event.target.value) || undefined } })} /></label><button type="button" className="text-[10px] text-diagnostic-error" onClick={() => context.onProposeSemanticEdit?.({ kind: 'delete-element', binding: selection })}>삭제 제안</button></div> : null}</div>
+  return <DesignElement selection={selection} design={design} selected={selected} editable={context.mode === 'edit'} onSelect={context.onElementSelect} onChange={context.onDesignChange}>{child}</DesignElement>
 }
 
 /** 시나리오를 고르는 것만으로는 실행하지 않는다. 선언된 버튼을 누를 때 선택 결과를 해석한다. */
@@ -440,7 +450,7 @@ export function ScreenMockupFrame({
           레이아웃에 요소가 없다
         </div>
       ) : (
-        <div className="flex min-h-0 flex-col overflow-y-auto">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-auto">
           {screen.elements.map((element, index) => (
             <Element key={index} element={element} path={`elements.${index}`} context={context} />
           ))}

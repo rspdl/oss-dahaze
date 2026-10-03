@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { applyFlowNodeSelection, fitSelectedFlowNode } from './flow-board'
+import { applyFlowNodeSelection, flowBoardEdges } from './flow-board'
+import type { FlowGraph } from './flow-graph'
 
 type FlowNodes = Parameters<typeof applyFlowNodeSelection>[0]
 
@@ -12,19 +13,36 @@ function nodes(): FlowNodes {
     data: {
       node: {
         id,
-        screen: { id, key: id, name: id, path: 'test.rspdl', span: null },
+        screen: { id, key: id, name: id, path: 'test.rspdl', span: null, categoryId: null, categorySpan: null, categoryOrder: null, hasLayout: false, layoutSpan: null },
         mockup: null,
         position: { x: index * 100, y: 0 },
       },
       viewport: 'desktop',
       selected: false,
-      detailed: false,
+      related: true,
+      zoom: 1,
+      connections: [],
+      onSelect: vi.fn(),
+      onFollow: vi.fn(),
       prototype: {},
     },
   })) as FlowNodes
 }
 
 describe('FlowBoard selection lifecycle', () => {
+  it('keeps parallel outcomes on distinct source ports and highlights the selected neighborhood', () => {
+    const graph: FlowGraph = { nodes: [], danglingPaths: [], edges: [
+      { id: 'success', source: 'checkout', target: 'done', label: '완료', path: {} as never },
+      { id: 'failure', source: 'checkout', target: 'retry', label: '재시도', path: {} as never },
+      { id: 'unrelated', source: 'settings', target: 'home', label: '저장', path: {} as never },
+    ] }
+    const edges = flowBoardEdges(graph, 'checkout')
+    expect(edges.map((edge) => edge.sourceHandle)).toEqual(['success', 'failure', 'unrelated'])
+    expect(edges.every((edge) => edge.targetHandle === 'in')).toBe(true)
+    expect(edges[0]?.animated).toBe(true)
+    expect(edges[2]?.style?.opacity).toBeLessThan(edges[0]?.style?.opacity as number)
+    expect(flowBoardEdges(graph, null).every((edge) => edge.style?.opacity === 1)).toBe(true)
+  })
   it('selection changes only replace the selected node object', () => {
     const base = nodes()
     const selectedA = applyFlowNodeSelection(base, 'a')
@@ -39,36 +57,4 @@ describe('FlowBoard selection lifecycle', () => {
     expect(selectedB.map((node) => node.position)).toEqual(base.map((node) => node.position))
   })
 
-  it('fits the selected node through the existing flow instance', () => {
-    const fitBounds = vi.fn(async () => true)
-    const getInternalNode = vi.fn(() => ({
-      measured: { width: 1444, height: 950 },
-      internals: { positionAbsolute: { x: 3200, y: 1800 } },
-    }))
-
-    expect(fitSelectedFlowNode({ fitBounds, getInternalNode } as never, 'b', { width: 1440, height: 900 })).toBe(true)
-    expect(fitSelectedFlowNode({ fitBounds, getInternalNode } as never, null, { width: 1440, height: 900 })).toBe(false)
-
-    expect(fitBounds).toHaveBeenCalledOnce()
-    expect(fitBounds).toHaveBeenCalledWith({
-      x: 3200,
-      y: 1800,
-      width: 1444,
-      height: 950,
-    }, {
-      padding: 0.18,
-      duration: 200,
-    })
-  })
-
-  it('does not fit a selected node until its detailed dimensions are measured', () => {
-    const fitBounds = vi.fn(async () => true)
-    const getInternalNode = vi.fn(() => ({
-      measured: { width: 288, height: 112 },
-      internals: { positionAbsolute: { x: 3200, y: 1800 } },
-    }))
-
-    expect(fitSelectedFlowNode({ fitBounds, getInternalNode } as never, 'b', { width: 1440, height: 900 })).toBe(false)
-    expect(fitBounds).not.toHaveBeenCalled()
-  })
 })

@@ -8,6 +8,8 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { RequireSession } from '@/features/auth/require-session'
 import { DEFAULT_VIEWPORT_DIMENSIONS, type MockupViewport } from '@/features/mockup/screen-mockup'
+import { parseElementDesigns } from '@/features/mockup/element-design'
+import { WireframeInspector } from '@/features/mockup/wireframe-inspector'
 import { parseModelSamples } from '@/features/mockup/sample-data'
 import { designBindingKey, type DesignBinding, type ElementDesign, type ElementSelection, type PrototypeAction, type PrototypeMode, type SampleVariant, type SemanticProposal } from '@/features/mockup/prototype-contract'
 import { parsePlanningEnvironments, visibleScreenKeys } from '@/features/planning/environments'
@@ -19,7 +21,7 @@ import { buildReadableSpecification } from '@/features/specification/readable-sp
 import { ReadableSpecificationPanel } from '@/features/specification/readable-specification-panel'
 import { screenSourceSpan } from './board-ir'
 import { BoardGate } from './board-gate'
-import { FlowBoard } from './flow-board'
+import { FlowBoard, FLOW_CARD_WIDTH, FLOW_CARD_HEIGHT, FLOW_CONNECTION_HEIGHT } from './flow-board'
 import { buildFlowGraph, type FlowNode } from './flow-graph'
 import { SourcePanel } from './source-panel'
 import { useBoardData } from './use-board-data'
@@ -159,21 +161,20 @@ function FlowView({ projectId }: { projectId: string }) {
   const effectivePositions = designEditor.working.positions
   const effectiveDesign = designEditor.working.elements
   const graph = useMemo(
-    () => buildFlowGraph(data.board, data.mockups.screens, viewport, { positions: effectivePositions, nodeWidth: dimensions.width, visibleScreenKeys: environmentScreenKeys }),
-    [data.board, data.mockups.screens, viewport, effectivePositions, dimensions.width, environmentScreenKeys],
+    () => buildFlowGraph(data.board, data.mockups.screens, viewport, { positions: effectivePositions, nodeWidth: FLOW_CARD_WIDTH, nodeHeight: FLOW_CARD_HEIGHT, connectionRowHeight: FLOW_CONNECTION_HEIGHT, visibleScreenKeys: environmentScreenKeys }),
+    [data.board, data.mockups.screens, viewport, effectivePositions, environmentScreenKeys],
   )
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const selectScreen = useCallback((screenKey: string | null) => { setActiveAction(null); setSelectedId(screenKey) }, [])
+  const selectScreen = useCallback((screenKey: string | null) => { setActiveAction(null); setSelectedId(screenKey); setSelectedElement(null) }, [])
 
   const selected: FlowNode | null =
-    graph.nodes.find((node) => node.id === selectedId) ?? graph.nodes[0] ?? null
+    graph.nodes.find((node) => node.id === selectedId) ?? null
   const proposalScreenKey = proposal === null ? selected?.id : proposal.kind === 'add-element' ? proposal.screenKey : proposal.kind === 'connect' || proposal.kind === 'disconnect' ? proposal.sourceScreenKey : proposal.binding.screenKey
   const proposalNode = graph.nodes.find((node) => node.id === proposalScreenKey)
   const proposalDocumentRef = proposalNode === undefined ? undefined : data.documentsByPath.get(proposalNode.screen.path)
   const proposalDocument = useGetDocument<DocumentResponse>(proposalDocumentRef?.id ?? '', { query: { enabled: proposalDocumentRef !== undefined } })
   const specification = useMemo(() => buildReadableSpecification(data.compilation.data, { documents: proposalDocument.data === undefined ? [] : [proposalDocument.data], planningState: planning.data }), [data.compilation.data, planning.data, proposalDocument.data])
 
-  const withLayout = graph.nodes.filter((node) => node.mockup !== null).length
   const screenOutcomes = useMemo(() => prototypeOutcomesByScreen(specification), [specification])
   const prototype = useMemo(() => ({
     dimensions,
@@ -187,7 +188,7 @@ function FlowView({ projectId }: { projectId: string }) {
     values: experienceValues,
     onValueChange: (fieldId: string, value: string | boolean) => setExperienceValues((current) => ({ ...current, [fieldId]: value })),
     onSampleSelect: (modelId: string, recordId: string) => setSelectedSampleIdByModel((current) => ({ ...current, [modelId]: recordId })),
-    onElementSelect: setSelectedElement,
+    onElementSelect: (selection: ElementSelection) => { setSelectedId(selection.screenKey); setSelectedElement(selection); setInspectorOpen(true) },
     onDesignChange: ({ binding, patch }: { binding: DesignBinding; patch: ElementDesign }) => {
       if (binding.elementPath === undefined) return
       const key = designBindingKey(binding)
@@ -232,78 +233,23 @@ function FlowView({ projectId }: { projectId: string }) {
       emptyDescription="문서에 화면을 선언하면 이곳에 나타나고, 머리말의 `화면:` 으로 레이아웃을 선언하면 그 화면이 그려집니다."
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        <header className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-end md:justify-between">
-          <div className="min-w-0">
-            <p className="text-xs font-medium tracking-[0.14em] text-text-subtle">SCREEN FLOW</p>
-            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-text">화면 흐름</h1>
-            <p className="mt-1.5 max-w-[65ch] text-sm leading-relaxed text-text-muted">
-              선언된 레이아웃을 그대로 그리고, 선언된 경로를 화살표로 이었습니다. 레이아웃이
-              없는 화면은 빈 상자로 둡니다.
-            </p>
+        <header className="flex flex-wrap items-center gap-3 border-b pb-3">
+          <div className="mr-auto flex items-baseline gap-3"><h1 className="text-lg font-semibold">화면 흐름</h1><span className="text-xs text-text-subtle">{graph.nodes.length} 화면 · {graph.edges.length} 연결</span></div>
+          <div role="group" aria-label="보드 모드" className="flex gap-1 rounded-lg border bg-surface p-1">
+            <button type="button" aria-pressed={mode === 'edit'} className="rounded px-3 py-1 text-xs aria-pressed:bg-accent-subtle aria-pressed:text-accent" onClick={() => { setMode('edit'); setActiveAction(null) }}>보드 편집</button>
+            <button type="button" disabled={selected === null} aria-pressed={mode === 'experience'} title={selected === null ? '보드에서 시작할 화면을 선택하세요' : undefined} className="rounded px-3 py-1 text-xs aria-pressed:bg-accent-subtle aria-pressed:text-accent disabled:opacity-40" onClick={() => setMode('experience')}>선택 화면 체험</button>
           </div>
-          <div className="flex items-center gap-4">
-            <dl className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-text-subtle">
-              <div>
-                <dt className="sr-only">화면</dt>
-                <dd>
-                  <span className="font-mono text-text">{graph.nodes.length}</span> 화면
-                </dd>
-              </div>
-              <div>
-                <dt className="sr-only">레이아웃</dt>
-                <dd>
-                  <span className="font-mono text-text">{withLayout}</span> 레이아웃
-                </dd>
-              </div>
-              <div>
-                <dt className="sr-only">경로</dt>
-                <dd>
-                  <span className="font-mono text-text">{graph.edges.length}</span> 경로
-                </dd>
-              </div>
-            </dl>
-            <div
-              role="group"
-              aria-label="목업 폭"
-              className="flex shrink-0 gap-1 rounded-control border p-0.5"
-            >
-              {VIEWPORTS.map((entry) => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  aria-pressed={isViewportPresetSelected(entry.id)}
-                  onClick={() => { setViewport(entry.id); setDimensions(DEFAULT_VIEWPORT_DIMENSIONS[entry.id]) }}
-                  className={cn(
-                    'rounded-control px-2.5 py-1 text-xs font-medium transition-colors duration-200 ease-out-expo',
-                    isViewportPresetSelected(entry.id)
-                      ? 'bg-accent-subtle text-text'
-                      : 'text-text-muted hover:text-text',
-                  )}
-                >
-                  {entry.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <button type="button" disabled={designEditor.history.length === 0} className="rounded border px-2 py-1.5 text-xs disabled:opacity-40" onClick={() => setDesignEditor(undoDesign)}>배치 실행 취소</button>
+          <button type="button" disabled={!designDirty || designEditor.status === 'saving' || designEditor.status === 'conflict'} className="px-2 py-1.5 text-xs text-text-subtle disabled:opacity-60" onClick={() => void saveDesign()}>{designEditor.status === 'saving' ? '자동 저장 중' : designDirty ? '지금 저장' : '자동 저장됨'}</button>
+          <button type="button" disabled={selected === null} aria-pressed={inspectorOpen && selected !== null} className="rounded border px-2 py-1.5 text-xs disabled:opacity-40" onClick={() => setInspectorOpen((open) => !open)}>명세·배치</button>
         </header>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-control border bg-surface-raised/40 p-2 text-xs">
-          <label>화면 <select aria-label="화면 찾기" disabled={selected === null} value={selected?.id ?? ''} onChange={(event) => selectScreen(event.target.value)} className="max-w-48 rounded border bg-surface px-2 py-1 disabled:opacity-50">{graph.nodes.map((node) => <option key={node.id} value={node.id}>{node.screen.name}</option>)}</select></label>
-          {environments.length > 0 ? <label>환경 <select value={environmentId} disabled={designDirty} title={designDirty ? '현재 환경의 배치 저장이 끝난 뒤 환경을 바꿀 수 있습니다.' : undefined} onChange={(event) => { const id = event.target.value; setEnvironmentId(id); setActiveAction(null); setSelectedElement(null); setProposal(null); const next = environments.find((entry) => entry.id === id); if (next) setDimensions({ width: next.width, height: next.height }) }} className="rounded border bg-surface px-2 py-1 disabled:opacity-50"><option value="all">전체</option>{environments.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label> : null}
-          <label>모드 <select value={mode} onChange={(event) => { const next = event.target.value as PrototypeMode; setMode(next); if (next !== 'experience') setActiveAction(null) }} className="rounded border bg-surface px-2 py-1"><option value="edit">편집</option><option value="experience">체험</option></select></label>
-          <label>샘플 <select value={sampleVariant} onChange={(event) => setSampleVariant(event.target.value as SampleVariant)} className="rounded border bg-surface px-2 py-1"><option value="normal">정상</option><option value="empty">빈 상태</option><option value="long">긴 문구</option><option value="many">많은 데이터</option></select></label>
-          <label>너비 (CSS px) <input aria-label="화면 너비" type="number" min={240} max={7680} value={dimensions.width} onChange={(event) => { const next = event.target.valueAsNumber; if (Number.isFinite(next)) setDimensions((value) => ({ ...value, width: Math.min(7680, Math.max(240, next)) })) }} className="w-24 rounded border bg-surface px-2 py-1" /></label>
-          <label>높이 (CSS px) <input aria-label="화면 높이" type="number" min={320} max={4320} value={dimensions.height} onChange={(event) => { const next = event.target.valueAsNumber; if (Number.isFinite(next)) setDimensions((value) => ({ ...value, height: Math.min(4320, Math.max(320, next)) })) }} className="w-24 rounded border bg-surface px-2 py-1" /></label>
-          {mode === 'experience' ? <button type="button" className="rounded border px-2 py-1" onClick={() => { setActiveAction(null); setSelectedOutcomeIdByScreen({}); setSelectedSampleIdByModel({}); setExperienceValues({}) }}>미리보기 초기화</button> : null}
-          {mode === 'edit' ? <button type="button" disabled={selected === null} className="rounded border px-2 py-1 disabled:opacity-40" onClick={() => { if (selected !== null) setProposal({ kind: 'add-element', screenKey: selected.id }) }}>요소 추가 제안</button> : null}
-          {mode === 'edit' && selectedElement !== null ? <button type="button" className="rounded border px-2 py-1" onClick={() => setProposal({ kind: 'update-element', binding: selectedElement })}>요소 내용 변경</button> : null}
-          {mode === 'edit' && selectedElement !== null ? <button type="button" className="rounded border px-2 py-1" onClick={() => setProposal({ kind: 'move-element', binding: selectedElement })}>요소 이동</button> : null}
-          {mode === 'edit' ? <button type="button" disabled={designEditor.history.length === 0} className="rounded border px-2 py-1 disabled:opacity-40" onClick={() => setDesignEditor(undoDesign)}>배치 실행 취소</button> : null}
-          {mode === 'edit' ? <button type="button" disabled={!designDirty || designEditor.status === 'saving' || designEditor.status === 'conflict'} className="rounded border px-2 py-1 disabled:opacity-40" onClick={() => void saveDesign()}>{designEditor.status === 'saving' ? '자동 저장 중' : designDirty ? '지금 저장' : '자동 저장됨'}</button> : null}
-          {mode === 'edit' && selectedElement?.elementId !== undefined ? <PathEditorControls key={`${selectedElement.screenKey}:${selectedElement.elementId}`} selection={selectedElement} graph={graph} specification={specification} onPropose={setProposal} /> : null}
-          {mode === 'edit' && interviewSubject !== null ? <Link href={planningSubjectHref(projectId, interviewSubject)} className="rounded border px-2 py-1 text-accent">{interviewSubject.kind === 'element' ? '이 요소를 AI와 확인' : '이 화면을 AI와 확인'}</Link> : null}
-          {mode === 'edit' ? <button type="button" className="ml-auto rounded border px-2 py-1" aria-pressed={inspectorOpen} onClick={() => setInspectorOpen((open) => !open)}>{inspectorOpen ? '원문 닫기' : '원문 열기'}</button> : null}
-        </div>
+        {environments.length > 0 ? <div role="group" aria-label="보드 환경" className="flex shrink-0 flex-wrap items-center gap-1 py-2">
+          {[{ id: 'all', name: '전체 화면' }, ...environments].map((entry) => <button key={entry.id} type="button" aria-pressed={environmentId === entry.id} disabled={designDirty} className="rounded-full px-3 py-1.5 text-xs text-text-muted hover:bg-surface-raised aria-pressed:bg-accent-subtle aria-pressed:font-medium aria-pressed:text-accent disabled:opacity-40" onClick={() => {
+            setEnvironmentId(entry.id); selectScreen(null); setProposal(null)
+            const next = environments.find((environment) => environment.id === entry.id)
+            setDimensions(next === undefined ? DEFAULT_VIEWPORT_DIMENSIONS[viewport] : { width: next.width, height: next.height })
+          }}>{entry.name}</button>)}
+        </div> : null}
         {selectedElement?.elementId === undefined && selectedElement !== null ? <p className="mt-2 text-xs text-diagnostic-warning">명세가 바뀌면 이 요소의 배치를 다시 확인해야 합니다.</p> : null}
         {designEditor.status === 'error' ? <div className="mt-2 flex items-center gap-2 rounded-control border border-diagnostic-error/40 bg-diagnostic-error-subtle px-3 py-2 text-xs"><p className="flex-1">배치 자동 저장 실패 · {designEditor.error}</p><button type="button" className="rounded border px-2 py-1" onClick={() => setDesignEditor((state) => ({ ...state, status: 'pending', error: null }))}>다시 시도</button></div> : null}
         {designEditor.status === 'conflict' ? <div className="mt-2 flex items-center gap-2 rounded-control border border-diagnostic-warning/40 bg-diagnostic-warning/5 px-3 py-2 text-xs"><p className="flex-1">{designEditor.error} 현재 편집 내용은 보존했습니다.</p><button type="button" className="rounded border px-2 py-1" onClick={() => { const reset = createDesignEditorState(designScope, { elements: persistedDesign.elements, positions: persistedDesign.positions }, planning.data?.metadata_revision ?? designEditor.metadataRevision); setDesignEditor(reset); editorRef.current = reset; rawDesignRef.current = planning.data?.metadata.design; acceptedMetadataRevisionRef.current = planning.data?.metadata_revision ?? acceptedMetadataRevisionRef.current }}>서버 배치로 다시 불러오기</button></div> : null}
@@ -316,8 +262,9 @@ function FlowView({ projectId }: { projectId: string }) {
           </p>
         )}
 
-        <div className="flex min-h-0 flex-1 flex-col pt-4 md:flex-row md:gap-4">
+        <div className="flex min-h-0 flex-1 flex-col pt-2 md:flex-row md:gap-3">
           {environmentHasNoScreens ? <section className="flex min-h-48 flex-1 items-center justify-center rounded-lg border bg-surface-raised/30 p-6 text-center"><div><p className="text-sm font-semibold">이 환경에 포함된 화면이 없습니다</p><p className="mt-1 text-xs text-text-muted">위 환경 선택에서 다른 환경이나 전체를 선택할 수 있습니다.</p></div></section> : <FlowBoard
+            key={designScope}
             graph={graph}
             viewport={viewport}
             selectedId={selected?.id ?? null}
@@ -327,14 +274,33 @@ function FlowView({ projectId }: { projectId: string }) {
             editable={mode === 'edit'}
             onPositionChange={(screenKey, position) => setDesignEditor((state) => editDesign(state, (scope) => ({ ...scope, positions: { ...scope.positions, [screenKey]: position } })))}
           />}
-          {mode === 'edit' && inspectorOpen ? <div className="min-h-0 w-full overflow-y-auto border-t bg-surface-raised/35 md:w-[26rem] md:shrink-0 md:border-t-0 md:border-l"><ReadableSpecificationPanel specification={specification} screenKey={selected?.screen.key} elementId={selectedElement?.elementId} elementPath={selectedElement?.elementPath} className="p-4" /><details className="border-t" open><summary className="cursor-pointer px-4 py-3 text-xs font-semibold">원문 위치</summary><SelectedSource projectId={projectId} data={data} node={selected} /></details></div> : null}
+          {inspectorOpen && selected !== null ? <aside aria-label="선택 화면 명세와 배치" className="min-h-0 w-full overflow-y-auto rounded-xl border bg-surface md:w-[22rem] md:shrink-0">
+            <header className="flex items-center gap-2 border-b p-4"><h2 className="min-w-0 flex-1 text-sm font-semibold">{selected.screen.name}</h2><button type="button" aria-label="명세 패널 닫기" className="text-text-subtle" onClick={() => setInspectorOpen(false)}>×</button></header>
+            <details className="border-b p-4"><summary className="cursor-pointer text-xs font-medium">화면 크기 · 샘플</summary><div className="mt-3 space-y-3 text-xs">
+              <div role="group" aria-label="목업 폭" className="flex gap-2">{VIEWPORTS.map((entry) => <button key={entry.id} type="button" aria-pressed={isViewportPresetSelected(entry.id)} className={cn('rounded border px-2 py-1', isViewportPresetSelected(entry.id) && 'bg-accent-subtle text-accent')} onClick={() => { setViewport(entry.id); setDimensions(DEFAULT_VIEWPORT_DIMENSIONS[entry.id]) }}>{entry.label}</button>)}</div>
+              <div className="grid grid-cols-2 gap-2"><label>너비<input aria-label="화면 너비" type="number" min={240} max={7680} value={dimensions.width} className="mt-1 w-full rounded border bg-surface px-2 py-1" onChange={(event) => { const value = event.target.valueAsNumber; if (Number.isFinite(value)) setDimensions((current) => ({ ...current, width: Math.min(7680, Math.max(240, value)) })) }} /></label><label>높이<input aria-label="화면 높이" type="number" min={320} max={4320} value={dimensions.height} className="mt-1 w-full rounded border bg-surface px-2 py-1" onChange={(event) => { const value = event.target.valueAsNumber; if (Number.isFinite(value)) setDimensions((current) => ({ ...current, height: Math.min(4320, Math.max(320, value)) })) }} /></label></div>
+              <div role="group" aria-label="샘플 상황" className="flex flex-wrap gap-1">{([{ id: 'normal', label: '정상' }, { id: 'empty', label: '빈 상태' }, { id: 'long', label: '긴 문구' }, { id: 'many', label: '많은 데이터' }] as const).map((entry) => <button key={entry.id} type="button" aria-pressed={sampleVariant === entry.id} className="rounded border px-2 py-1 aria-pressed:bg-accent-subtle" onClick={() => setSampleVariant(entry.id)}>{entry.label}</button>)}</div>
+              {mode === 'experience' ? <button type="button" className="rounded border px-2 py-1" onClick={() => { setActiveAction(null); setSelectedOutcomeIdByScreen({}); setSelectedSampleIdByModel({}); setExperienceValues({}) }}>미리보기 초기화</button> : null}
+            </div></details>
+            {mode === 'edit' ? <>
+              <div className="flex flex-wrap gap-2 border-b p-4 text-xs">
+                <button type="button" className="rounded border px-2 py-1" onClick={() => setProposal({ kind: 'add-element', screenKey: selected.id })}>요소 추가 제안</button>
+                {selectedElement === null ? null : <><button type="button" className="rounded border px-2 py-1" onClick={() => setProposal({ kind: 'update-element', binding: selectedElement })}>내용 변경</button><button type="button" className="rounded border px-2 py-1" onClick={() => setProposal({ kind: 'move-element', binding: selectedElement })}>기획 구조 이동</button><button type="button" className="rounded border px-2 py-1 text-diagnostic-error" onClick={() => setProposal({ kind: 'delete-element', binding: selectedElement })}>삭제 제안</button></>}
+                {interviewSubject === null ? null : <Link href={planningSubjectHref(projectId, interviewSubject)} className="rounded border px-2 py-1 text-accent">{interviewSubject.kind === 'element' ? '이 요소를 AI와 확인' : '이 화면을 AI와 확인'}</Link>}
+              </div>
+              {selected.mockup === null ? null : <WireframeInspector screen={selected.mockup} sourceHash={data.documentsByPath.get(selected.screen.path)?.source_hash} selected={selectedElement} designs={effectiveDesign} onSelect={prototype.onElementSelect} onChange={prototype.onDesignChange} />}
+              {selectedElement?.elementId === undefined ? null : <div className="border-b p-4 text-xs"><PathEditorControls key={`${selectedElement.screenKey}:${selectedElement.elementId}`} selection={selectedElement} graph={graph} specification={specification} onPropose={setProposal} /></div>}
+            </> : null}
+            <ReadableSpecificationPanel specification={specification} screenKey={selected.screen.key} elementId={selectedElement?.elementId} elementPath={selectedElement?.elementPath} className="p-4" />
+            <details className="border-t"><summary className="cursor-pointer px-4 py-3 text-xs font-semibold">원문 위치</summary><SelectedSource projectId={projectId} data={data} node={selected} /></details>
+          </aside> : null}
         </div>
       </div>
     </BoardGate>
   )
 }
 
-function parseDesign(value: PlanningStateResponse['metadata']['design'], scope: string): { raw: Record<string, unknown>; elements: Record<string, ElementDesign>; positions: Record<string, { x: number; y: number }> } { const raw = typeof value === 'object' && value !== null ? value : {}; const scopes = typeof raw.environments === 'object' && raw.environments !== null ? raw.environments as Record<string, unknown> : {}; const selected = typeof scopes[scope] === 'object' && scopes[scope] !== null ? scopes[scope] as Record<string, unknown> : {}; const elements = typeof selected.elements === 'object' && selected.elements !== null ? selected.elements as Record<string, ElementDesign> : {}; const positions = typeof selected.positions === 'object' && selected.positions !== null ? selected.positions as Record<string, { x: number; y: number }> : {}; return { raw, elements, positions } }
+function parseDesign(value: PlanningStateResponse['metadata']['design'], scope: string): { raw: Record<string, unknown>; elements: Record<string, ElementDesign>; positions: Record<string, { x: number; y: number }> } { const raw = typeof value === 'object' && value !== null ? value : {}; const scopes = typeof raw.environments === 'object' && raw.environments !== null ? raw.environments as Record<string, unknown> : {}; const selected = typeof scopes[scope] === 'object' && scopes[scope] !== null ? scopes[scope] as Record<string, unknown> : {}; const elements = parseElementDesigns(selected.elements); const positions = typeof selected.positions === 'object' && selected.positions !== null ? selected.positions as Record<string, { x: number; y: number }> : {}; return { raw, elements, positions } }
 function proposalKey(proposal: SemanticProposal): string { return proposal.kind === 'add-element' ? `${proposal.kind}:${proposal.screenKey}` : proposal.kind === 'connect' || proposal.kind === 'disconnect' ? `${proposal.kind}:${proposal.sourceScreenKey}:${proposal.sourceElementId}:${proposal.outcomeId ?? ''}:${proposal.targetScreenId ?? proposal.handler?.kind ?? ''}:${proposal.handler?.id ?? ''}` : `${proposal.kind}:${proposal.binding.screenKey}:${proposal.binding.elementId ?? proposal.binding.elementPath ?? ''}` }
 
 function SelectedSource({
