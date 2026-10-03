@@ -23,7 +23,6 @@ function nodes(): FlowNodes {
       zoom: 1,
       connections: [],
       onSelect: vi.fn(),
-      onFollow: vi.fn(),
       prototype: {},
     },
   })) as FlowNodes
@@ -40,6 +39,8 @@ describe('FlowBoard selection lifecycle', () => {
     expect(edges.map((edge) => edge.sourceHandle)).toEqual(['success', 'failure', 'unrelated'])
     expect(edges.every((edge) => edge.targetHandle === 'in')).toBe(true)
     expect(edges[0]?.animated).toBe(true)
+    expect(edges.every((edge) => edge.label === undefined)).toBe(true)
+    expect(flowBoardEdges(graph, 'checkout', 'failure').filter((edge) => edge.label !== undefined).map((edge) => edge.label)).toEqual(['재시도'])
     expect(edges[2]?.style?.opacity).toBeLessThan(edges[0]?.style?.opacity as number)
     expect(flowBoardEdges(graph, null).every((edge) => edge.style?.opacity === 1)).toBe(true)
   })

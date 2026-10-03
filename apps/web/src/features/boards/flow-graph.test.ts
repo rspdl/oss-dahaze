@@ -140,10 +140,10 @@ describe('buildFlowGraph', () => {
     expect(list.position.x).not.toBe(detail.position.x)
   })
 
-  it('reserves space for each full card and its connection rows while preserving manual positions', () => {
-    const built = buildFlowGraph({ ...collected, paths: [] }, mockups.screens, 'desktop', { nodeWidth: 360, nodeHeight: 338, connectionRowHeight: 44 })
+  it('reserves space for each full card while preserving manual positions', () => {
+    const built = buildFlowGraph({ ...collected, paths: [] }, mockups.screens, 'desktop', { nodeWidth: 360, nodeHeight: 308 })
     const ys = built.nodes.map((node) => node.position.y).sort((a, b) => a - b)
-    for (let index = 1; index < ys.length; index++) expect(ys[index]! - ys[index - 1]!).toBeGreaterThanOrEqual(338)
+    for (let index = 1; index < ys.length; index++) expect(ys[index]! - ys[index - 1]!).toBeGreaterThanOrEqual(308)
     const key = built.nodes[0]!.id
     const moved = buildFlowGraph(collected, mockups.screens, 'desktop', { positions: { [key]: { x: 42, y: 99 } } })
     expect(moved.nodes.find((node) => node.id === key)?.position).toEqual({ x: 42, y: 99 })

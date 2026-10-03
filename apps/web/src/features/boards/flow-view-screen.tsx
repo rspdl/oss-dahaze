@@ -21,7 +21,7 @@ import { buildReadableSpecification } from '@/features/specification/readable-sp
 import { ReadableSpecificationPanel } from '@/features/specification/readable-specification-panel'
 import { screenSourceSpan } from './board-ir'
 import { BoardGate } from './board-gate'
-import { FlowBoard, FLOW_CARD_WIDTH, FLOW_CARD_HEIGHT, FLOW_CONNECTION_HEIGHT } from './flow-board'
+import { FlowBoard, FLOW_CARD_WIDTH, FLOW_CARD_HEIGHT } from './flow-board'
 import { buildFlowGraph, type FlowNode } from './flow-graph'
 import { SourcePanel } from './source-panel'
 import { useBoardData } from './use-board-data'
@@ -161,7 +161,7 @@ function FlowView({ projectId }: { projectId: string }) {
   const effectivePositions = designEditor.working.positions
   const effectiveDesign = designEditor.working.elements
   const graph = useMemo(
-    () => buildFlowGraph(data.board, data.mockups.screens, viewport, { positions: effectivePositions, nodeWidth: FLOW_CARD_WIDTH, nodeHeight: FLOW_CARD_HEIGHT, connectionRowHeight: FLOW_CONNECTION_HEIGHT, visibleScreenKeys: environmentScreenKeys }),
+    () => buildFlowGraph(data.board, data.mockups.screens, viewport, { positions: effectivePositions, nodeWidth: FLOW_CARD_WIDTH, nodeHeight: FLOW_CARD_HEIGHT, visibleScreenKeys: environmentScreenKeys }),
     [data.board, data.mockups.screens, viewport, effectivePositions, environmentScreenKeys],
   )
   const [selectedId, setSelectedId] = useState<string | null>(null)

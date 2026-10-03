@@ -58,7 +58,7 @@ export function buildFlowGraph(
   collected: CollectedBoard,
   mockups: ScreenMockup[],
   viewport: MockupViewport,
-  options: { visibleScreenKeys?: ReadonlySet<string>; positions?: Readonly<Record<string, { x: number; y: number }>>; nodeWidth?: number; nodeHeight?: number; connectionRowHeight?: number } = {},
+  options: { visibleScreenKeys?: ReadonlySet<string>; positions?: Readonly<Record<string, { x: number; y: number }>>; nodeWidth?: number; nodeHeight?: number } = {},
 ): FlowGraph {
   /* 전부 `path + id` 로 가른다. 같은 모듈 id 를 쓰는 두 문서에서 화면 id 가 글자 그대로
      같아지므로, 바깥 id 로 묶으면 한 문서의 화면이 다른 문서의 것을 덮어쓴다. 경로의 끝점도
@@ -150,7 +150,7 @@ export function buildFlowGraph(
       const column = depth.get(key) ?? 0
       const y = nextY.get(column) ?? componentTop
       automaticPositions.set(key, { x: column * ((options.nodeWidth ?? NODE_WIDTH[viewport]) + COLUMN_GAP), y })
-      nextY.set(column, y + (options.nodeHeight ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport].height + 48) + (outgoing.get(key)?.length ?? 0) * (options.connectionRowHeight ?? 0) + ROW_GAP)
+      nextY.set(column, y + (options.nodeHeight ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport].height + 48) + ROW_GAP)
     }
     componentTop = Math.max(...nextY.values()) + ROW_GAP
   }
