@@ -11,7 +11,19 @@ from contextlib import suppress
 
 def main() -> int:
     commands = (
-        ("uv", "run", "uvicorn", "dahaze_api.main:app", "--reload", "--port", "8400"),
+        # 열린 SSE(프로젝트 이벤트 스트림)는 스스로 닫히지 않는다. 기다리는 시간을 두지 않으면
+        # 코드를 고쳐 다시 불러올 때마다 "Waiting for connections to close" 에서 멈춘다.
+        (
+            "uv",
+            "run",
+            "uvicorn",
+            "dahaze_api.main:app",
+            "--reload",
+            "--port",
+            "8400",
+            "--timeout-graceful-shutdown",
+            "2",
+        ),
         ("uv", "run", "python", "-m", "dahaze_api.worker"),
     )
     processes: list[subprocess.Popen[bytes]] = []
