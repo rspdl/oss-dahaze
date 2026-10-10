@@ -6,7 +6,6 @@ import {
   Controls,
   Handle,
   MarkerType,
-  MiniMap,
   Position,
   ReactFlow,
   type Edge,
@@ -99,7 +98,7 @@ export function IaBoard({
   return (
     <section
       aria-label="정보구조 트리"
-      className="relative min-h-[34rem] flex-1 overflow-hidden rounded-lg border bg-surface-raised/30"
+      className="relative min-h-[24rem] flex-1 overflow-hidden rounded-lg border bg-surface-raised/30"
     >
       <ReactFlow<IaFlowNode, Edge>
         nodes={nodes}
@@ -115,12 +114,6 @@ export function IaBoard({
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={20} size={1} color="var(--color-border)" />
-        <MiniMap
-          pannable
-          zoomable
-          nodeColor="var(--color-accent)"
-          className="!border !border-border !bg-surface"
-        />
         <Controls
           showInteractive={false}
           className="!border-border !bg-surface [&>button]:!border-border [&>button]:!bg-surface"

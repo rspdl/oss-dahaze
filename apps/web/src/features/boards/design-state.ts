@@ -1,8 +1,9 @@
-import type { ElementDesign } from '@/features/mockup/prototype-contract'
+import type { LayoutNode } from '@/features/mockup/layout-tree'
 
 export type ScreenPosition = { x: number; y: number }
 export type DesignScopeState = {
-  elements: Record<string, ElementDesign>
+  /** 화면 key 마다 Column·Row·Box 배치 트리. */
+  layouts: Record<string, LayoutNode>
   positions: Record<string, ScreenPosition>
 }
 
@@ -11,6 +12,8 @@ export type DesignEditorState = {
   base: DesignScopeState
   working: DesignScopeState
   history: DesignScopeState[]
+  /** 되돌린 편집. 새 편집이 생기면 비운다. */
+  future: DesignScopeState[]
   metadataRevision: number
   generation: number
   acknowledgedGeneration: number
@@ -24,6 +27,7 @@ export function createDesignEditorState(scope: string, persisted: DesignScopeSta
     base: cloneScope(persisted),
     working: cloneScope(persisted),
     history: [],
+    future: [],
     metadataRevision,
     generation: 0,
     acknowledgedGeneration: 0,
@@ -40,7 +44,8 @@ export function editDesign(
   return {
     ...state,
     working: next,
-    history: [...state.history.slice(-19), cloneScope(state.working)],
+    history: [...state.history.slice(-49), cloneScope(state.working)],
+    future: [],
     generation: state.generation + 1,
     status: 'pending',
     error: null,
@@ -54,6 +59,21 @@ export function undoDesign(state: DesignEditorState): DesignEditorState {
     ...state,
     working: cloneScope(previous),
     history: state.history.slice(0, -1),
+    future: [cloneScope(state.working), ...state.future],
+    generation: state.generation + 1,
+    status: 'pending',
+    error: null,
+  }
+}
+
+export function redoDesign(state: DesignEditorState): DesignEditorState {
+  const next = state.future[0]
+  if (next === undefined) return state
+  return {
+    ...state,
+    working: cloneScope(next),
+    history: [...state.history, cloneScope(state.working)],
+    future: state.future.slice(1),
     generation: state.generation + 1,
     status: 'pending',
     error: null,
@@ -98,7 +118,7 @@ export function designMetadataPatch(
     ...raw,
     environments: {
       ...environments,
-      [scope]: { ...previousScope, elements: design.elements, positions: design.positions },
+      [scope]: { ...previousScope, layouts: design.layouts, positions: design.positions },
     },
   }
 }
@@ -112,17 +132,23 @@ export function restoreDesignDraft(value: string | null, scope: string): DesignE
   if (value === null) return null
   try {
     const parsed: unknown = JSON.parse(value)
-    if (!isRecord(parsed) || parsed.scope !== scope || !isRecord(parsed.base) || !isRecord(parsed.working) || !Array.isArray(parsed.history)) return null
+    if (!isRecord(parsed) || parsed.scope !== scope || !isScope(parsed.base) || !isScope(parsed.working) || !Array.isArray(parsed.history) || !parsed.history.every(isScope)) return null
     if (typeof parsed.generation !== 'number' || typeof parsed.acknowledgedGeneration !== 'number' || parsed.generation <= parsed.acknowledgedGeneration) return null
-    return parsed as unknown as DesignEditorState
+    const future = Array.isArray(parsed.future) && parsed.future.every(isScope) ? parsed.future : []
+    return { ...(parsed as unknown as DesignEditorState), future }
   } catch {
     return null
   }
 }
 
+/** 좌표 배치를 쓰던 이전 초안(`elements`)은 복원하지 않는다. */
+function isScope(value: unknown): value is DesignScopeState {
+  return isRecord(value) && isRecord(value.layouts) && isRecord(value.positions)
+}
+
 function cloneScope(scope: DesignScopeState): DesignScopeState {
   return {
-    elements: Object.fromEntries(Object.entries(scope.elements).map(([key, value]) => [key, { ...value }])),
+    layouts: structuredClone(scope.layouts),
     positions: Object.fromEntries(Object.entries(scope.positions).map(([key, value]) => [key, { ...value }])),
   }
 }

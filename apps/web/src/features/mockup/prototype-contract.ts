@@ -38,21 +38,6 @@ export interface ElementSelection extends DesignBinding {
   fieldIds?: string[]
 }
 
-export interface ElementDesign {
-  /** Presentation only. Coordinates are relative to the containing mockup element. */
-  x?: number
-  y?: number
-  width?: number
-  height?: number
-  layout?: 'column' | 'row' | 'grid'
-  gap?: number
-}
-
-export interface DesignChange {
-  binding: DesignBinding
-  patch: ElementDesign
-}
-
 export function designBindingKey(binding: DesignBinding): string {
   if (binding.elementId !== undefined) return `${binding.screenKey}:stable:${binding.elementId}`
   return `${binding.screenKey}:${binding.sourceHash ?? 'unversioned'}:${binding.elementPath ?? 'unresolved'}`

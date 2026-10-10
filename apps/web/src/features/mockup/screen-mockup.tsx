@@ -11,26 +11,20 @@ import type {
 } from './screen-layouts'
 import type {
   ActionOutcome,
-  DesignBinding,
-  DesignChange,
-  ElementSelection,
-  ElementDesign,
   MockupDimensions,
   ModelSampleSet,
   PrototypeAction,
   PrototypeMode,
   SampleVariant,
-  SemanticProposal,
 } from './prototype-contract'
-import { designBindingKey } from './prototype-contract'
-import { containerDesignStyle } from './element-design'
-import { DesignElement } from './design-element'
+import { declaredElements, isContainer, nodeKey, resolveLayout, type ContainerLayout, type DeclaredElement, type DesignNode, type LayoutNode } from './layout-tree'
+import { childStyle, containerStyle } from './layout-style'
 
 /**
  * 선언된 레이아웃을 화면처럼 그린다.
  *
- * **여기에 LLM 이 없다.** 의미 구조는 문서가 선언한 것이고, 배치는 별도 디자인 상태다.
- * 같은 IR·디자인·샘플 상태는 같은 그림을 낸다.
+ * **여기에 LLM 이 없다.** 의미 구조는 문서가 선언한 것이고, 배치는 별도 디자인 상태인
+ * Column·Row·Box 트리(`layout-tree.ts`)다. 같은 IR·트리·샘플 상태는 같은 그림을 낸다.
  *
  * 그리는 것은 **목업**이지 동작하는 폼이 아니다. 그래서 입력칸은 진짜 `input` 이 아니라
  * 입력칸처럼 보이는 상자다. 보드 위 노드 안에 진짜 폼 컨트롤을 넣으면 캔버스를 키보드로
@@ -60,12 +54,10 @@ export interface ScreenMockupFrameProps {
   outcomesByElementId?: Readonly<Record<string, ActionOutcome[]>>
   selectedOutcomeIdByElementId?: Readonly<Record<string, string>>
   activeOutcome?: ActionOutcome | null
-  selectedElementPath?: string | null
-  selectedElementScreenKey?: string | null
-  designByElementPath?: Readonly<Record<string, ElementDesign>>
-  sourceHash?: string
-  onElementSelect?: (binding: ElementSelection) => void
-  onDesignChange?: (change: DesignChange) => void
+  /** 저장된 배치 트리. 없거나 문서와 어긋난 부분은 기본 배치로 채운다. */
+  layout?: LayoutNode
+  /** 화면 편집기에서만 준다. 노드를 고르고 강조할 수 있게 한다. */
+  editor?: LayoutEditorBindings
   onAction?: (action: PrototypeAction) => void
   onOutcomeSelect?: (elementId: string, outcomeId: string) => void
   onOutcomeDismiss?: () => void
@@ -73,12 +65,19 @@ export interface ScreenMockupFrameProps {
   onSampleSelect?: (modelId: string, recordId: string) => void
   values?: Readonly<Record<string, string | boolean>>
   onValueChange?: (fieldId: string, value: string | boolean) => void
-  onProposeSemanticEdit?: (proposal: SemanticProposal) => void
   className?: string
 }
 
-interface ElementContext extends Omit<ScreenMockupFrameProps, 'screen' | 'viewport' | 'dimensions' | 'className' | 'showCaption'> {
+export interface LayoutEditorBindings {
+  selectedKey: string | null
+  hoveredKey: string | null
+  onSelect: (key: string) => void
+  onHover: (key: string | null) => void
+}
+
+interface ElementContext extends Omit<ScreenMockupFrameProps, 'screen' | 'viewport' | 'dimensions' | 'className' | 'showCaption' | 'layout'> {
   screenKey: string
+  declared: Map<string, DeclaredElement>
 }
 
 /** 입력칸 모양을 사람이 읽을 이름으로. 색이나 모양에만 기대지 않기 위해 텍스트로도 남긴다. */
@@ -275,56 +274,73 @@ function Unrecognized({
   )
 }
 
-function Element({ element, path, context }: { element: MockupElement; path: string; context: ElementContext }) {
-  const stableId = element.id ?? undefined
-  const binding: DesignBinding = { screenKey: context.screenKey, elementId: stableId, elementPath: path, sourceHash: context.sourceHash }
-  const selection: ElementSelection = {
-    ...binding,
-    elementKind: element.kind,
-    ...(element.kind === 'button' ? { name: element.name, actionId: element.actionId } : {}),
-    ...(element.kind === 'heading' || element.kind === 'placeholder' ? { text: element.text } : {}),
-    ...(element.kind === 'input' ? { fieldId: element.field.id } : {}),
-    ...(element.kind === 'list' ? { modelId: element.modelId, fieldIds: element.fields.map((field) => field.id) } : {}),
+function editorProps(key: string, parentKey: string | null, context: ElementContext): React.HTMLAttributes<HTMLElement> & Record<`data-${string}`, string | undefined> {
+  const editor = context.editor
+  if (editor === undefined) return {}
+  return {
+    'data-node-key': key,
+    'data-parent-key': parentKey ?? undefined,
+    className: cn('outline-offset-[-1px]', editor.selectedKey === key ? 'outline-2 outline-text' : editor.hoveredKey === key ? 'outline-1 outline-text-subtle' : undefined),
+    onClick: (event) => { event.stopPropagation(); editor.onSelect(key) },
+    onPointerOver: (event) => { event.stopPropagation(); editor.onHover(key) },
   }
-  const design = context.designByElementPath?.[designBindingKey(binding)]
-  const selected = context.selectedElementPath === path && context.selectedElementScreenKey === context.screenKey
-  const containerStyle = (children: MockupElement[], childPath: string): React.CSSProperties => {
-    // Absolute children must still reserve a usable canvas inside an auto-sized group.
-    const bottom = children.reduce((height, child, index) => {
-      const childDesign = context.designByElementPath?.[designBindingKey({ screenKey: context.screenKey, sourceHash: context.sourceHash, elementId: child.id ?? undefined, elementPath: `${childPath}.${index}` })]
-      return childDesign?.x === undefined && childDesign?.y === undefined ? height : Math.max(height, (childDesign?.y ?? 0) + (childDesign?.height ?? 80) + 12)
-    }, 0)
-    return { ...containerDesignStyle(design), ...(bottom > 0 ? { minHeight: Math.max(design?.height ?? 0, bottom) } : {}) }
+}
+
+function LayoutNodeView({ node, parent, parentKey, context }: { node: LayoutNode; parent: ContainerLayout | null; parentKey: string | null; context: ElementContext }) {
+  const key = nodeKey(node)
+  const editing = editorProps(key, parentKey, context)
+  const style = childStyle(node.style, parent)
+  if (isContainer(node)) {
+    const kind = node.type === 'element' ? node.kind : 'group'
+    const Tag = kind === 'header' ? 'header' : kind === 'section' ? 'section' : 'div'
+    return <Tag {...editing} data-layout={node.layout.direction} style={{ ...style, ...containerStyle(node.layout) }}>
+      {node.children.map((child) => <LayoutNodeView key={nodeKey(child)} node={child} parent={node.layout} parentKey={key} context={context} />)}
+      {node.children.length === 0 && context.editor !== undefined ? <EmptyFrame /> : null}
+    </Tag>
   }
-  const child = (() => {
+  if (node.type === 'design') {
+    // Row 안의 구분선은 세로선이다. 너비 규칙과 상관없이 1px 폭으로 위아래를 채운다.
+    const shown = node.design === 'divider' && parent?.direction === 'row' ? { ...style, flex: '0 0 auto', alignSelf: 'stretch', width: undefined } : style
+    return <div {...editing} style={shown}><DesignContent node={node} parent={parent} editing={context.editor !== undefined} /></div>
+  }
+  if (node.type !== 'element') return null
+  const entry = context.declared.get(node.ref)
+  if (entry === undefined) return null
+  return <div {...editing} style={style}>
+    <LeafContent element={entry.element} context={context} stretch={{ width: node.style.width !== 'hug', height: node.style.height !== 'hug' }} />
+  </div>
+}
+
+/** 편집기에서만 보이는 빈 프레임 자리. 요소를 끌어 넣을 수 있게 크기를 준다. */
+function EmptyFrame() {
+  return <div aria-hidden className="flex min-h-10 min-w-16 flex-1 items-center justify-center self-stretch rounded border border-dashed border-border-strong text-[10px] text-text-subtle">비어 있음</div>
+}
+
+const TEXT_CLASS = { title: 'text-base font-semibold tracking-tight', body: 'text-sm', caption: 'text-[11px]' } as const
+const TONE_CLASS = { strong: 'text-text', default: 'text-text-muted', muted: 'text-text-subtle' } as const
+
+/** 디자인 전용 노드. 문서에 없는 것이라 회색으로만 그린다. */
+function DesignContent({ node, parent, editing }: { node: DesignNode; parent: ContainerLayout | null; editing: boolean }) {
+  switch (node.design) {
+    case 'text':
+      return <p className={cn('whitespace-pre-wrap', TEXT_CLASS[node.textStyle ?? 'body'], TONE_CLASS[node.tone ?? 'default'])}>{node.text === '' ? '\u00a0' : node.text}</p>
+    case 'rectangle':
+      return <div className="size-full min-h-4" />
+    case 'divider':
+      return parent?.direction === 'row'
+        ? <div className="h-full min-h-4 w-px self-stretch bg-border-strong" />
+        : <div className="h-px w-full bg-border-strong" />
+    case 'spacer':
+      return <div className={cn('size-full', editing && 'bg-[repeating-linear-gradient(45deg,transparent_0_4px,var(--color-border)_4px_5px)]')} />
+  }
+}
+
+function LeafContent({ element, context, stretch }: { element: MockupElement; context: ElementContext; stretch: { width: boolean; height: boolean } }) {
+  const size = { width: stretch.width ? '100%' : undefined, height: stretch.height ? '100%' : undefined }
   switch (element.kind) {
-    case 'header':
-      return (
-        <header style={containerStyle(element.children, `${path}.children`)} className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-raised px-4 py-3">
-          {element.children.map((child, index) => (
-            <Element key={index} element={child} path={`${path}.children.${index}`} context={context} />
-          ))}
-        </header>
-      )
-    case 'section':
-      return (
-        <section style={containerStyle(element.children, `${path}.children`)} className="flex flex-col gap-3 px-4 py-3">
-          {element.children.map((child, index) => (
-            <Element key={index} element={child} path={`${path}.children.${index}`} context={context} />
-          ))}
-        </section>
-      )
     case 'heading':
       return (
         <h3 className="text-sm font-semibold tracking-tight text-text">{element.text}</h3>
-      )
-    case 'form':
-      return (
-        <div style={containerStyle(element.inputs, `${path}.inputs`)} className="flex flex-col gap-3 rounded-md border border-border bg-surface p-3">
-          {element.inputs.map((input, index) => (
-            <Element key={index} element={input} path={`${path}.inputs.${index}`} context={context} />
-          ))}
-        </div>
       )
     case 'input':
       return <Input field={element.field} experience={context.mode === 'experience'} value={context.values?.[element.field.id] ?? selectedSampleValue(context, element.field.id)} onChange={(value) => context.onValueChange?.(element.field.id, value)} />
@@ -336,21 +352,22 @@ function Element({ element, path, context }: { element: MockupElement; path: str
       return <ListElement modelId={element.modelId} modelName={element.modelName} fields={element.fields} records={supplied?.variants[variant] ?? fallback} isExample={supplied === undefined} selectedId={context.selectedSampleIdByModel?.[element.modelId]} onSelect={context.onSampleSelect} />
     }
     case 'button': {
-      if (context.mode !== 'experience') return <span style={{ width: design?.width === undefined ? undefined : '100%', height: design?.height === undefined ? undefined : '100%' }} className="inline-flex min-h-8 items-center justify-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text">{element.name}</span>
-      if (element.id === null) return <button type="button" disabled title="안정적 요소 ID가 없어 체험할 수 없습니다" style={{ width: design?.width === undefined ? undefined : '100%', height: design?.height === undefined ? undefined : '100%' }} className="inline-flex min-h-8 items-center justify-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text opacity-50">{element.name}</button>
+      const className = 'inline-flex min-h-8 items-center justify-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text'
+      if (context.mode !== 'experience') return <span style={size} className={className}>{element.name}</span>
+      if (element.id === null) return <button type="button" disabled title="안정적 요소 ID가 없어 체험할 수 없습니다" style={size} className={cn(className, 'opacity-50')}>{element.name}</button>
       const elementId = element.id
       const outcomes = context.outcomesByElementId?.[elementId] ?? []
-      if (outcomes.length === 0) return <button type="button" disabled title="선언된 결과가 없어 체험할 수 없습니다" style={{ width: design?.width === undefined ? undefined : '100%', height: design?.height === undefined ? undefined : '100%' }} className="inline-flex min-h-8 items-center justify-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text opacity-50">{element.name}</button>
+      if (outcomes.length === 0) return <button type="button" disabled title="선언된 결과가 없어 체험할 수 없습니다" style={size} className={cn(className, 'opacity-50')}>{element.name}</button>
       const selectedOutcome = outcomeForPreviewAction(outcomes, context.selectedOutcomeIdByElementId?.[elementId])
-      return <button type="button" disabled={selectedOutcome === undefined} title={selectedOutcome === undefined ? '결과 시나리오를 먼저 선택하세요' : undefined} style={{ width: design?.width === undefined ? undefined : '100%', height: design?.height === undefined ? undefined : '100%' }} className="inline-flex min-h-8 items-center justify-center rounded-md border border-border-strong bg-surface-raised px-3 text-xs font-medium text-text disabled:opacity-50" onClick={(event) => { event.stopPropagation(); dispatchPreviewAction(context.onAction, context.screenKey, elementId, outcomes, context.selectedOutcomeIdByElementId?.[elementId]) }}>{element.name}</button>
+      return <button type="button" disabled={selectedOutcome === undefined} title={selectedOutcome === undefined ? '결과 시나리오를 먼저 선택하세요' : undefined} style={size} className={cn(className, 'disabled:opacity-50')} onClick={(event) => { event.stopPropagation(); dispatchPreviewAction(context.onAction, context.screenKey, elementId, outcomes, context.selectedOutcomeIdByElementId?.[elementId]) }}>{element.name}</button>
     }
     case 'placeholder':
       return <Placeholder text={element.text} />
     case 'unrecognized':
       return <Unrecognized rawKind={element.rawKind} reason={element.reason} />
+    default:
+      return null
   }
-  })()
-  return <DesignElement selection={selection} design={design} selected={selected} editable={context.mode === 'edit'} onSelect={context.onElementSelect} onChange={context.onDesignChange}>{child}</DesignElement>
 }
 
 /** 시나리오를 고르는 것만으로는 실행하지 않는다. 선언된 버튼을 누를 때 선택 결과를 해석한다. */
@@ -419,12 +436,15 @@ export function ScreenMockupFrame({
   dimensions,
   mode = 'edit', sampleVariant = 'normal', samples, outcomesByElementId,
   selectedOutcomeIdByElementId, activeOutcome,
-  selectedElementPath, selectedElementScreenKey, designByElementPath, sourceHash, onElementSelect, onDesignChange,
-  onAction, onOutcomeSelect, onOutcomeDismiss, onProposeSemanticEdit,
+  layout, editor,
+  onAction, onOutcomeSelect, onOutcomeDismiss,
   selectedSampleIdByModel, onSampleSelect,
   values, onValueChange,
 }: ScreenMockupFrameProps) {
-  const context: ElementContext = { screenKey: screen.key, mode, sampleVariant, samples, outcomesByElementId, selectedOutcomeIdByElementId, activeOutcome, selectedElementPath, selectedElementScreenKey, designByElementPath, sourceHash, onElementSelect, onDesignChange, onAction, onOutcomeSelect, onOutcomeDismiss, onProposeSemanticEdit, selectedSampleIdByModel, onSampleSelect, values, onValueChange }
+  const declared = React.useMemo(() => declaredElements(screen), [screen])
+  const root = React.useMemo(() => resolveLayout(screen, layout), [screen, layout])
+  const context: ElementContext = { screenKey: screen.key, declared, mode, sampleVariant, samples, outcomesByElementId, selectedOutcomeIdByElementId, activeOutcome, editor, onAction, onOutcomeSelect, onOutcomeDismiss, selectedSampleIdByModel, onSampleSelect, values, onValueChange }
+  const rootEditing = editorProps(nodeKey(root), null, context)
   const controls = mode === 'experience' ? scenarioControls(screen.elements, outcomesByElementId ?? {}) : []
   const viewportDimensions = dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
   return (
@@ -452,10 +472,8 @@ export function ScreenMockupFrame({
           레이아웃에 요소가 없다
         </div>
       ) : (
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-auto">
-          {screen.elements.map((element, index) => (
-            <Element key={index} element={element} path={`elements.${index}`} context={context} />
-          ))}
+        <div {...rootEditing} data-layout={root.layout.direction} style={{ ...childStyle(root.style, null), ...containerStyle(root.layout), overflow: 'auto' }}>
+          {root.children.map((child) => <LayoutNodeView key={nodeKey(child)} node={child} parent={root.layout} parentKey={nodeKey(root)} context={context} />)}
         </div>
       )}
       {mode === 'experience' ? <OutcomePreview outcome={activeOutcome} onDismiss={onOutcomeDismiss} /> : null}

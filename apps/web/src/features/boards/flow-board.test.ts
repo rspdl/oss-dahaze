@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { applyFlowNodeSelection, flowBoardEdges } from './flow-board'
+import { applyFlowNodeSelection, flowBoardEdges, mergeFlowNodes } from './flow-board'
 import type { FlowGraph } from './flow-graph'
 
 type FlowNodes = Parameters<typeof applyFlowNodeSelection>[0]
@@ -21,7 +21,6 @@ function nodes(): FlowNodes {
       selected: false,
       related: true,
       zoom: 1,
-      connections: [],
       onSelect: vi.fn(),
       prototype: {},
     },
@@ -29,20 +28,22 @@ function nodes(): FlowNodes {
 }
 
 describe('FlowBoard selection lifecycle', () => {
-  it('keeps parallel outcomes on distinct source ports and highlights the selected neighborhood', () => {
+  it('merges parallel paths and shows only the selected screen\'s connections', () => {
     const graph: FlowGraph = { nodes: [], danglingPaths: [], edges: [
       { id: 'success', source: 'checkout', target: 'done', label: '완료', path: {} as never },
+      { id: 'again', source: 'checkout', target: 'done', label: '다시 완료', path: {} as never },
       { id: 'failure', source: 'checkout', target: 'retry', label: '재시도', path: {} as never },
+      { id: 'back', source: 'cart', target: 'checkout', label: '결제', path: {} as never },
       { id: 'unrelated', source: 'settings', target: 'home', label: '저장', path: {} as never },
     ] }
-    const edges = flowBoardEdges(graph, 'checkout')
-    expect(edges.map((edge) => edge.sourceHandle)).toEqual(['success', 'failure', 'unrelated'])
-    expect(edges.every((edge) => edge.targetHandle === 'in')).toBe(true)
-    expect(edges[0]?.animated).toBe(true)
-    expect(edges.every((edge) => edge.label === undefined)).toBe(true)
-    expect(flowBoardEdges(graph, 'checkout', 'failure').filter((edge) => edge.label !== undefined).map((edge) => edge.label)).toEqual(['재시도'])
-    expect(edges[2]?.style?.opacity).toBeLessThan(edges[0]?.style?.opacity as number)
-    expect(flowBoardEdges(graph, null).every((edge) => edge.style?.opacity === 1)).toBe(true)
+    const overview = flowBoardEdges(graph, null)
+    expect(overview).toHaveLength(4)
+    expect(overview.every((edge) => edge.sourceHandle === 'out' && edge.targetHandle === 'in')).toBe(true)
+    expect(overview.every((edge) => edge.hidden === false && edge.label === undefined)).toBe(true)
+
+    const focused = flowBoardEdges(graph, 'checkout')
+    expect(focused.filter((edge) => !edge.hidden).map((edge) => edge.label)).toEqual(['완료 · 다시 완료', '재시도', '결제'])
+    expect(focused.find((edge) => edge.source === 'settings')?.hidden).toBe(true)
   })
   it('selection changes only replace the selected node object', () => {
     const base = nodes()
@@ -58,4 +59,13 @@ describe('FlowBoard selection lifecycle', () => {
     expect(selectedB.map((node) => node.position)).toEqual(base.map((node) => node.position))
   })
 
+  it('keeps React Flow measurements and the dragged position when the board recomputes nodes', () => {
+    const [a, b] = nodes()
+    const current = [{ ...a!, measured: { width: 360, height: 288 }, position: { x: 40, y: 50 }, dragging: true }, { ...b!, measured: { width: 360, height: 288 } }]
+    const next = nodes().map((node) => ({ ...node, position: { x: 999, y: 999 } }))
+    const merged = mergeFlowNodes(current, next)
+    expect(merged[0]).toMatchObject({ measured: { width: 360, height: 288 }, position: { x: 40, y: 50 }, dragging: true })
+    expect(merged[1]).toMatchObject({ measured: { width: 360, height: 288 }, position: { x: 999, y: 999 } })
+    expect(merged[2]?.measured).toBeUndefined()
+  })
 })
