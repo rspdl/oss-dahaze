@@ -12,40 +12,41 @@ from uuid import UUID
 from fastapi import Cookie, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dahaze_api.application.analysis import AnalyzeWorkspace, CompileProject
+from dahaze_api.application.agent import AgentService
+from dahaze_api.application.analysis import AnalyzeWorkspace
 from dahaze_api.application.auth import (
     RegisterWithPassword,
     SignInWithPassword,
     SignInWithProvider,
 )
-from dahaze_api.application.authoring import DraftRspdlDocument
-from dahaze_api.application.planning import PlanningService
-from dahaze_api.application.planning_ai import PlanningAiService
-from dahaze_api.application.workspace import WorkspaceService
+from dahaze_api.application.projects import ProjectService
+from dahaze_api.application.tree import TreeService
+from dahaze_api.application.tree_inspection import TreeInspector
 from dahaze_api.config import Settings, get_settings
 from dahaze_api.domain.entities import User
-from dahaze_api.domain.llm import EbnfGrammar
 from dahaze_api.domain.ports import (
-    LlmPort,
     OAuthProviderPort,
     PasswordHasherPort,
+    ProjectEventsPort,
     RspdlCompilerPort,
+)
+from dahaze_api.infrastructure.agent_scope import (
+    build_agent_scope,
+    build_inspector,
+    build_tree,
 )
 from dahaze_api.infrastructure.auth.password import ScryptPasswordHasher
 from dahaze_api.infrastructure.auth.registry import build_providers
 from dahaze_api.infrastructure.auth.session import InvalidToken, SessionTokens
+from dahaze_api.infrastructure.db.agent_repository import SqlProjectEvents
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
-from dahaze_api.infrastructure.db.planning_ai_repository import SqlPlanningAiJobRepository
-from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
 from dahaze_api.infrastructure.db.repositories import (
-    SqlDocumentRepository,
     SqlPasswordCredentialRepository,
     SqlProjectRepository,
     SqlUserRepository,
 )
-from dahaze_api.infrastructure.db.session import get_session
-from dahaze_api.infrastructure.llm import LlmNotConfigured, OpenAiLlm
-from dahaze_api.infrastructure.llm.grammars import load_rspdl_grammar
+from dahaze_api.infrastructure.db.session import get_session, get_session_factory
+from dahaze_api.infrastructure.event_feed import PgEventListener, ProjectEventFeed
 from dahaze_api.infrastructure.rspdl import LocalRspdlCompiler
 
 SESSION_COOKIE = "dahaze_session"
@@ -63,7 +64,10 @@ def get_session_tokens() -> SessionTokens:
 
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
-DbSession = Annotated[AsyncSession, Depends(get_session)]
+# `scope="function"`: 응답을 보내기 **전에** commit 한다. 기본값(request)은 응답을 보낸 뒤에
+# commit 해서, 201 을 받은 클라이언트가 곧바로 그 자원을 조회하면 아직 없는 것으로 보인다
+# (세션을 만들고 바로 메시지를 보내면 가끔 404 가 났다).
+DbSession = Annotated[AsyncSession, Depends(get_session, scope="function")]
 Compiler = Annotated[RspdlCompilerPort, Depends(get_compiler)]
 Tokens = Annotated[SessionTokens, Depends(get_session_tokens)]
 
@@ -118,49 +122,55 @@ def get_password_sign_in(session: DbSession, hasher: Hasher) -> SignInWithPasswo
     )
 
 
-def get_workspace(session: DbSession, compiler: Compiler) -> WorkspaceService:
-    return WorkspaceService(
-        projects=SqlProjectRepository(session),
-        documents=SqlDocumentRepository(session),
-        compiler=compiler,
-    )
+def get_projects(session: DbSession, compiler: Compiler) -> ProjectService:
+    return ProjectService(projects=SqlProjectRepository(session), compiler=compiler)
 
 
 Analyzer = Annotated[AnalyzeWorkspace, Depends(get_analyzer)]
-Workspace = Annotated[WorkspaceService, Depends(get_workspace)]
+Projects = Annotated[ProjectService, Depends(get_projects)]
 
 
-def get_planning(
-    workspace: Workspace, analyzer: Analyzer, compiler: Compiler, session: DbSession
-) -> PlanningService:
-    return PlanningService(
-        workspace=workspace,
-        store=SqlPlanningRepository(session),
-        analyzer=analyzer,
-        compiler=compiler,
-    )
+def get_tree(session: DbSession) -> TreeService:
+    # 사람의 저장·MCP·AI 가 같은 방법으로 조립한다. 변경은 프로젝트 이벤트로 기록된다.
+    return build_tree(session)
 
 
-Planning = Annotated[PlanningService, Depends(get_planning)]
+Tree = Annotated[TreeService, Depends(get_tree)]
 
 
-def get_planning_ai(workspace: Workspace, session: DbSession) -> PlanningAiService:
-    return PlanningAiService(
-        workspace=workspace,
-        planning=SqlPlanningRepository(session),
-        jobs=SqlPlanningAiJobRepository(session),
-    )
+def get_tree_inspector(session: DbSession, tree: Tree, compiler: Compiler) -> TreeInspector:
+    return build_inspector(session, tree, compiler)
 
 
-PlanningAi = Annotated[PlanningAiService, Depends(get_planning_ai)]
+Inspector = Annotated[TreeInspector, Depends(get_tree_inspector)]
 
 
-def get_project_compiler(
-    workspace: Workspace, analyzer: Analyzer, compiler: Compiler
-) -> CompileProject:
-    """프로젝트 전체 컴파일. 접근 검사는 `WorkspaceService` 를, 캐시는 분석 유스케이스를
-    그대로 재사용한다 — 문서 하나를 컴파일하는 경로와 같은 게이트를 지나게 한다."""
-    return CompileProject(workspace=workspace, analyzer=analyzer, compiler=compiler)
+def get_agent_service(session: DbSession, compiler: Compiler) -> AgentService:
+    return AgentService(build_agent_scope(session, compiler))
+
+
+Agents = Annotated[AgentService, Depends(get_agent_service)]
+
+
+def get_project_events(session: DbSession) -> ProjectEventsPort:
+    return SqlProjectEvents(session)
+
+
+ProjectEvents = Annotated[ProjectEventsPort, Depends(get_project_events)]
+
+
+@lru_cache
+def get_event_listener() -> PgEventListener:
+    """프로세스당 LISTEN 연결 하나."""
+    return PgEventListener(get_settings().database_url)
+
+
+def get_event_feed() -> ProjectEventFeed:
+    """SSE 가 쓰는 피드. 요청 세션을 쓰지 않고 조회마다 짧은 세션을 연다."""
+    return ProjectEventFeed(sessions=get_session_factory(), listener=get_event_listener())
+
+
+EventFeed = Annotated[ProjectEventFeed, Depends(get_event_feed)]
 
 
 async def get_current_user(
@@ -184,51 +194,6 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
-ProjectCompiler = Annotated[CompileProject, Depends(get_project_compiler)]
 SignIn = Annotated[SignInWithProvider, Depends(get_sign_in)]
 Register = Annotated[RegisterWithPassword, Depends(get_register)]
 PasswordSignIn = Annotated[SignInWithPassword, Depends(get_password_sign_in)]
-
-
-@lru_cache
-def get_llm() -> LlmPort:
-    """OpenAI 어댑터. 자격증명이 없으면 여기서 503 으로 끝난다.
-
-    import 나 startup 이 아니라 **요청 시점**에 확인하는 이유: LLM 을 쓰지 않는 배포에서도
-    나머지 API 는 정상 동작해야 한다. 키가 없다고 서버가 뜨지 못하면 저작과 무관한
-    기능까지 함께 죽는다 (ADR-0005).
-    """
-    settings = get_settings()
-    try:
-        return OpenAiLlm(
-            api_key=settings.openai_api_key,
-            model=settings.openai_model,
-            planning_timeout_s=settings.openai_planning_timeout_s,
-            planning_reasoning_effort=settings.openai_planning_reasoning_effort,
-        )
-    except LlmNotConfigured as exc:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "이 서버에는 LLM 저작이 설정되어 있지 않다"
-        ) from exc
-
-
-Llm = Annotated[LlmPort, Depends(get_llm)]
-
-
-@lru_cache
-def get_authoring_grammar() -> EbnfGrammar:
-    return load_rspdl_grammar()
-
-
-AuthoringGrammar = Annotated[EbnfGrammar, Depends(get_authoring_grammar)]
-
-
-def get_drafter(llm: Llm, analyzer: Analyzer, grammar: AuthoringGrammar) -> DraftRspdlDocument:
-    """저작 루프는 분석 유스케이스를 그대로 재사용한다.
-
-    컴파일 게이트가 REST 분석 경로와 같아야 LLM 출력이 사람 출력과 같은 검사를 받는다.
-    """
-    return DraftRspdlDocument(llm=llm, analyzer=analyzer, grammar=grammar)
-
-
-Drafter = Annotated[DraftRspdlDocument, Depends(get_drafter)]

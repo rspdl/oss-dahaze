@@ -6,13 +6,25 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
 
+from dahaze_api.domain.agent import (
+    AgentContext,
+    AgentItem,
+    AgentSession,
+    AgentSettings,
+    AgentStep,
+    AgentTurn,
+    ItemKind,
+    PendingApproval,
+    StopReason,
+    ToolSpec,
+    TurnStatus,
+)
 from dahaze_api.domain.entities import (
-    Document,
-    DocumentRevision,
     ExternalIdentity,
     PasswordCredential,
     Project,
@@ -20,13 +32,19 @@ from dahaze_api.domain.entities import (
     ProjectRole,
     User,
 )
-from dahaze_api.domain.llm import EbnfGrammar
-from dahaze_api.domain.planning import DecisionResolutionOutcome
+from dahaze_api.domain.events import ProjectEvent
 from dahaze_api.domain.rspdl import (
     AnalysisOutcome,
-    RspdlEditOutcome,
+    RspdlIndex,
     RspdlRuntime,
     RspdlSource,
+)
+from dahaze_api.domain.tree import (
+    Commit,
+    CommitChange,
+    FileLock,
+    TreeFile,
+    TreeFolder,
 )
 
 
@@ -63,16 +81,6 @@ class RspdlCompilerPort(Protocol):
         timeout_ms: int | None = None,
     ) -> AnalysisOutcome: ...
 
-    async def edit(
-        self,
-        source: RspdlSource,
-        *,
-        expected_source_hash: str,
-        edit: Mapping[str, Any],
-    ) -> RspdlEditOutcome:
-        """컴파일러 소유의 구조화 편집으로 저장되지 않은 후보 원문을 만든다."""
-        ...
-
 
 class AnalysisCachePort(Protocol):
     """컴파일 결과 캐시. 저장된 것은 전부 버리고 다시 만들 수 있다 (ADR-0003)."""
@@ -95,59 +103,6 @@ class OAuthProviderPort(Protocol):
     def authorize_url(self, *, state: str, redirect_uri: str) -> str: ...
 
     async def exchange_code(self, *, code: str, redirect_uri: str) -> ExternalIdentity: ...
-
-
-class LlmPort(Protocol):
-    """자연어 → RSPDL 저작을 돕는 LLM.
-
-    dahaze 가 직접 호출한다. 구현체는 `infrastructure/llm/` 에만 둔다.
-    """
-
-    @property
-    def model(self) -> str:
-        """이 초안을 만든 모델의 이름.
-
-        `RspdlCompilerPort.runtime` 과 같은 이유로 둔다. 초안은 지시만으로 재현되지
-        않으며, 어느 모델이 만들었는지는 텍스트만 보고 복원할 수 없다.
-        """
-        ...
-
-    async def draft_document(
-        self,
-        *,
-        instruction: str,
-        current_text: str | None,
-        diagnostics: Sequence[Mapping[str, Any]],
-        grammar: EbnfGrammar,
-        system_prompt: str | None = None,
-    ) -> str:
-        """지시, 현재 진단과 EBNF 문법을 받아 RSPDL 소스 전문을 돌려준다.
-
-        결과는 항상 컴파일러를 다시 통과시킨다. LLM 출력도 사람 출력과 같은 게이트를
-        지나야 한다 — RSPDL AGENTS.md 의 원칙과 같다.
-
-        `diagnostics` 는 컴파일러가 준 진단 그대로다. 구현체가 이를 요약하거나 걸러내면
-        `rule_id` 와 `span` 이 사라져 무엇을 고쳐야 할지 알 수 없게 된다.
-        부분 수정본이 아니라 **전문**을 돌려준다 — 병합은 또 하나의 해석이다.
-
-        `grammar` 는 공급자 독립 원본이다. OpenAI 어댑터는 Lark CFG로 바꾸고,
-        self-hosted 어댑터는 xgrammar 등 자신의 constrained decoding 형식으로 바꾼다.
-        application 계층이 그 전송 형식을 알면 벤더 교체 경계가 무너진다.
-        """
-        ...
-
-
-class PlanningLlmPort(Protocol):
-    """자연어 인터뷰와 소스 생성 계획을 구조화해 돌려주는 LLM 경계."""
-
-    @property
-    def model(self) -> str: ...
-
-    async def interview_project(self, *, context: Mapping[str, Any]) -> Mapping[str, Any]: ...
-
-    async def plan_project_changes(self, *, context: Mapping[str, Any]) -> Mapping[str, Any]: ...
-
-    async def close(self) -> None: ...
 
 
 class UserRepositoryPort(Protocol):
@@ -244,235 +199,222 @@ class ProjectRepositoryPort(Protocol):
     async def archive(self, project_id: UUID) -> Project | None: ...
 
 
-class DocumentRepositoryPort(Protocol):
-    """RSPDL 문서와 편집 이력.
+class TreeRepositoryPort(Protocol):
+    """공유 작업 트리, commit, 파일 잠금 (ADR-0008).
 
-    텍스트가 진실이다 (ADR-0003). 컴파일 결과는 여기 저장하지 않는다.
+    판단은 유스케이스가 한다. 이 port 는 읽고 쓰기만 한다. 한 프로젝트의 트리 변경은
+    `lock_project` 로 직렬화한 트랜잭션 안에서만 일어난다.
     """
 
-    async def create(
-        self,
-        *,
-        project_id: UUID,
-        path: str,
-        title: str,
-        text: str,
-        target_rspdl_version: str,
-        author_id: UUID | None,
-    ) -> Document: ...
-
-    async def get(self, document_id: UUID) -> Document | None: ...
-
-    async def list_for_project(self, project_id: UUID) -> list[Document]: ...
-
-    async def update_text(
-        self,
-        *,
-        document_id: UUID,
-        text: str,
-        author_id: UUID | None,
-        summary: str | None,
-    ) -> Document | None:
-        """본문을 바꾸고 리비전을 남긴다. 텍스트가 그대로면 리비전을 만들지 않는다."""
+    async def lock_project(self, project_id: UUID) -> None:
+        """트랜잭션이 끝날 때까지 이 프로젝트의 다른 트리 변경을 막는다."""
         ...
 
-    async def soft_delete(self, document_id: UUID) -> bool: ...
+    async def list_folders(self, project_id: UUID) -> list[TreeFolder]: ...
 
-    async def list_revisions(self, document_id: UUID) -> list[DocumentRevision]: ...
+    async def list_files(self, project_id: UUID) -> list[TreeFile]:
+        """지워졌지만 아직 commit 되지 않은 파일도 포함한다."""
+        ...
 
+    async def create_folder(self, *, project_id: UUID, path: str) -> TreeFolder: ...
 
-class PlanningRepositoryPort(Protocol):
-    """프로젝트 기획 상태와 원자적 변경 묶음 저장소."""
+    async def move_folder(self, folder_id: UUID, *, path: str) -> None: ...
 
-    async def get_state(self, project_id: UUID) -> Mapping[str, Any]: ...
-    async def update_state(
+    async def delete_folder(self, folder_id: UUID) -> None: ...
+
+    async def create_file(
+        self, *, project_id: UUID, path: str, text: str, actor_id: UUID
+    ) -> TreeFile: ...
+
+    async def update_file(
         self,
-        project_id: UUID,
+        file_id: UUID,
         *,
         actor_id: UUID,
-        expected_revision: int,
-        messages: Sequence[Mapping[str, Any]],
-        decisions: Sequence[Mapping[str, Any]],
-        proposals: Sequence[Mapping[str, Any]],
-        metadata: Mapping[str, Any],
-    ) -> Mapping[str, Any] | None: ...
-    async def append_message(
+        path: str | None = None,
+        text: str | None = None,
+        deleted: bool | None = None,
+    ) -> TreeFile: ...
+
+    async def remove_file(self, file_id: UUID) -> None:
+        """행을 없앤다. commit 된 적 없는 파일을 지우거나, 삭제를 commit 할 때 쓴다."""
+        ...
+
+    async def mark_committed(self, file_id: UUID) -> None:
+        """작업 상태를 마지막 commit 상태로 삼는다."""
+        ...
+
+    async def list_locks(self, project_id: UUID) -> list[FileLock]: ...
+
+    async def put_lock(
         self,
-        project_id: UUID,
         *,
-        expected_revision: int,
-        role: str,
-        content: str,
-    ) -> Mapping[str, Any] | None: ...
-    async def append_decision(
-        self,
+        file_id: UUID,
         project_id: UUID,
-        *,
-        expected_revision: int,
-        title: str,
-        rationale: str | None,
-        status: str,
-    ) -> Mapping[str, Any] | None: ...
-    async def resolve_decision(
-        self,
-        project_id: UUID,
-        *,
-        decision_id: UUID,
-        expected_revision: int,
-        status: str,
-        rationale: str | None,
-    ) -> DecisionResolutionOutcome: ...
-    async def resolve_proposal(
-        self,
-        project_id: UUID,
-        *,
-        proposal_id: UUID,
-        expected_revision: int,
-        status: str,
-        rationale: str | None,
-    ) -> Mapping[str, Any] | None: ...
-    async def patch_metadata(
-        self,
-        project_id: UUID,
-        *,
+        holder: str,
         actor_id: UUID,
-        expected_revision: int,
-        patch: Mapping[str, Any],
-        summary: str | None,
-    ) -> Mapping[str, Any] | None: ...
-    async def list_metadata_revisions(
-        self,
-        project_id: UUID,
-        *,
-        limit: int,
-        before_revision: int | None,
-    ) -> list[Mapping[str, Any]]: ...
-    async def undo_metadata(
-        self,
-        project_id: UUID,
-        *,
-        actor_id: UUID,
-        expected_revision: int,
-        target_revision: int,
-    ) -> Mapping[str, Any] | None: ...
-    async def create_draft(
-        self,
-        *,
-        project_id: UUID,
-        base_project_revision: int,
-        base_source_hash: str,
-        changes: Sequence[Mapping[str, Any]],
-        candidate_documents: Sequence[Mapping[str, Any]],
-        candidate_source_hash: str,
-        summary: str | None,
-        rspdl_version: str,
-        wire_schema_version: int,
-        locale: str,
-        result: Mapping[str, Any] | None,
-        base_result: Mapping[str, Any] | None,
-    ) -> Mapping[str, Any]: ...
-    async def get_draft(self, draft_id: UUID) -> Mapping[str, Any] | None: ...
-    async def list_drafts(self, project_id: UUID) -> list[Mapping[str, Any]]: ...
-    async def apply_draft(
-        self,
-        *,
-        draft_id: UUID,
-        actor_id: UUID,
-        expected_project_revision: int,
-        expected_source_hash: str,
-    ) -> Mapping[str, Any] | None: ...
-    async def list_snapshots(self, project_id: UUID) -> list[Mapping[str, Any]]: ...
-    async def capture_snapshot(
+        now: datetime,
+    ) -> bool:
+        """잠금을 잡거나 마지막 쓰기 시각을 갱신한다. 만료된 남의 잠금은 덮어쓴다.
+
+        살아 있는 남의 잠금이 있으면 아무것도 바꾸지 않고 `False` 를 돌려준다.
+        """
+        ...
+
+    async def release_locks(self, *, holder: str, project_id: UUID | None = None) -> int: ...
+
+    async def locked_projects(self, holder: str) -> list[UUID]:
+        """보유자가 잠금을 가진 프로젝트."""
+        ...
+
+    async def touch_locks(self, *, holder: str, now: datetime) -> int:
+        """보유자의 잠금 전부의 마지막 쓰기 시각을 `now` 로 바꾼다. 승인 대기 뒤 재개할 때 쓴다."""
+        ...
+
+    async def oldest_lock_write(self, holder: str) -> datetime | None:
+        """보유자의 잠금 중 가장 오래된 마지막 쓰기 시각."""
+        ...
+
+    async def create_commit(
         self,
         *,
         project_id: UUID,
-        actor_id: UUID,
-        expected_project_revision: int,
-        expected_source_hash: str,
-        expected_planning_revision: int,
-        summary: str | None,
-        compiled_source_hash: str,
-        rspdl_version: str,
-        wire_schema_version: int,
-        locale: str,
-        result: Mapping[str, Any] | None,
-    ) -> Mapping[str, Any] | None: ...
-    async def get_snapshot(self, project_id: UUID, revision: int) -> Mapping[str, Any] | None: ...
-    async def restore_snapshot(
-        self,
-        *,
-        project_id: UUID,
-        revision: int,
-        actor_id: UUID,
-        expected_project_revision: int,
-        expected_source_hash: str,
-        expected_planning_revision: int,
-    ) -> Mapping[str, Any] | None: ...
+        author_id: UUID,
+        message: str,
+        changes: Sequence[CommitChange],
+    ) -> Commit: ...
+
+    async def list_commits(self, project_id: UUID) -> list[Commit]:
+        """최신이 먼저."""
+        ...
+
+    async def get_commit(self, commit_id: UUID) -> Commit | None: ...
 
 
-class PlanningAiJobRepositoryPort(Protocol):
-    """영속 AI 작업 큐. lease token이 모든 worker 쓰기의 fencing token이다."""
+class RspdlIndexerPort(Protocol):
+    """컴파일 결과에서 심볼과 진단을 읽는다.
 
-    async def enqueue(
+    IR 모양은 `0.x` 동안 바뀌므로 (ADR-0003) 읽는 코드를 `infrastructure/rspdl/` 에 둔다.
+    rspdl 을 올릴 때 고칠 곳이 그 디렉터리 하나로 모인다. 결과를 재작성하지 않고 읽기만 한다.
+    """
+
+    def index(self, result: Mapping[str, Any]) -> RspdlIndex: ...
+
+
+class PatternMatcherPort(Protocol):
+    """grep 의 정규식 엔진. 사용자와 AI 가 넣은 패턴을 실행하므로 선형 시간이어야 한다."""
+
+    def compile(self, pattern: str) -> Callable[[str], bool]:
+        """줄 하나가 패턴에 맞는지 보는 함수. 잘못된 패턴이면 `InvalidPattern`."""
+        ...
+
+
+class ProjectEventsPort(Protocol):
+    """프로젝트 이벤트 기록. 기록과 함께 구독자에게 알린다."""
+
+    async def append(
+        self, *, project_id: UUID, type: str, payload: Mapping[str, Any]
+    ) -> None: ...
+
+    async def list_after(
+        self, *, project_id: UUID, after_seq: int, limit: int
+    ) -> list[ProjectEvent]: ...
+
+
+class AgentRepositoryPort(Protocol):
+    """AI 대화 세션, 대화 항목, 턴."""
+
+    async def create_session(
+        self, *, project_id: UUID, created_by: UUID, title: str
+    ) -> AgentSession: ...
+
+    async def list_sessions(self, project_id: UUID) -> list[AgentSession]:
+        """최근에 쓴 세션이 먼저."""
+        ...
+
+    async def get_session(self, session_id: UUID) -> AgentSession | None: ...
+
+    async def rename_session(self, session_id: UUID, *, title: str) -> None: ...
+
+    async def append_item(
         self,
         *,
-        project_id: UUID,
-        actor_id: UUID,
-        request_id: UUID,
-        kind: str,
-        instruction: str,
-        expected_planning_revision: int,
-        frozen_project_revision: int,
-        frozen_source_hash: str,
-        context: Mapping[str, Any],
-        source_draft_id: UUID | None,
-        retry_of_job_id: UUID | None,
-        attempt: int,
-        max_attempts: int,
-        append_user_message: bool = True,
-    ) -> Mapping[str, Any] | None: ...
+        session_id: UUID,
+        turn_id: UUID | None,
+        kind: ItemKind,
+        payload: Mapping[str, Any],
+    ) -> AgentItem: ...
 
-    async def get(self, job_id: UUID) -> Mapping[str, Any] | None: ...
-    async def get_by_request(
-        self, *, project_id: UUID, actor_id: UUID, request_id: UUID
-    ) -> Mapping[str, Any] | None: ...
-    async def get_retry(self, job_id: UUID) -> Mapping[str, Any] | None: ...
-    async def list(self, project_id: UUID, *, limit: int) -> list[Mapping[str, Any]]: ...
-    async def request_cancel(self, job_id: UUID) -> Mapping[str, Any] | None: ...
-    async def claim(self, *, lease_seconds: int) -> Mapping[str, Any] | None: ...
-    async def heartbeat(
+    async def list_items(self, session_id: UUID, *, after_seq: int = 0) -> list[AgentItem]: ...
+
+    async def create_turn(
+        self, *, session_id: UUID, project_id: UUID, actor_id: UUID, request_id: UUID
+    ) -> AgentTurn: ...
+
+    async def turn_by_request(self, session_id: UUID, request_id: UUID) -> AgentTurn | None: ...
+
+    async def get_turn(self, turn_id: UUID) -> AgentTurn | None: ...
+
+    async def active_turn(self, session_id: UUID) -> AgentTurn | None: ...
+
+    async def list_turns(self, session_id: UUID) -> list[AgentTurn]: ...
+
+    async def claim_turn(self, *, now: datetime, lease_seconds: int) -> AgentTurn | None:
+        """실행할 턴 하나를 lease 와 함께 가져온다. 대기 중이거나 lease 가 끝난 실행 중 턴."""
+        ...
+
+    async def update_turn(
         self,
-        job_id: UUID,
+        turn_id: UUID,
         *,
         lease_token: UUID,
-        lease_seconds: int,
-        progress: Mapping[str, Any],
-    ) -> bool: ...
-    async def renew_lease(self, job_id: UUID, *, lease_token: UUID, lease_seconds: int) -> bool: ...
-    async def checkpoint(
+        now: datetime,
+        lease_seconds: int | None = None,
+        status: TurnStatus | None = None,
+        tool_calls: int | None = None,
+        stop_reason: StopReason | None = None,
+        pending_approval: PendingApproval | None = None,
+        clear_pending: bool = False,
+        error: str | None = None,
+    ) -> bool:
+        """lease 가 아직 내 것일 때만 바꾼다. `lease_seconds` 를 주면 lease 를 늘린다."""
+        ...
+
+    async def request_cancel(self, turn_id: UUID) -> AgentTurn | None: ...
+
+    async def resolve_approval(self, turn_id: UUID, *, approved: bool) -> AgentTurn | None:
+        """승인을 기다리는 턴이면 결정을 기록하고 다시 대기열에 넣는다."""
+        ...
+
+    async def cancel_waiting(self, turn_id: UUID, *, now: datetime) -> AgentTurn | None:
+        """승인을 기다리는 턴을 worker 없이 바로 취소한다."""
+        ...
+
+
+class AgentSettingsPort(Protocol):
+    async def get(self, user_id: UUID) -> AgentSettings: ...
+
+    async def put(self, user_id: UUID, settings: AgentSettings) -> AgentSettings: ...
+
+
+class AgentLlmPort(Protocol):
+    """도구를 부르는 대화 모델. 구현체는 `infrastructure/llm/` 에만 둔다."""
+
+    @property
+    def model(self) -> str: ...
+
+    async def step(
         self,
-        job_id: UUID,
         *,
-        lease_token: UUID,
-        checkpoints: Mapping[str, Any],
-        progress: Mapping[str, Any],
-    ) -> bool: ...
-    async def cancelled(self, job_id: UUID, *, lease_token: UUID) -> bool: ...
-    async def finish_cancelled(self, job_id: UUID, *, lease_token: UUID) -> bool: ...
-    async def finish_failed(
-        self, job_id: UUID, *, lease_token: UUID, error: Mapping[str, Any]
-    ) -> bool: ...
-    async def finish_interview(
-        self, job_id: UUID, *, lease_token: UUID, result: Mapping[str, Any]
-    ) -> bool: ...
-    async def finish_generation(
-        self, job_id: UUID, *, lease_token: UUID, result: Mapping[str, Any]
-    ) -> bool: ...
-    async def finish_generation_draft(
-        self,
-        job_id: UUID,
-        *,
-        lease_token: UUID,
-        draft: Mapping[str, Any],
-        result: Mapping[str, Any],
-    ) -> bool: ...
+        context: AgentContext,
+        items: Sequence[AgentItem],
+        tools: Sequence[ToolSpec],
+        allow_tools: bool,
+        on_text: Callable[[str], Awaitable[None]],
+    ) -> AgentStep:
+        """대화 기록을 입력으로 다음 응답 하나를 만든다.
+
+        답변 텍스트는 만들어지는 대로 `on_text` 로 흘려보내고, 끝나면 전체 텍스트와 도구
+        호출을 돌려준다. `allow_tools` 가 거짓이면 도구를 부르지 않고 답변만 만든다.
+        """
+        ...

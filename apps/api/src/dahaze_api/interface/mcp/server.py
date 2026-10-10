@@ -23,54 +23,69 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.applications import Starlette
 from starlette.routing import Route
 
+from dahaze_api.application.agent_tools import fetch_output
 from dahaze_api.application.analysis import AnalyzeWorkspace
-from dahaze_api.application.planning import PlanningService
-from dahaze_api.application.planning_ai import PlanningAiService
-from dahaze_api.application.workspace import WorkspaceService
+from dahaze_api.application.errors import Conflict
+from dahaze_api.application.projects import ProjectService
+from dahaze_api.application.tree import TreeService
+from dahaze_api.application.tree_inspection import TreeInspector
 from dahaze_api.domain.entities import (
-    Document,
-    DocumentRevision,
     Project,
     ProjectMembership,
     ProjectRole,
     User,
 )
 from dahaze_api.domain.ports import RspdlCompilerPort
-from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlSource, source_fingerprint
+from dahaze_api.domain.rspdl import AnalysisOutcome, RspdlSource
+from dahaze_api.infrastructure.agent_scope import build_inspector, build_tree
 from dahaze_api.infrastructure.auth.session import SessionTokens
 from dahaze_api.infrastructure.db.analysis_cache import SqlAnalysisCache
-from dahaze_api.infrastructure.db.planning_ai_repository import SqlPlanningAiJobRepository
-from dahaze_api.infrastructure.db.planning_repository import SqlPlanningRepository
 from dahaze_api.infrastructure.db.repositories import (
-    SqlDocumentRepository,
     SqlProjectRepository,
     SqlUserRepository,
 )
 from dahaze_api.infrastructure.db.session import get_session_factory
+from dahaze_api.infrastructure.llm.prompts import tree_layout_guide, wireframe_guide
 from dahaze_api.interface.mcp.auth import (
     BearerAuthMiddleware,
     McpAuthError,
     authenticated_user_id,
 )
 from dahaze_api.interface.rest.dependencies import get_compiler, get_session_tokens
+from dahaze_api.interface.rest.tree_schemas import (
+    commit_out,
+    compile_out,
+    entry_out,
+    file_out,
+    folder_out,
+    grep_out,
+    search_out,
+)
 
 MCP_PATH = "/mcp"
 
-INSTRUCTIONS = """\
-dahaze 는 RSPDL 로 쓴 제품 기획을 저장하고, 컴파일러로 검증하는 워크스페이스다.
+_BASE_INSTRUCTIONS = """\
+dahaze 는 RSPDL 로 쓴 제품 기획을 프로젝트 작업 트리에 저장하고, 컴파일러로 검증하는 워크스페이스다.
 
-- 문서의 **소스 텍스트가 유일한 진실**이다. 컴파일 결과는 언제든 다시 만들 수 있는 파생물이다.
-- 문법·의미 오류는 실패가 아니라 `result` 안의 진단으로 돌아온다. 진단을 그대로 사람에게
-  보여라. 요약하거나 지어내지 마라.
-- 문서를 쓰기 전에 `compile_rspdl` 로 먼저 통과 여부를 확인하는 것이 좋다. 컴파일되지 않는
-  텍스트도 저장할 수는 있지만, 그건 검증되지 않은 기획이다.
+- 파일 원문이 유일한 진실이다. 컴파일 결과는 언제든 다시 만들 수 있는 파생물이다.
+- 문법·의미 오류는 실패가 아니라 진단으로 돌아온다. 진단을 요약하거나 지어내지 말고 그대로
+  사람에게 보여라.
 - 모든 도구는 토큰이 지목한 사용자 권한으로 동작한다. 그 사용자가 멤버가 아닌 프로젝트는
   존재하지 않는 것처럼 보인다.
-- 문서는 프로젝트 안에 산다. 담을 프로젝트가 없으면 `create_project` 로 먼저 만들고, 있으면
-  `list_projects` 로 골라라 — 프로젝트를 새로 만들지, 기존 것에 넣을지는 사람에게 물어라.
-- 문서 삭제와 프로젝트 보관은 사람이 화면에서 직접 결정한다. 필요한 경우 대상과 이유를
-  설명하되 도구 호출로 실행하지 않는다.
+- 파일은 프로젝트 작업 트리 안에 있다. `ls`·`read`·`search`·`fetch`·`grep` 으로 읽고, `add`·`edit`·
+  `mv`·`delete`·`mkdir` 로 바꾼다. 쓰기는 작업 트리에 바로 저장되고 파일이 잠긴다. 작업을 마치면
+  `unlock` 한다. 이력은 사람이 요청할 때 `commit` 으로 남긴다.
+- `search` 는 컴파일된 심볼만, `grep` 은 원문 텍스트만 찾는다. 심볼을 바꾸기 전에는 `fetch` 로
+  그 심볼을 가리키는 선언을 확인한다.
+- 파일을 바꾼 뒤에는 `compile` 로 진단을 확인한다.
+- 프로젝트가 없으면 `create_project` 로 만들고, 있으면 `list_projects` 로 골라라. 새로 만들지
+  기존 것을 쓸지는 사람에게 물어라.
+- `archive_project`, 비어 있지 않은 폴더의 `delete`(`recursive: true`)는 사람이 명시적으로
+  요청했을 때만 쓴다.
 """
+
+# 파일 구성 규칙·쓰기 전 판단 절차·와이어프레임 형식은 앱 AI 프롬프트와 같은 원문을 쓴다 (ADR-0005).
+INSTRUCTIONS = f"{_BASE_INSTRUCTIONS}\n{tree_layout_guide()}\n\n{wireframe_guide()}\n"
 
 # 도구 호출 하나가 쓸 DB 세션의 수명을 여는 함수. 테스트가 자기 세션을 밀어 넣는 지점이다.
 SessionScope = Callable[[], AbstractAsyncContextManager[AsyncSession]]
@@ -94,10 +109,19 @@ class _Actor:
     """이번 도구 호출을 수행하는 사용자와, 그 사용자로 조립된 유스케이스."""
 
     user: User
-    workspace: WorkspaceService
+    projects: ProjectService
     analyzer: AnalyzeWorkspace
-    planning: PlanningService
-    planning_ai: PlanningAiService
+    tree: TreeService
+    inspector: TreeInspector
+
+    @property
+    def lock_holder(self) -> str:
+        """MCP 쓰기의 잠금 보유자.
+
+        전송이 stateless 라 MCP 세션 ID 가 없다. 사용자 단위로 묶으므로 같은 사용자의 MCP
+        클라이언트끼리는 잠금을 공유하고, 다른 사용자의 잠금은 풀 수 없다.
+        """
+        return f"mcp:{self.user.id}"
 
 
 def _project_payload(project: Project) -> dict[str, Any]:
@@ -107,26 +131,8 @@ def _project_payload(project: Project) -> dict[str, Any]:
         "name": project.name,
         "description": project.description,
         "default_rspdl_version": project.default_rspdl_version,
-        "revision": project.revision,
-        "source_hash": project.source_hash,
-        "snapshot_version": project.snapshot_version,
         "is_archived": project.is_archived,
     }
-
-
-def _document_payload(document: Document, *, include_text: bool) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "id": str(document.id),
-        "project_id": str(document.project_id),
-        "path": document.path,
-        "title": document.title,
-        "target_rspdl_version": document.target_rspdl_version,
-        "updated_at": document.updated_at.isoformat(),
-    }
-    if include_text:
-        payload["text"] = document.text
-        payload["source_hash"] = source_fingerprint(document.text)
-    return payload
 
 
 def _membership_payload(membership: ProjectMembership) -> dict[str, Any]:
@@ -134,23 +140,6 @@ def _membership_payload(membership: ProjectMembership) -> dict[str, Any]:
         "project_id": str(membership.project_id),
         "user_id": str(membership.user_id),
         "role": str(membership.role),
-    }
-
-
-def _revision_payload(revision: DocumentRevision) -> dict[str, Any]:
-    """이력 한 점. **본문은 싣지 않는다.**
-
-    리비전은 전문을 보관하므로, 목록에 본문을 함께 실으면 문서 하나의 이력을 부르는 것만으로
-    같은 텍스트가 수십 벌 딸려 온다. LLM 의 맥락에서 그 비용은 곧 다른 정보가 밀려나는 것이다.
-    """
-    return {
-        "id": str(revision.id),
-        "document_id": str(revision.document_id),
-        "revision_no": revision.revision_no,
-        "target_rspdl_version": revision.target_rspdl_version,
-        "author_id": None if revision.author_id is None else str(revision.author_id),
-        "summary": revision.summary,
-        "created_at": revision.created_at.isoformat(),
     }
 
 
@@ -167,24 +156,6 @@ def _analysis_payload(outcome: AnalysisOutcome) -> dict[str, Any]:
         "locale": outcome.runtime.locale,
         "result": dict(outcome.result),
     }
-
-
-def _planning_ai_job_payload(job: Mapping[str, Any]) -> dict[str, Any]:
-    """REST 작업 DTO와 같은 공개 필드만 MCP에 싣는다.
-
-    frozen context와 checkpoint에는 원문과 아직 공개하면 안 되는 LLM 중간 산출물이
-    들어갈 수 있다. MCP도 응답 경계에서 이를 노출하지 않는다.
-    """
-    hidden = {
-        "actor_id",
-        "context",
-        "checkpoints",
-        "run_count",
-        "lease_token",
-        "lease_expires_at",
-        "updated_at",
-    }
-    return {key: value for key, value in job.items() if key not in hidden}
 
 
 def _role(value: str) -> ProjectRole:
@@ -239,7 +210,7 @@ class McpTools:
         default_rspdl_version: str | None = None,
     ) -> dict[str, Any]:
         async with self._acting(headers) as actor:
-            project = await actor.workspace.create_project(
+            project = await actor.projects.create_project(
                 actor_id=actor.user.id,
                 slug=slug,
                 name=name,
@@ -252,7 +223,17 @@ class McpTools:
         self, headers: Mapping[str, str] | None, *, project_id: str
     ) -> dict[str, Any]:
         async with self._acting(headers) as actor:
-            project = await actor.workspace.get_project(
+            project = await actor.projects.get_project(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+            )
+            return _project_payload(project)
+
+    async def archive_project(
+        self, headers: Mapping[str, str] | None, *, project_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            project = await actor.projects.archive_project(
                 actor_id=actor.user.id,
                 project_id=_uuid(project_id, field="project_id"),
             )
@@ -262,7 +243,7 @@ class McpTools:
         self, headers: Mapping[str, str] | None, *, project_id: str
     ) -> list[dict[str, Any]]:
         async with self._acting(headers) as actor:
-            members = await actor.workspace.list_members(
+            members = await actor.projects.list_members(
                 actor_id=actor.user.id,
                 project_id=_uuid(project_id, field="project_id"),
             )
@@ -277,7 +258,7 @@ class McpTools:
         role: str = "editor",
     ) -> dict[str, Any]:
         async with self._acting(headers) as actor:
-            membership = await actor.workspace.add_member(
+            membership = await actor.projects.add_member(
                 actor_id=actor.user.id,
                 project_id=_uuid(project_id, field="project_id"),
                 user_id=_uuid(user_id, field="user_id"),
@@ -287,118 +268,8 @@ class McpTools:
 
     async def list_projects(self, headers: Mapping[str, str] | None) -> list[dict[str, Any]]:
         async with self._acting(headers) as actor:
-            projects = await actor.workspace.list_projects(actor_id=actor.user.id)
+            projects = await actor.projects.list_projects(actor_id=actor.user.id)
             return [_project_payload(p) for p in projects]
-
-    async def list_documents(
-        self, headers: Mapping[str, str] | None, *, project_id: str
-    ) -> list[dict[str, Any]]:
-        async with self._acting(headers) as actor:
-            documents = await actor.workspace.list_documents(
-                actor_id=actor.user.id, project_id=_uuid(project_id, field="project_id")
-            )
-            return [_document_payload(d, include_text=False) for d in documents]
-
-    async def read_document(
-        self, headers: Mapping[str, str] | None, *, document_id: str
-    ) -> dict[str, Any]:
-        async with self._acting(headers) as actor:
-            document = await actor.workspace.get_document(
-                actor_id=actor.user.id,
-                document_id=_uuid(document_id, field="document_id"),
-            )
-            return _document_payload(document, include_text=True)
-
-    async def create_document(
-        self,
-        headers: Mapping[str, str] | None,
-        *,
-        project_id: str,
-        path: str,
-        title: str,
-        text: str,
-    ) -> dict[str, Any]:
-        async with self._acting(headers) as actor:
-            document = await actor.workspace.create_document(
-                actor_id=actor.user.id,
-                project_id=_uuid(project_id, field="project_id"),
-                path=path,
-                title=title,
-                text=text,
-            )
-            return _document_payload(document, include_text=True)
-
-    async def update_document(
-        self,
-        headers: Mapping[str, str] | None,
-        *,
-        document_id: str,
-        text: str,
-        summary: str | None = None,
-    ) -> dict[str, Any]:
-        async with self._acting(headers) as actor:
-            document = await actor.workspace.update_document(
-                actor_id=actor.user.id,
-                document_id=_uuid(document_id, field="document_id"),
-                text=text,
-                summary=summary,
-            )
-            return _document_payload(document, include_text=True)
-
-    async def list_document_revisions(
-        self, headers: Mapping[str, str] | None, *, document_id: str
-    ) -> list[dict[str, Any]]:
-        async with self._acting(headers) as actor:
-            revisions = await actor.workspace.list_revisions(
-                actor_id=actor.user.id,
-                document_id=_uuid(document_id, field="document_id"),
-            )
-            return [_revision_payload(r) for r in revisions]
-
-    async def resolve_planning_decision(
-        self,
-        headers: Mapping[str, str] | None,
-        *,
-        project_id: str,
-        decision_id: str,
-        expected_revision: int,
-        status: str,
-        rationale: str | None = None,
-    ) -> dict[str, Any]:
-        if status not in {"decided", "deferred"}:
-            raise ValueError("status는 decided 또는 deferred여야 한다")
-        async with self._acting(headers) as actor:
-            result = await actor.planning.resolve_decision(
-                actor_id=actor.user.id,
-                project_id=_uuid(project_id, field="project_id"),
-                decision_id=_uuid(decision_id, field="decision_id"),
-                expected_revision=expected_revision,
-                status=status,
-                rationale=rationale,
-            )
-            return dict(result)
-
-    async def resolve_planning_proposal(
-        self,
-        headers: Mapping[str, str] | None,
-        *,
-        project_id: str,
-        proposal_id: str,
-        expected_revision: int,
-        status: str,
-        rationale: str | None = None,
-    ) -> dict[str, Any]:
-        async with self._acting(headers) as actor:
-            return dict(
-                await actor.planning.resolve_proposal(
-                    actor_id=actor.user.id,
-                    project_id=_uuid(project_id, field="project_id"),
-                    proposal_id=_uuid(proposal_id, field="proposal_id"),
-                    expected_revision=expected_revision,
-                    status=status,
-                    rationale=rationale,
-                )
-            )
 
     async def rspdl_runtime(self, headers: Mapping[str, str] | None) -> dict[str, Any]:
         """이 서버가 돌리는 컴파일러의 정체.
@@ -449,130 +320,224 @@ class McpTools:
             )
             return _analysis_payload(outcome)
 
-    async def propose_planning_edit(
-        self,
-        headers: Mapping[str, str] | None,
-        *,
-        project_id: str,
-        document_id: str,
-        base_project_revision: int,
-        base_source_hash: str,
-        expected_source_hash: str,
-        edit: dict[str, Any],
-        summary: str | None = None,
-    ) -> dict[str, Any]:
-        """구조화 편집 후보를 검증·보관하되 확정 문서는 바꾸지 않는다."""
-        async with self._acting(headers) as actor:
-            result = await actor.planning.propose_edit(
-                actor_id=actor.user.id,
-                project_id=_uuid(project_id, field="project_id"),
-                document_id=_uuid(document_id, field="document_id"),
-                base_project_revision=base_project_revision,
-                base_source_hash=base_source_hash,
-                expected_source_hash=expected_source_hash,
-                edit=edit,
-                summary=summary,
-            )
-            return dict(result)
+    # --------------------------------------------------------- 작업 트리 (ADR-0008)
 
-    async def get_project_handoff(
-        self, headers: Mapping[str, str] | None, *, project_id: str, snapshot_version: int
-    ) -> dict[str, Any]:
-        """저장된 전체 프로젝트 버전을 재컴파일 없이 그대로 읽는다."""
-        async with self._acting(headers) as actor:
-            snapshot = await actor.planning.handoff(
-                actor_id=actor.user.id,
-                project_id=_uuid(project_id, field="project_id"),
-                revision=snapshot_version,
-            )
-            return dict(snapshot)
-
-    async def create_planning_ai_job(
-        self,
-        headers: Mapping[str, str] | None,
-        *,
-        project_id: str,
-        request_id: str,
-        kind: str,
-        instruction: str,
-        expected_planning_revision: int,
-        source_draft_id: str | None = None,
-        selected_subject: dict[str, Any] | None = None,
-        base_project_revision: int | None = None,
-        base_source_hash: str | None = None,
-    ) -> dict[str, Any]:
-        async with self._acting(headers) as actor:
-            return _planning_ai_job_payload(
-                await actor.planning_ai.enqueue(
-                    actor_id=actor.user.id,
-                    project_id=_uuid(project_id, field="project_id"),
-                    request_id=_uuid(request_id, field="request_id"),
-                    kind=kind,
-                    instruction=instruction,
-                    expected_planning_revision=expected_planning_revision,
-                    base_project_revision=base_project_revision,
-                    base_source_hash=base_source_hash,
-                    selected_subject=selected_subject,
-                    source_draft_id=(
-                        None
-                        if source_draft_id is None
-                        else _uuid(source_draft_id, field="source_draft_id")
-                    ),
-                )
-            )
-
-    async def get_planning_ai_job(
-        self, headers: Mapping[str, str] | None, *, project_id: str, job_id: str
-    ) -> dict[str, Any]:
-        async with self._acting(headers) as actor:
-            return _planning_ai_job_payload(
-                await actor.planning_ai.get(
-                    actor_id=actor.user.id,
-                    project_id=_uuid(project_id, field="project_id"),
-                    job_id=_uuid(job_id, field="job_id"),
-                )
-            )
-
-    async def list_planning_ai_jobs(
-        self,
-        headers: Mapping[str, str] | None,
-        *,
-        project_id: str,
-        limit: int = 50,
+    async def tree_ls(
+        self, headers: Mapping[str, str] | None, *, project_id: str, path: str = "/"
     ) -> list[dict[str, Any]]:
         async with self._acting(headers) as actor:
-            return [
-                _planning_ai_job_payload(item)
-                for item in await actor.planning_ai.list(
-                    actor_id=actor.user.id,
-                    project_id=_uuid(project_id, field="project_id"),
-                    limit=limit,
-                )
-            ]
+            entries = await actor.tree.ls(
+                actor_id=actor.user.id, project_id=_uuid(project_id, field="project_id"), path=path
+            )
+            return [entry_out(e).model_dump(mode="json") for e in entries]
 
-    async def cancel_planning_ai_job(
-        self, headers: Mapping[str, str] | None, *, project_id: str, job_id: str
+    async def tree_read(
+        self, headers: Mapping[str, str] | None, *, project_id: str, path: str
     ) -> dict[str, Any]:
         async with self._acting(headers) as actor:
-            return _planning_ai_job_payload(
-                await actor.planning_ai.cancel(
-                    actor_id=actor.user.id,
-                    project_id=_uuid(project_id, field="project_id"),
-                    job_id=_uuid(job_id, field="job_id"),
-                )
+            file = await actor.tree.read(
+                actor_id=actor.user.id, project_id=_uuid(project_id, field="project_id"), path=path
             )
+            return file_out(file).model_dump(mode="json")
 
-    async def retry_planning_ai_job(
-        self, headers: Mapping[str, str] | None, *, project_id: str, job_id: str
+    async def tree_search(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        query: str = "",
+        kind: str | None = None,
     ) -> dict[str, Any]:
         async with self._acting(headers) as actor:
-            return _planning_ai_job_payload(
-                await actor.planning_ai.retry(
+            result = await actor.inspector.search(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                query=query,
+                kind=kind,
+            )
+            return search_out(result).model_dump(mode="json")
+
+    async def tree_fetch(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        symbol_id: str,
+        owner_id: str | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            result = await actor.inspector.fetch(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                symbol_id=symbol_id,
+                owner_id=owner_id,
+            )
+            return fetch_output(result)
+
+    async def tree_grep(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        pattern: str,
+        path_glob: str | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            result = await actor.inspector.grep(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                pattern=pattern,
+                path_glob=path_glob,
+            )
+            return grep_out(result).model_dump(mode="json")
+
+    async def tree_compile(
+        self, headers: Mapping[str, str] | None, *, project_id: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            result = await actor.inspector.compile(
+                actor_id=actor.user.id, project_id=_uuid(project_id, field="project_id")
+            )
+            return compile_out(result).model_dump(mode="json")
+
+    async def tree_mkdir(
+        self, headers: Mapping[str, str] | None, *, project_id: str, parent: str, name: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            folder = await actor.tree.mkdir(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                parent=parent,
+                name=name,
+            )
+            return folder_out(folder).model_dump(mode="json")
+
+    async def tree_add(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        parent: str,
+        name: str,
+        content: str,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            file = await actor.tree.add(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                parent=parent,
+                name=name,
+                content=content,
+                holder=actor.lock_holder,
+            )
+            return file_out(file).model_dump(mode="json")
+
+    async def tree_edit(
+        self, headers: Mapping[str, str] | None, *, project_id: str, path: str, content: str
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            file = await actor.tree.edit(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                path=path,
+                content=content,
+                holder=actor.lock_holder,
+            )
+            return file_out(file).model_dump(mode="json")
+
+    async def tree_wireframe(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        path: str,
+        screen_id: str,
+        layout: dict[str, Any] | None = None,
+        system: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            if layout is not None and path.endswith(".wireframe.json"):
+                problems = await actor.inspector.check_wireframe_layout(
                     actor_id=actor.user.id,
                     project_id=_uuid(project_id, field="project_id"),
-                    job_id=_uuid(job_id, field="job_id"),
+                    document_path=path.removesuffix(".wireframe.json") + ".rspdl",
+                    screen_id=screen_id,
+                    layout=layout,
                 )
+                if problems:
+                    raise Conflict(
+                        "저장하지 않았다. 배치의 문서 요소 자리가 맞지 않는다: "
+                        + " / ".join(problems)
+                    )
+            _, file = await actor.tree.set_wireframe_screen(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                path=path,
+                screen_id=screen_id,
+                layout=layout,
+                system=system,
+                holder=actor.lock_holder,
             )
+            return file_out(file).model_dump(mode="json")
+
+    async def tree_mv(
+        self, headers: Mapping[str, str] | None, *, project_id: str, source: str, target: str
+    ) -> list[dict[str, Any]]:
+        async with self._acting(headers) as actor:
+            moved = await actor.tree.move(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                source=source,
+                target=target,
+                holder=actor.lock_holder,
+            )
+            return [file_out(f).model_dump(mode="json") for f in moved]
+
+    async def tree_delete(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        path: str,
+        recursive: bool = False,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            deleted = await actor.tree.delete(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                path=path,
+                recursive=recursive,
+                holder=actor.lock_holder,
+            )
+            return {"deleted_files": deleted}
+
+    async def tree_commit(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        paths: list[str],
+        message: str,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            commit = await actor.tree.commit(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                paths=paths,
+                message=message,
+                holder=actor.lock_holder,
+            )
+            return commit_out(commit).model_dump(mode="json")
+
+    async def tree_unlock(
+        self, headers: Mapping[str, str] | None, *, project_id: str | None = None
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            released = await actor.tree.release_locks(
+                holder=actor.lock_holder,
+                project_id=None if project_id is None else _uuid(project_id, field="project_id"),
+            )
+            return {"released": released}
 
     # ------------------------------------------------------------------- 내부
 
@@ -580,7 +545,7 @@ class McpTools:
     async def _acting(self, headers: Mapping[str, str] | None) -> AsyncIterator[_Actor]:
         """토큰이 지목한 사용자로 유스케이스를 조립한다.
 
-        도구가 저장소를 직접 잡지 않고 여기서 조립된 `WorkspaceService` 만 쓰게 한 이유는
+        도구가 저장소를 직접 잡지 않고 여기서 조립된 유스케이스만 쓰게 한 이유는
         하나다: 접근 검사가 그 안에 있고, 우회로를 만들지 않기 위해서다.
         """
         user_id = authenticated_user_id(headers, tokens=self._tokens)
@@ -589,27 +554,17 @@ class McpTools:
             if user is None:
                 # 서명은 맞는데 사용자가 사라진 경우. 만료된 토큰과 같게 취급한다.
                 raise McpAuthError("MCP 토큰이 유효하지 않다")
-            workspace = WorkspaceService(
-                projects=SqlProjectRepository(session),
-                documents=SqlDocumentRepository(session),
-                compiler=self._compiler,
-            )
             analyzer = AnalyzeWorkspace(compiler=self._compiler, cache=SqlAnalysisCache(session))
+            # REST·앱 AI 와 같은 조립이다. 변경은 프로젝트 이벤트로 기록되어 화면에 바로 보인다.
+            tree = build_tree(session)
             yield _Actor(
                 user=user,
-                workspace=workspace,
+                projects=ProjectService(
+                    projects=SqlProjectRepository(session), compiler=self._compiler
+                ),
                 analyzer=analyzer,
-                planning=PlanningService(
-                    workspace=workspace,
-                    store=SqlPlanningRepository(session),
-                    analyzer=analyzer,
-                    compiler=self._compiler,
-                ),
-                planning_ai=PlanningAiService(
-                    workspace=workspace,
-                    planning=SqlPlanningRepository(session),
-                    jobs=SqlPlanningAiJobRepository(session),
-                ),
+                tree=tree,
+                inspector=build_inspector(session, tree, self._compiler),
             )
 
 
@@ -680,6 +635,16 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         return await tools.get_project(ctx.headers, project_id=project_id)
 
     @mcp.tool(
+        name="archive_project",
+        description=(
+            "프로젝트를 보관 처리한다. 기본 목록에서 빠질 뿐 문서와 이력은 지워지지 않는다. "
+            "되돌리는 도구는 아직 없으므로, 사람이 명시적으로 요청했을 때만 부른다."
+        ),
+    )
+    async def archive_project(project_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.archive_project(ctx.headers, project_id=project_id)
+
+    @mcp.tool(
         name="list_project_members",
         description=(
             "프로젝트 멤버와 각자의 역할(owner·editor·viewer)을 돌려준다. 문서를 고치기 "
@@ -714,186 +679,6 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
     )
     async def list_projects(ctx: Context) -> list[dict[str, Any]]:
         return await tools.list_projects(ctx.headers)
-
-    @mcp.tool(
-        name="list_documents",
-        description=(
-            "한 프로젝트에 있는 RSPDL 문서 목록을 돌려준다. 본문은 싣지 않는다 — 본문이 "
-            "필요하면 `read_document` 를 쓴다. 멤버가 아닌 프로젝트를 물으면 없는 것으로 "
-            "응답한다."
-        ),
-    )
-    async def list_documents(project_id: str, ctx: Context) -> list[dict[str, Any]]:
-        return await tools.list_documents(ctx.headers, project_id=project_id)
-
-    @mcp.tool(
-        name="read_document",
-        description=(
-            "문서 하나의 RSPDL 소스 전문을 읽는다. `text` 가 이 문서의 유일한 진실이고, "
-            "`target_rspdl_version` 은 그 텍스트가 어느 문법 버전으로 쓰였는지를 뜻한다."
-        ),
-    )
-    async def read_document(document_id: str, ctx: Context) -> dict[str, Any]:
-        return await tools.read_document(ctx.headers, document_id=document_id)
-
-    @mcp.tool(
-        name="create_document",
-        description=(
-            "프로젝트에 RSPDL 문서를 새로 만든다. `path` 는 `.rspdl` 로 끝나야 하고 "
-            "프로젝트 안에서 유일해야 한다. `text` 는 부분이 아니라 소스 전문이다. "
-            "저장 전에 `compile_rspdl` 로 진단을 확인하기를 권한다 — 컴파일되지 않는 "
-            "텍스트도 저장은 되지만, 그건 검증되지 않은 기획이다."
-        ),
-    )
-    async def create_document(
-        project_id: str, path: str, title: str, text: str, ctx: Context
-    ) -> dict[str, Any]:
-        return await tools.create_document(
-            ctx.headers, project_id=project_id, path=path, title=title, text=text
-        )
-
-    @mcp.tool(
-        name="update_document",
-        description=(
-            "문서 본문을 바꾼다. `text` 는 항상 **소스 전문**이다 — 일부만 보내면 나머지가 "
-            "지워진다. 내용이 실제로 달라졌을 때만 리비전이 남으므로, 되돌릴 수 없는 이력을 "
-            "만든다는 점을 알고 부른다. `summary` 에 무엇을 왜 바꿨는지 한 줄 남긴다."
-        ),
-    )
-    async def update_document(
-        document_id: str, text: str, ctx: Context, summary: str | None = None
-    ) -> dict[str, Any]:
-        return await tools.update_document(
-            ctx.headers, document_id=document_id, text=text, summary=summary
-        )
-
-    @mcp.tool(
-        name="list_document_revisions",
-        description=(
-            "문서의 저장 이력을 최신 순으로 돌려준다. 사람이 저장을 누를 때마다 리비전이 "
-            "하나 남으므로, 이 문서가 어떻게 변해 왔는지를 여기서 읽는다. 본문은 싣지 "
-            "않는다 — 같은 텍스트가 여러 벌 딸려 오면 정작 필요한 내용이 밀려난다."
-        ),
-    )
-    async def list_document_revisions(document_id: str, ctx: Context) -> list[dict[str, Any]]:
-        return await tools.list_document_revisions(ctx.headers, document_id=document_id)
-
-    @mcp.tool(
-        name="resolve_planning_decision",
-        description=(
-            "기존 결정의 안정적인 decision_id를 유지한 채 status를 decided 또는 deferred로 "
-            "바꾼다. title로 대상을 추측하지 않는다. expected_revision이 최신 기획 상태와 "
-            "다르면 충돌하고, 없는 ID는 실패한다. 이전 상태와 근거는 resolution_history에 남는다."
-        ),
-    )
-    async def resolve_planning_decision(
-        project_id: str,
-        decision_id: str,
-        expected_revision: int,
-        status: str,
-        ctx: Context,
-        rationale: str | None = None,
-    ) -> dict[str, Any]:
-        return await tools.resolve_planning_decision(
-            ctx.headers,
-            project_id=project_id,
-            decision_id=decision_id,
-            expected_revision=expected_revision,
-            status=status,
-            rationale=rationale,
-        )
-
-    @mcp.tool(
-        name="resolve_planning_proposal",
-        description=(
-            "AI 정책 제안을 stable proposal_id로 채택(adopted)하거나 보류(deferred)한다. "
-            "채택하면 연결된 decided 결정이 생기지만 RSPDL 원문은 아직 바뀌지 않는다."
-        ),
-    )
-    async def resolve_planning_proposal(
-        project_id: str,
-        proposal_id: str,
-        expected_revision: int,
-        status: str,
-        ctx: Context,
-        rationale: str | None = None,
-    ) -> dict[str, Any]:
-        return await tools.resolve_planning_proposal(
-            ctx.headers,
-            project_id=project_id,
-            proposal_id=proposal_id,
-            expected_revision=expected_revision,
-            status=status,
-            rationale=rationale,
-        )
-
-    @mcp.tool(
-        name="create_planning_ai_job",
-        description=(
-            "프로젝트 인터뷰 또는 여러 문서 생성 작업을 영속 큐에 넣는다. request_id는 UUID이며 "
-            "같은 요청 재전송을 중복 제거한다. generate도 확정 원문을 바꾸지 않고 compiler를 거친 "
-            "초안만 만든다. source_draft_id를 주면 저장 초안을 기준으로 검토·수정한다."
-        ),
-    )
-    async def create_planning_ai_job(
-        project_id: str,
-        request_id: str,
-        kind: str,
-        instruction: str,
-        expected_planning_revision: int,
-        ctx: Context,
-        source_draft_id: str | None = None,
-        selected_subject: dict[str, Any] | None = None,
-        base_project_revision: int | None = None,
-        base_source_hash: str | None = None,
-    ) -> dict[str, Any]:
-        return await tools.create_planning_ai_job(
-            ctx.headers,
-            project_id=project_id,
-            request_id=request_id,
-            kind=kind,
-            instruction=instruction,
-            expected_planning_revision=expected_planning_revision,
-            source_draft_id=source_draft_id,
-            selected_subject=selected_subject,
-            base_project_revision=base_project_revision,
-            base_source_hash=base_source_hash,
-        )
-
-    @mcp.tool(
-        name="get_planning_ai_job",
-        description="영속 AI 작업 하나의 진행률, 정제된 오류, 성공 또는 stale 결과를 읽는다.",
-    )
-    async def get_planning_ai_job(project_id: str, job_id: str, ctx: Context) -> dict[str, Any]:
-        return await tools.get_planning_ai_job(ctx.headers, project_id=project_id, job_id=job_id)
-
-    @mcp.tool(
-        name="list_planning_ai_jobs",
-        description="프로젝트 AI 작업을 최신순으로 읽어 재접속 뒤 진행과 결과를 복원한다.",
-    )
-    async def list_planning_ai_jobs(
-        project_id: str, ctx: Context, limit: int = 50
-    ) -> list[dict[str, Any]]:
-        return await tools.list_planning_ai_jobs(ctx.headers, project_id=project_id, limit=limit)
-
-    @mcp.tool(
-        name="cancel_planning_ai_job",
-        description=(
-            "queued 또는 running AI 작업의 취소를 요청한다. 완료 결과나 확정 원문은 지우지 않는다."
-        ),
-    )
-    async def cancel_planning_ai_job(project_id: str, job_id: str, ctx: Context) -> dict[str, Any]:
-        return await tools.cancel_planning_ai_job(ctx.headers, project_id=project_id, job_id=job_id)
-
-    @mcp.tool(
-        name="retry_planning_ai_job",
-        description=(
-            "실패하거나 취소된 AI 작업을 같은 frozen 맥락과 checkpoint로 새 작업에 재시도한다. "
-            "최신 맥락이 필요하면 새 create 작업을 만든다."
-        ),
-    )
-    async def retry_planning_ai_job(project_id: str, job_id: str, ctx: Context) -> dict[str, Any]:
-        return await tools.retry_planning_ai_job(ctx.headers, project_id=project_id, job_id=job_id)
 
     @mcp.tool(
         name="rspdl_runtime",
@@ -956,51 +741,200 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
             timeout_ms=timeout_ms,
         )
 
+    # ------------------------------------------------------ 작업 트리 (ADR-0008)
+    # 앱 안의 AI 와 같은 도구 세트다. 경로는 `/` 로 시작하는 프로젝트 루트 기준이다.
+
     @mcp.tool(
-        name="propose_planning_edit",
+        name="ls",
         description=(
-            "저장된 RSPDL 화면에 구조화 편집(insert/delete/move/update/connect/disconnect)을 "
-            "제안한다. 컴파일러가 원문 hash와 요소 ID·slot을 검증하고, applied 후보만 "
-            "프로젝트 전체로 다시 컴파일해 기획 초안으로 보관한다. 이 도구는 확정 문서를 "
-            "절대 적용하지 않는다. rejected 응답과 semantic diagnostics를 그대로 사람에게 "
-            "보여 주고, 적용은 별도의 사람 요청으로 수행한다."
+            "프로젝트 작업 트리의 폴더와 파일을 `path` 아래 전부 나열한다. 파일마다 commit 안 된 "
+            "변경 종류(`change`)와 잠근 작업(`locked_by`)이 붙는다. 경로는 `/` 로 시작한다. "
+            "새 파일을 만들기 전에 이 도구로 도메인 폴더와 파일 구성을 확인한다."
         ),
     )
-    async def propose_planning_edit(
-        project_id: str,
-        document_id: str,
-        base_project_revision: int,
-        base_source_hash: str,
-        expected_source_hash: str,
-        edit: dict[str, Any],
-        ctx: Context,
-        summary: str | None = None,
+    async def ls(project_id: str, ctx: Context, path: str = "/") -> list[dict[str, Any]]:
+        return await tools.tree_ls(ctx.headers, project_id=project_id, path=path)
+
+    @mcp.tool(
+        name="read",
+        description="파일 하나의 원문 전체를 읽는다. 편집하기 전에 반드시 먼저 읽는다.",
+    )
+    async def read(project_id: str, path: str, ctx: Context) -> dict[str, Any]:
+        return await tools.tree_read(ctx.headers, project_id=project_id, path=path)
+
+    @mcp.tool(
+        name="search",
+        description=(
+            "작업 트리 전체를 컴파일해 심볼(모델·필드·역할·행동·정책·화면 등)을 찾는다. `query` 는 "
+            "심볼 ID(예: `inventory.item`)나 이름(예: `재고 항목`)에 부분 일치한다. `kind` 는 "
+            "IR 컬렉션 경로(예: `module`, `models`, `models.fields`, `roles`, `actions`, "
+            "`policies`)로 거른다. `kind` 를 `module` 로 주면 파일마다 하나인 모듈 목록이 나온다. "
+            "결과마다 파일 경로와 줄 범위가 있으므로 `read` 로 이어서 읽는다. 원문 "
+            "텍스트는 찾지 않는다 — 텍스트는 `grep` 을 쓴다. `unparsed` 에 있는 파일은 구문 "
+            "오류로 심볼을 읽지 못한 파일이므로, 거기 있는 심볼은 결과에 없다."
+        ),
+    )
+    async def search(
+        project_id: str, ctx: Context, query: str = "", kind: str | None = None
     ) -> dict[str, Any]:
-        return await tools.propose_planning_edit(
-            ctx.headers,
-            project_id=project_id,
-            document_id=document_id,
-            base_project_revision=base_project_revision,
-            base_source_hash=base_source_hash,
-            expected_source_hash=expected_source_hash,
-            edit=edit,
-            summary=summary,
+        return await tools.tree_search(ctx.headers, project_id=project_id, query=query, kind=kind)
+
+    @mcp.tool(
+        name="fetch",
+        description=(
+            "심볼 ID 하나의 원문 구간과 연결을 돌려준다. `referenced_by` 는 이 심볼을 가리키는 "
+            "심볼(정책·제약·화면 요소 등), `references` 는 이 심볼이 가리키는 심볼이다. ID 는 "
+            "`search` 결과의 id 를 쓴다. 화면 요소 같은 local ID 는 `owner_id` 로 소속을 "
+            "고른다. 정책·제약 ID 는 원문을 고치면 바뀔 수 있으므로, 편집 뒤에는 이름 있는 "
+            "심볼에서 다시 fetch 한다. `references_supported` 가 false 면 이 "
+            "컴파일러는 연결을 주지 않는다."
+        ),
+    )
+    async def fetch(
+        project_id: str, id: str, ctx: Context, owner_id: str | None = None
+    ) -> dict[str, Any]:
+        return await tools.tree_fetch(
+            ctx.headers, project_id=project_id, symbol_id=id, owner_id=owner_id
         )
 
     @mcp.tool(
-        name="get_project_handoff",
+        name="grep",
         description=(
-            "프로젝트의 immutable 전체 스냅샷을 snapshot_version 에 고정해 읽는다. "
-            "저장 당시 원문·기획 메타데이터·컴파일러 버전·결과를 그대로 돌려주며 "
-            "현재 컴파일러로 조용히 재검증하지 않는다."
+            "원문을 줄 단위 RE2 정규식으로 찾는다. `path_glob` 으로 파일을 거를 수 있고 `*` 는 "
+            "`/` 도 넘는다. 심볼을 찾을 때는 `search` 가 정확하다."
         ),
     )
-    async def get_project_handoff(
-        project_id: str, snapshot_version: int, ctx: Context
+    async def grep(
+        project_id: str, pattern: str, ctx: Context, path_glob: str | None = None
     ) -> dict[str, Any]:
-        return await tools.get_project_handoff(
-            ctx.headers, project_id=project_id, snapshot_version=snapshot_version
+        return await tools.tree_grep(
+            ctx.headers, project_id=project_id, pattern=pattern, path_glob=path_glob
         )
+
+    @mcp.tool(
+        name="compile",
+        description=(
+            "작업 트리의 모든 파일을 함께 컴파일해 진단을 돌려준다. 진단마다 파일 경로와 시작·끝 "
+            "줄·열이 있다. 진단 원본(`diagnostic`)을 요약하거나 지어내지 말고 그대로 전한다. "
+            "파일을 고친 뒤에는 이 도구로 확인한다."
+        ),
+    )
+    async def compile(project_id: str, ctx: Context) -> dict[str, Any]:
+        return await tools.tree_compile(ctx.headers, project_id=project_id)
+
+    @mcp.tool(
+        name="mkdir",
+        description=(
+            "`parent` 폴더 아래에 `name` 폴더를 만든다. 루트는 `/` 다. 폴더는 도메인 영역"
+            "(회원·예약·결제 등) 단위로 만든다. 같은 영역 폴더가 이미 있으면 만들지 않고 그 "
+            "폴더를 쓴다. 이름에는 한글·영숫자·`_`·`-` 만 쓴다."
+        ),
+    )
+    async def mkdir(project_id: str, parent: str, name: str, ctx: Context) -> dict[str, Any]:
+        return await tools.tree_mkdir(ctx.headers, project_id=project_id, parent=parent, name=name)
+
+    @mcp.tool(
+        name="add",
+        description=(
+            "`parent` 폴더 아래에 `name` 파일을 원문 `content` 로 만든다. 이름은 `.rspdl` 로 "
+            "끝나야 한다. 파일 하나가 모듈 하나이므로 `content` 는 모듈 머리말로 시작하고, 모듈 "
+            "ID 는 다른 파일과 겹치지 않아야 한다. 백틱 참조는 같은 파일 안의 선언만 찾으므로, "
+            "다른 파일의 모델을 참조해야 하면 새 파일을 만들지 말고 그 파일을 `edit` 한다. "
+            "작업 트리에 바로 저장되고 이 파일은 잠긴다. 작업을 마치면 `unlock` 한다."
+        ),
+    )
+    async def add(
+        project_id: str, parent: str, name: str, content: str, ctx: Context
+    ) -> dict[str, Any]:
+        return await tools.tree_add(
+            ctx.headers, project_id=project_id, parent=parent, name=name, content=content
+        )
+
+    @mcp.tool(
+        name="edit",
+        description=(
+            "파일 원문을 `content` 전체로 바꾼다. 부분 수정이 아니므로 `read` 로 읽은 원문에서 "
+            "고친 전문을 보낸다. 작업 트리에 바로 저장되고 이 파일은 잠긴다. 다른 작업이 잠근 "
+            "파일이면 실패하므로 사람에게 알리고 기다린다."
+        ),
+    )
+    async def edit(project_id: str, path: str, content: str, ctx: Context) -> dict[str, Any]:
+        return await tools.tree_edit(ctx.headers, project_id=project_id, path=path, content=content)
+
+    @mcp.tool(
+        name="wireframe",
+        description=(
+            "와이어프레임 배치 파일(`<문서>.wireframe.json`)에서 화면 하나의 항목만 바꾼다. 다른 "
+            "화면의 항목과 모르는 키는 그대로 둔다. 파일이 없으면 만든다. `layout` 은 그 화면의 "
+            "루트 노드 전체, `system` 은 문서의 디자인 시스템(`tokens`·`components`) 전체다. "
+            "형식은 앱 AI 프롬프트의 \"와이어프레임 디자인 시스템\" 과 같다."
+        ),
+    )
+    async def wireframe(
+        project_id: str,
+        path: str,
+        screen_id: str,
+        ctx: Context,
+        layout: dict[str, Any] | None = None,
+        system: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return await tools.tree_wireframe(
+            ctx.headers,
+            project_id=project_id,
+            path=path,
+            screen_id=screen_id,
+            layout=layout,
+            system=system,
+        )
+
+    @mcp.tool(
+        name="mv",
+        description=(
+            "파일이나 폴더를 `target` 전체 경로로 옮긴다. 파일 ID 가 유지되어 이력이 이어진다. "
+            "폴더를 옮기면 안의 파일이 모두 잠긴다."
+        ),
+    )
+    async def mv(project_id: str, source: str, target: str, ctx: Context) -> list[dict[str, Any]]:
+        return await tools.tree_mv(ctx.headers, project_id=project_id, source=source, target=target)
+
+    @mcp.tool(
+        name="delete",
+        description=(
+            "파일이나 폴더를 지운다. 비어 있지 않은 폴더는 `recursive` 없이는 실패한다. 안의 "
+            "항목까지 지우려면 사람에게 확인받은 뒤 `recursive: true` 로 다시 부른다."
+        ),
+    )
+    async def delete(
+        project_id: str, path: str, ctx: Context, recursive: bool = False
+    ) -> dict[str, Any]:
+        return await tools.tree_delete(
+            ctx.headers, project_id=project_id, path=path, recursive=recursive
+        )
+
+    @mcp.tool(
+        name="commit",
+        description=(
+            "고른 파일의 commit 안 된 변경을 이력으로 남긴다. 메시지는 필수다. 옮기거나 지운 "
+            "파일은 옛 경로로도 고를 수 있다. 다른 작업이 잠근 파일은 넣을 수 없다."
+        ),
+    )
+    async def commit(
+        project_id: str, paths: list[str], message: str, ctx: Context
+    ) -> dict[str, Any]:
+        return await tools.tree_commit(
+            ctx.headers, project_id=project_id, paths=paths, message=message
+        )
+
+    @mcp.tool(
+        name="unlock",
+        description=(
+            "이 사용자의 MCP 작업이 잡은 파일 잠금을 푼다. 작업을 마치고 사람에게 결과를 "
+            "알리기 전에 반드시 부른다. 부르지 않으면 마지막 쓰기부터 10분 동안 사람이 그 "
+            "파일을 저장할 수 없다. `project_id` 를 비우면 모든 프로젝트의 잠금을 푼다."
+        ),
+    )
+    async def unlock(ctx: Context, project_id: str | None = None) -> dict[str, Any]:
+        return await tools.tree_unlock(ctx.headers, project_id=project_id)
 
     return mcp
 

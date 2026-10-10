@@ -64,11 +64,8 @@ class Project:
     slug: str
     name: str
     description: str | None
-    # 이 프로젝트의 새 문서가 기본으로 삼는 RSPDL 버전.
+    # 이 프로젝트가 기본으로 삼는 RSPDL 버전.
     default_rspdl_version: str
-    revision: int
-    source_hash: str
-    snapshot_version: int
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None = None
@@ -83,44 +80,6 @@ class ProjectMembership:
     project_id: UUID
     user_id: UUID
     role: ProjectRole
-
-
-@dataclass(frozen=True, slots=True)
-class Document:
-    """RSPDL 소스 문서 하나.
-
-    `text` 가 진실이다. 컴파일 결과는 여기 없다 — 필요할 때 컴파일러에게 물어서 얻는다.
-    """
-
-    id: UUID
-    project_id: UUID
-    path: str
-    title: str
-    text: str
-    # 이 텍스트가 어느 문법으로 쓰였는지. 텍스트만 보고는 복원할 수 없으므로
-    # 기록하지 않으면 나중에 채워 넣을 방법이 없다 (ADR-0002).
-    target_rspdl_version: str
-    created_at: datetime
-    updated_at: datetime
-    deleted_at: datetime | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class DocumentRevision:
-    """편집 이력 한 점. 전문을 보관한다.
-
-    diff 가 아니라 전문을 두는 이유: 문법이 바뀌면 diff 를 되감아 복원한 텍스트가 어느
-    버전의 문법인지 알 수 없게 된다. 저장 비용보다 해석 가능성이 중요하다.
-    """
-
-    id: UUID
-    document_id: UUID
-    revision_no: int
-    text: str
-    target_rspdl_version: str
-    author_id: UUID | None
-    summary: str | None
-    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)

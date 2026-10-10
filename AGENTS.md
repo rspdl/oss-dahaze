@@ -20,6 +20,7 @@
 
 - `import rspdl` → `apps/api/src/dahaze_api/infrastructure/rspdl/` 안에서만
 - `import openai` → `infrastructure/llm/` 안에서만
+- `import re2` → `infrastructure/text/` 안에서만
 - `domain/` 은 다른 계층도 프레임워크(fastapi·sqlalchemy·pydantic 등)도 import하지 않는다
 - `application/` 은 `infrastructure/`·`interface/` 를 import하지 않는다. port를 통해서만 흐른다
 
@@ -36,15 +37,17 @@
 
 ## MCP와 LLM 저작
 
-- **LLM이 만든 텍스트는 컴파일 결과와 함께가 아니면 사용자에게 도달하지 않는다.** 초안은
-  컴파일을 거치고, 진단이 남으면 진단과 함께 돌려준다 (ADR-0005).
-- **저작 엔드포인트는 문서를 저장하지 않는다.** 저장은 사람이 명시적으로 한다. LLM이 조용히
-  덮어쓰면 사용자가 자기 문서의 이력을 추적할 수 없게 된다.
-- 재시도는 유한하다. 진단이 끝내 남아도 실패로 만들지 않는다 — 사람이 판단할 재료를 뺏지 않는다.
+- **앱 AI와 MCP는 같은 도구 세트로 공유 작업 트리를 바로 바꾼다** (ADR-0005, ADR-0008).
+  이력은 파일을 골라 만드는 commit에만 기록된다. 도구 호출마다 전후 원문을 대화 기록에 남겨
+  사용자가 변경을 추적할 수 있게 한다.
+- 컴파일 진단은 저장을 막지 않는다. 대신 컴파일러가 준 그대로, 원문 위치와 함께 보여준다.
+- AI 쓰기는 파일 잠금을 얻고, 턴이 끝나면(사용자 응답 대기·강제 종료·오류) 모두 푼다.
+- `search`는 컴파일 IR의 심볼만 찾는다. 텍스트 일치는 `grep`이 맡는다. 둘을 섞지 않는다.
+- 한 턴의 도구 호출은 유한하다(100회). 닿으면 사용자에게 계속할지 묻는다.
 - **MCP 도구는 `application/` 의 유스케이스만 부른다.** 저장소나 컴파일러를 직접 부르면 REST와
   MCP의 접근 검사가 갈라진다.
-- LLM 프롬프트와 출력 EBNF는 각각 `infrastructure/llm/prompts/`,
-  `infrastructure/llm/grammars/`에 모은다. 둘 다 rspdl 버전과 함께 늙으므로, 버전을 올릴 때
+- LLM 프롬프트와 프롬프트에 싣는 RSPDL 문법 스냅샷은 각각 `infrastructure/llm/prompts/`,
+  `infrastructure/llm/grammars/`에 모은다. 둘 다 rspdl 문법에 맞춰 써 있으므로, 버전을 올릴 때
   함께 점검한다.
 
 ## 필수 워크플로우
@@ -53,7 +56,7 @@
 |---|---|
 | 아무 변경이나 시작 | `.agents/skills/develop-from-issue/SKILL.md` |
 | REST 엔드포인트 추가·변경 | `.agents/skills/generate-api/SKILL.md` |
-| 공용 컴포넌트·디자인 토큰 | `.agents/skills/manage-ui-package/SKILL.md` |
+| 공용 컴포넌트·디자인 토큰 (jwdesign) | `.agents/skills/manage-ui-package/SKILL.md` |
 | rspdl 버전 승격 | `.agents/skills/upgrade-rspdl/SKILL.md` |
 
 결정의 근거는 `docs/adr/` 에 있다. 아키텍처를 바꾸기 전에 해당 ADR을 먼저 읽고, 바꾼다면

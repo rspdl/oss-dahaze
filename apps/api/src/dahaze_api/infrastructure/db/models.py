@@ -116,19 +116,13 @@ class ProjectRow(TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(100), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
-    # 새 문서가 기본으로 삼을 RSPDL 버전.
+    # 이 프로젝트가 기본으로 삼는 RSPDL 버전.
     default_rspdl_version: Mapped[str] = mapped_column(String(50), nullable=False)
-    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    snapshot_version: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     members: Mapped[list[ProjectMemberRow]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
-    documents: Mapped[list[DocumentRow]] = relationship(back_populates="project")
 
 
 class ProjectMemberRow(TimestampMixin, Base):
@@ -151,62 +145,6 @@ class ProjectMemberRow(TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)
 
     project: Mapped[ProjectRow] = relationship(back_populates="members")
-
-
-class DocumentRow(TimestampMixin, Base):
-    __tablename__ = "documents"
-    __table_args__ = (
-        # 살아 있는 문서끼리만 경로가 겹치지 않으면 된다. 삭제된 문서의 경로는
-        # 재사용할 수 있어야 하므로 부분 유니크 인덱스를 쓴다.
-        Index(
-            "uq_document_project_path_alive",
-            "project_id",
-            "path",
-            unique=True,
-            postgresql_where="deleted_at IS NULL",
-            sqlite_where="deleted_at IS NULL",
-        ),
-    )
-
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    project_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    path: Mapped[str] = mapped_column(String(500), nullable=False)
-    title: Mapped[str] = mapped_column(String(200), nullable=False)
-    # 진실. 이 컬럼만 재생성할 수 없다.
-    text: Mapped[str] = mapped_column(Text, nullable=False)
-    target_rspdl_version: Mapped[str] = mapped_column(String(50), nullable=False)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    project: Mapped[ProjectRow] = relationship(back_populates="documents")
-    revisions: Mapped[list[DocumentRevisionRow]] = relationship(
-        back_populates="document", cascade="all, delete-orphan"
-    )
-
-
-class DocumentRevisionRow(TimestampMixin, Base):
-    """편집 이력. diff 가 아니라 전문을 보관한다 (domain/entities.py 참조)."""
-
-    __tablename__ = "document_revisions"
-    __table_args__ = (
-        UniqueConstraint("document_id", "revision_no", name="uq_revision_document_no"),
-    )
-
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    document_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
-    target_rspdl_version: Mapped[str] = mapped_column(String(50), nullable=False)
-    # 작성자가 지워져도 이력은 남는다.
-    author_id: Mapped[UUID | None] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="SET NULL")
-    )
-    summary: Mapped[str | None] = mapped_column(Text)
-
-    document: Mapped[DocumentRow] = relationship(back_populates="revisions")
 
 
 class CompilationRow(Base):
@@ -237,140 +175,217 @@ class CompilationRow(Base):
     hits: Mapped[int] = mapped_column(BigInteger, server_default="0", nullable=False)
 
 
-class PlanningStateRow(TimestampMixin, Base):
-    __tablename__ = "planning_states"
+class TreeFolderRow(Base):
+    """작업 트리의 폴더 (ADR-0008). commit 대상이 아니다."""
 
-    project_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
-    )
-    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    metadata_revision: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
-    messages: Mapped[list[object]] = mapped_column(JsonB, nullable=False, default=list)
-    decisions: Mapped[list[object]] = mapped_column(JsonB, nullable=False, default=list)
-    proposals: Mapped[list[object]] = mapped_column(JsonB, nullable=False, default=list)
-    metadata_: Mapped[dict[str, object]] = mapped_column(
-        "metadata", JsonB, nullable=False, default=dict
-    )
-
-
-class PlanningDraftRow(TimestampMixin, Base):
-    __tablename__ = "planning_drafts"
+    __tablename__ = "tree_folders"
+    __table_args__ = (UniqueConstraint("project_id", "path", name="uq_tree_folder_path"),)
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     project_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    base_project_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    base_source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    changes: Mapped[list[object]] = mapped_column(JsonB, nullable=False)
-    candidate_documents: Mapped[list[object]] = mapped_column(JsonB, nullable=False)
-    candidate_source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    summary: Mapped[str | None] = mapped_column(Text)
-    rspdl_version: Mapped[str] = mapped_column(String(50), nullable=False)
-    wire_schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    locale: Mapped[str] = mapped_column(String(20), nullable=False)
-    result: Mapped[dict[str, object] | None] = mapped_column(JsonB)
-    base_result: Mapped[dict[str, object] | None] = mapped_column(JsonB)
-    applied_revision: Mapped[int | None] = mapped_column(Integer)
+    # 전체 경로를 둔다. 폴더를 옮기면 접두사를 바꾸고, glob 도 경로 하나로 맞춘다.
+    path: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
-class PlanningAiJobRow(TimestampMixin, Base):
-    """HTTP 연결과 독립적으로 실행되는 프로젝트 AI 작업."""
+class TreeFileRow(TimestampMixin, Base):
+    """작업 트리의 파일. 작업 상태와 마지막 commit 상태를 함께 둔다."""
 
-    __tablename__ = "planning_ai_jobs"
+    __tablename__ = "tree_files"
     __table_args__ = (
-        UniqueConstraint("project_id", "actor_id", "request_id", name="uq_planning_ai_job_request"),
-        UniqueConstraint("retry_of_job_id", name="uq_planning_ai_job_retry"),
-        Index("ix_planning_ai_jobs_claim", "status", "lease_expires_at", "created_at"),
+        # 지워졌지만 commit 전인 파일의 경로는 새 파일이 다시 쓸 수 있어야 한다.
+        Index(
+            "uq_tree_file_path_alive",
+            "project_id",
+            "path",
+            unique=True,
+            postgresql_where="NOT deleted",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     project_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    actor_id: Mapped[UUID | None] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="SET NULL"), index=True
+    path: Mapped[str] = mapped_column(String(500), nullable=False)
+    # 진실. 오류 진단이 남은 원문도 그대로 저장한다.
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    deleted: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+    committed_path: Mapped[str | None] = mapped_column(String(500))
+    committed_text: Mapped[str | None] = mapped_column(Text)
+    updated_by: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+
+class FileLockRow(Base):
+    """AI 쓰기의 파일 잠금. 파일 하나에 보유자 하나."""
+
+    __tablename__ = "file_locks"
+
+    file_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("tree_files.id", ondelete="CASCADE"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    holder: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    actor_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("users.id", ondelete="SET NULL"))
+    last_write_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CommitRow(Base):
+    """이력 한 점. 리비전은 commit 에서만 생긴다 (ADR-0008)."""
+
+    __tablename__ = "commits"
+    __table_args__ = (UniqueConstraint("project_id", "seq", name="uq_commit_project_seq"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    author_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    changes: Mapped[list[CommitChangeRow]] = relationship(
+        back_populates="commit",
+        cascade="all, delete-orphan",
+        order_by="CommitChangeRow.position",
+        lazy="selectin",
+    )
+
+
+class CommitChangeRow(Base):
+    __tablename__ = "commit_changes"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    commit_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("commits.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    # 외래키를 걸지 않는다. 삭제를 commit 하면 파일 행은 사라지지만 이력은 남아야 한다.
+    file_id: Mapped[UUID] = mapped_column(Uuid, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    old_path: Mapped[str | None] = mapped_column(String(500))
+    new_path: Mapped[str | None] = mapped_column(String(500))
+    diff: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str | None] = mapped_column(Text)
+
+    commit: Mapped[CommitRow] = relationship(back_populates="changes")
+
+
+class AgentSessionRow(TimestampMixin, Base):
+    """AI 대화 세션. Claude Code 의 대화 하나에 해당한다."""
+
+    __tablename__ = "agent_sessions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_by: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+
+
+class AgentTurnRow(TimestampMixin, Base):
+    """사용자 메시지 하나에 대한 AI 작업. worker 가 lease 를 잡고 실행한다."""
+
+    __tablename__ = "agent_turns"
+    __table_args__ = (
+        UniqueConstraint("session_id", "request_id", name="uq_agent_turn_request"),
+        Index("ix_agent_turns_claim", "status", "lease_expires_at", "created_at"),
+        # 세션 하나에 진행 중인 턴은 하나뿐이다. 두 턴이 같은 대화 기록에 번갈아 쓰면
+        # 모델에게 가는 입력이 섞인다.
+        Index(
+            "uq_agent_turn_active",
+            "session_id",
+            unique=True,
+            postgresql_where="status IN ('queued', 'running', 'awaiting_approval')",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("agent_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     request_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
-    kind: Mapped[str] = mapped_column(String(20), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    request: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
-    context: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
-    frozen_planning_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    frozen_project_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    frozen_source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    source_draft_id: Mapped[UUID | None] = mapped_column(
-        Uuid, ForeignKey("planning_drafts.id", ondelete="SET NULL")
-    )
-    retry_of_job_id: Mapped[UUID | None] = mapped_column(
-        Uuid, ForeignKey("planning_ai_jobs.id", ondelete="SET NULL")
-    )
-    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
-    max_attempts: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=3, server_default="3"
-    )
-    run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    progress: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False, default=dict)
-    checkpoints: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False, default=dict)
-    result: Mapped[dict[str, object] | None] = mapped_column(JsonB)
-    error: Mapped[dict[str, object] | None] = mapped_column(JsonB)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    tool_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    stop_reason: Mapped[str | None] = mapped_column(String(20))
+    pending_approval: Mapped[dict[str, object] | None] = mapped_column(JsonB)
+    approval: Mapped[bool | None] = mapped_column()
     cancel_requested: Mapped[bool] = mapped_column(
         nullable=False, default=False, server_default="false"
     )
+    error: Mapped[str | None] = mapped_column(Text)
     lease_token: Mapped[UUID | None] = mapped_column(Uuid)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-class PlanningMetadataRevisionRow(Base):
-    __tablename__ = "planning_metadata_revisions"
-    __table_args__ = (
-        UniqueConstraint("project_id", "revision", name="uq_planning_metadata_revision"),
-    )
+class AgentItemRow(Base):
+    """대화 기록 한 줄. 턴은 이 기록만 읽고 이어서 실행할 수 있다."""
+
+    __tablename__ = "agent_items"
+    __table_args__ = (UniqueConstraint("session_id", "seq", name="uq_agent_item_seq"),)
+
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    project_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("agent_sessions.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    metadata_: Mapped[dict[str, object]] = mapped_column("metadata", JsonB, nullable=False)
-    author_id: Mapped[UUID | None] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    turn_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("agent_turns.id", ondelete="SET NULL")
     )
-    summary: Mapped[str | None] = mapped_column(Text)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
-class ProjectSnapshotRow(Base):
-    __tablename__ = "project_snapshots"
-    __table_args__ = (
-        UniqueConstraint("project_id", "snapshot_version", name="uq_snapshot_project_version"),
-    )
+class ProjectEventRow(Base):
+    """프로젝트 이벤트. SSE 가 `seq` 순서로 읽는다."""
 
-    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    __tablename__ = "project_events"
+    __table_args__ = (Index("ix_project_events_project_seq", "project_id", "seq"),)
+
+    seq: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     project_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
-    snapshot_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    project_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    planning_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    documents: Mapped[list[object]] = mapped_column(JsonB, nullable=False)
-    planning_state: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
-    rspdl_version: Mapped[str] = mapped_column(String(50), nullable=False)
-    wire_schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    locale: Mapped[str] = mapped_column(String(20), nullable=False)
-    result: Mapped[dict[str, object] | None] = mapped_column(JsonB)
-    change_kind: Mapped[str] = mapped_column(String(20), nullable=False)
-    summary: Mapped[str | None] = mapped_column(Text)
-    author_id: Mapped[UUID | None] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="SET NULL")
-    )
+    type: Mapped[str] = mapped_column(String(40), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JsonB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class UserAgentSettingsRow(Base):
+    __tablename__ = "user_agent_settings"
+
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    auto_approve_recursive_delete: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
     )

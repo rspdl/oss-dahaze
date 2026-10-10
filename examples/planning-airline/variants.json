@@ -1,19 +1,19 @@
 [
   {
-    "id": "bypass-required-contact",
-    "description": "모바일 승객 정보에서 연락처 단계를 건너뛰되 승객 이름은 획득한 경로를 추가한다.",
+    "id": "bypass-required-payment",
+    "description": "PC 통합 예약 화면에서 승객·연락처만 얻고 결제 없이 예약 완료 화면으로 가는 경로를 추가한다.",
     "replacements": [
       {
-        "before": "            - 버튼: { id: continue, 이름: \"연락처 입력\", 행동: 모바일 승객 저장 }\n            - 버튼: { id: cancel, 이름: \"예약 중단\", 행동: 모바일 예약 중단 }",
-        "after": "            - 버튼: { id: continue, 이름: \"연락처 입력\", 행동: 모바일 승객 저장 }\n            - 버튼: { id: skip_contact, 이름: \"연락처 건너뛰기\" }\n            - 버튼: { id: cancel, 이름: \"예약 중단\", 행동: 모바일 예약 중단 }"
+        "before": "            - 버튼: { id: pay, 이름: \"예약하고 결제\", 행동: PC 결제 요청 }\n            - 버튼: { id: cancel, 이름: \"예약 중단\", 행동: PC 예약 중단 }",
+        "after": "            - 버튼: { id: pay, 이름: \"예약하고 결제\", 행동: PC 결제 요청 }\n            - 버튼: { id: skip_payment, 이름: \"결제 없이 완료\" }\n            - 버튼: { id: cancel, 이름: \"예약 중단\", 행동: PC 예약 중단 }"
       },
       {
-        "before": "  - 출발: 모바일 승객 정보 화면.continue\n    결과: invalid\n    처리: { 종류: 메시지, id: invalid_passenger, 내용: \"승객 이름과 생년월일을 확인하세요.\" }",
-        "after": "  - 출발: 모바일 승객 정보 화면.continue\n    결과: invalid\n    처리: { 종류: 메시지, id: invalid_passenger, 내용: \"승객 이름과 생년월일을 확인하세요.\" }\n  - 출발: 모바일 승객 정보 화면.skip_contact\n    도착: 모바일 결제 화면"
+        "before": "  - 출발: PC 통합 예약 화면.cancel\n    결과: abandoned\n    도착: 항공편 검색 화면\n",
+        "after": "  - 출발: PC 통합 예약 화면.cancel\n    결과: abandoned\n    도착: 항공편 검색 화면\n  - 출발: PC 통합 예약 화면.skip_payment\n    도착: 예약 완료 화면\n"
       },
       {
-        "before": "      - 출발: 모바일 승객 정보 화면.continue\n        데이터:\n          - 모델: 승객\n            필드: 승객 이름",
-        "after": "      - 출발: 모바일 승객 정보 화면.continue\n        데이터:\n          - 모델: 승객\n            필드: 승객 이름\n      - 출발: 모바일 승객 정보 화면.skip_contact\n        데이터:\n          - 모델: 승객\n            필드: 승객 이름"
+        "before": "      - 출발: PC 통합 예약 화면.pay\n        데이터:\n          - 모델: 승객\n            필드: 승객 이름\n          - 모델: 예약\n            필드: 예약 연락처\n          - 모델: 결제\n            필드: 결제 금액\n",
+        "after": "      - 출발: PC 통합 예약 화면.pay\n        데이터:\n          - 모델: 승객\n            필드: 승객 이름\n          - 모델: 예약\n            필드: 예약 연락처\n          - 모델: 결제\n            필드: 결제 금액\n      - 출발: PC 통합 예약 화면.skip_payment\n        데이터:\n          - 모델: 승객\n            필드: 승객 이름\n          - 모델: 예약\n            필드: 예약 연락처\n"
       }
     ],
     "expected_diagnostics": [

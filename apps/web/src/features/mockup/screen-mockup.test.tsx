@@ -2,29 +2,22 @@ import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { ProjectCompileResponse } from '@dahaze/api-client'
+import type { CompileResult } from '@/features/mockup/screen-layouts'
 import screenStructure from './__screen-structure-fixture.json'
 import { collectScreenMockups, findScreenMockup } from './screen-layouts'
 import { dispatchPreviewAction, outcomeForPreviewAction, ScreenMockupFrame } from './screen-mockup'
-import type { MockupViewport } from './screen-mockup'
 
-function response(result: unknown): ProjectCompileResponse {
-  return {
-    rspdl_version: '0.1.2',
-    wire_schema_version: 1,
-    locale: 'ko-KR',
-    result: result as ProjectCompileResponse['result'],
-    documents: [],
-  }
+function response(result: unknown): CompileResult {
+  return { result }
 }
 
 const collected = collectScreenMockups(response(screenStructure))
 
-function render(screenId: string, viewport: MockupViewport = 'desktop') {
+function render(screenId: string) {
   const screen = findScreenMockup(collected, screenId)
   if (screen === null) throw new Error(`화면을 찾지 못했다: ${screenId}`)
   return renderToStaticMarkup(
-    <ScreenMockupFrame screen={screen} viewport={viewport} />,
+    <ScreenMockupFrame screen={screen} />,
   )
 }
 
@@ -78,15 +71,8 @@ describe('ScreenMockupFrame', () => {
     expect(markup).not.toContain('<button')
   })
 
-  it('뷰포트가 폭을 정하되 배치는 같다', () => {
-    const desktop = render('reservation.facility_list', 'desktop')
-    const mobile = render('reservation.facility_list', 'mobile')
-
-    expect(desktop).toContain('data-mockup-viewport="true" class="relative flex shrink-0 flex-col overflow-hidden" style="width:1024px;height:768px"')
-    expect(mobile).toContain('data-mockup-viewport="true" class="relative flex shrink-0 flex-col overflow-hidden" style="width:390px;height:844px"')
-    // 같은 레이아웃이다. 폭만 다르고 요소가 빠지거나 더해지지 않는다.
-    const strip = (markup: string) => markup.replace(/width:\d+px/g, '').replace(/height:\d+px/g, '')
-    expect(strip(desktop)).toBe(strip(mobile))
+  it('기본으로 PC 화면 크기로 그린다', () => {
+    expect(render('reservation.facility_list')).toMatch(/data-mockup-viewport="true"[^>]*style="width:1024px;height:768px;/)
   })
 })
 
@@ -155,14 +141,14 @@ describe('프로토타입 체험', () => {
     expect(onAction).toHaveBeenCalledWith({ screenKey: 'input.rspdl:payment', elementId: 'pay', outcome: paid })
   })
 
-  it('미리보기 chrome이 모바일 화면 해상도를 줄이지 않는다', () => {
+  it('미리보기 chrome이 화면 해상도를 줄이지 않는다', () => {
     const screen = findScreenMockup(collected, 'reservation.facility_list')!
     const outcomes = { open: [{ id: 'cancelled', label: '취소' }, { id: 'paid', label: '결제 완료 결과의 매우 긴 표시 이름' }] }
-    const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} viewport="mobile" mode="experience" outcomesByElementId={outcomes} />)
+    const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} mode="experience" outcomesByElementId={outcomes} />)
     const frame = markup.match(/^<figure[^>]+>/)?.[0] ?? ''
-    expect(frame).toContain('style="width:392px"')
+    expect(frame).toContain('style="width:1026px"')
     expect(frame).not.toContain('height:')
-    expect(markup).toContain('data-mockup-viewport="true" class="relative flex shrink-0 flex-col overflow-hidden" style="width:390px;height:844px"')
+    expect(markup).toMatch(/data-mockup-viewport="true"[^>]*style="width:1024px;height:768px;/)
     expect(markup).toContain('min-w-0 max-w-full flex-[1_1_12rem]')
   })
 
@@ -190,8 +176,8 @@ describe('프로토타입 체험', () => {
     const screen = findScreenMockup(collected, 'reservation.facility_list')!
     const normal = renderToStaticMarkup(<ScreenMockupFrame screen={screen} sampleVariant="normal" />)
     const empty = renderToStaticMarkup(<ScreenMockupFrame screen={screen} sampleVariant="empty" />)
-    expect(normal).toContain('예시 데이터')
-    expect(normal).toContain('예시 1')
+    expect(normal).toContain('형식 예시')
+    expect(normal).toContain('이름 1')
     expect(empty).toContain('샘플이 비어 있습니다')
   })
 
@@ -208,6 +194,6 @@ describe('프로토타입 체험', () => {
     const screen = findScreenMockup(collected, 'reservation.facility_list')!
     const markup = renderToStaticMarkup(<ScreenMockupFrame screen={screen} dimensions={{ width: 720, height: 900 }} />)
     expect(markup).toContain('style="width:722px"')
-    expect(markup).toContain('data-mockup-viewport="true" class="relative flex shrink-0 flex-col overflow-hidden" style="width:720px;height:900px"')
+    expect(markup).toMatch(/data-mockup-viewport="true"[^>]*style="width:720px;height:900px;/)
   })
 })

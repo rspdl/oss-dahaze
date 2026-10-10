@@ -1,4 +1,12 @@
-import type { CompilerEditHandler } from '@dahaze/api-client'
+/**
+ * 컴파일러가 선언한 결과 처리(상태·메시지·팝업·로딩). 체험 모드에서 버튼을 눌렀을 때 미리 보여준다.
+ * 지금 작업공간은 이 연결을 만들지 않으므로 화면 이동 결과만 생긴다.
+ */
+export interface DeclaredHandler {
+  kind: 'state' | 'message' | 'popup' | 'loading'
+  id: string
+  content?: string | null
+}
 
 export type PrototypeMode = 'edit' | 'experience'
 export type SampleVariant = 'normal' | 'empty' | 'long' | 'many'
@@ -38,16 +46,6 @@ export interface ElementSelection extends DesignBinding {
   fieldIds?: string[]
 }
 
-export interface ElementDesign {
-  width?: number
-  height?: number
-}
-
-export interface DesignChange {
-  binding: DesignBinding
-  patch: ElementDesign
-}
-
 export function designBindingKey(binding: DesignBinding): string {
   if (binding.elementId !== undefined) return `${binding.screenKey}:stable:${binding.elementId}`
   return `${binding.screenKey}:${binding.sourceHash ?? 'unversioned'}:${binding.elementPath ?? 'unresolved'}`
@@ -57,7 +55,7 @@ export interface ActionOutcome {
   id: string
   label: string
   targetScreenKey?: string | null
-  handler?: CompilerEditHandler | null
+  handler?: DeclaredHandler | null
 }
 
 export interface PrototypeAction {
@@ -71,7 +69,7 @@ interface PathProposal {
   sourceElementId: string
   outcomeId: string | null
   targetScreenId: string | null
-  handler: CompilerEditHandler | null
+  handler: DeclaredHandler | null
   label: string | null
 }
 

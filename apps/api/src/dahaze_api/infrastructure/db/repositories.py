@@ -8,13 +8,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dahaze_api.domain.entities import (
-    Document,
-    DocumentRevision,
     ExternalIdentity,
     PasswordCredential,
     Project,
@@ -22,10 +20,7 @@ from dahaze_api.domain.entities import (
     ProjectRole,
     User,
 )
-from dahaze_api.domain.rspdl import RspdlSource, project_source_hash
 from dahaze_api.infrastructure.db.models import (
-    DocumentRevisionRow,
-    DocumentRow,
     PasswordCredentialRow,
     ProjectMemberRow,
     ProjectRow,
@@ -55,9 +50,6 @@ def _to_project(row: ProjectRow) -> Project:
         name=row.name,
         description=row.description,
         default_rspdl_version=row.default_rspdl_version,
-        revision=row.revision,
-        source_hash=row.source_hash,
-        snapshot_version=row.snapshot_version,
         created_at=row.created_at,
         updated_at=row.updated_at,
         archived_at=row.archived_at,
@@ -69,33 +61,6 @@ def _to_membership(row: ProjectMemberRow) -> ProjectMembership:
         project_id=row.project_id,
         user_id=row.user_id,
         role=ProjectRole(row.role),
-    )
-
-
-def _to_document(row: DocumentRow) -> Document:
-    return Document(
-        id=row.id,
-        project_id=row.project_id,
-        path=row.path,
-        title=row.title,
-        text=row.text,
-        target_rspdl_version=row.target_rspdl_version,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-        deleted_at=row.deleted_at,
-    )
-
-
-def _to_revision(row: DocumentRevisionRow) -> DocumentRevision:
-    return DocumentRevision(
-        id=row.id,
-        document_id=row.document_id,
-        revision_no=row.revision_no,
-        text=row.text,
-        target_rspdl_version=row.target_rspdl_version,
-        author_id=row.author_id,
-        summary=row.summary,
-        created_at=row.created_at,
     )
 
 
@@ -192,9 +157,6 @@ class SqlProjectRepository:
             name=name,
             description=description,
             default_rspdl_version=default_rspdl_version,
-            revision=0,
-            source_hash=project_source_hash([]),
-            snapshot_version=0,
         )
         # 소유자도 멤버로 넣는다. 접근 검사 경로를 하나로 유지하기 위해서다.
         project.members.append(
@@ -259,177 +221,3 @@ class SqlProjectRepository:
         # MissingGreenlet 으로 터진다 — `update_text` 가 refresh 하는 이유와 같다.
         await self._session.refresh(row)
         return _to_project(row)
-
-
-class SqlDocumentRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
-    async def create(
-        self,
-        *,
-        project_id: UUID,
-        path: str,
-        title: str,
-        text: str,
-        target_rspdl_version: str,
-        author_id: UUID | None,
-    ) -> Document:
-        await self._lock_project(project_id)
-        document = DocumentRow(
-            id=uuid4(),
-            project_id=project_id,
-            path=path,
-            title=title,
-            text=text,
-            target_rspdl_version=target_rspdl_version,
-        )
-        # 최초 본문도 리비전 1로 남긴다. 이력의 시작점이 비어 있으면
-        # "언제부터 이 텍스트였는지" 를 답할 수 없다.
-        document.revisions.append(
-            DocumentRevisionRow(
-                id=uuid4(),
-                revision_no=1,
-                text=text,
-                target_rspdl_version=target_rspdl_version,
-                author_id=author_id,
-                summary="문서 생성",
-            )
-        )
-        self._session.add(document)
-        await self._session.flush()
-        await self._bump_locked_project(project_id)
-        return _to_document(document)
-
-    async def get(self, document_id: UUID) -> Document | None:
-        row = await self._session.get(DocumentRow, document_id)
-        if row is None or row.deleted_at is not None:
-            return None
-        return _to_document(row)
-
-    async def list_for_project(self, project_id: UUID) -> list[Document]:
-        stmt = (
-            select(DocumentRow)
-            .where(
-                DocumentRow.project_id == project_id,
-                DocumentRow.deleted_at.is_(None),
-            )
-            .order_by(DocumentRow.path)
-        )
-        rows = (await self._session.execute(stmt)).scalars().all()
-        return [_to_document(r) for r in rows]
-
-    async def update_text(
-        self,
-        *,
-        document_id: UUID,
-        text: str,
-        author_id: UUID | None,
-        summary: str | None,
-    ) -> Document | None:
-        probe = await self._session.get(DocumentRow, document_id)
-        if probe is None:
-            return None
-        await self._lock_project(probe.project_id)
-        row = (
-            await self._session.execute(
-                select(DocumentRow)
-                .where(DocumentRow.id == document_id)
-                .with_for_update()
-                .execution_options(populate_existing=True)
-            )
-        ).scalar_one_or_none()
-        if row is None or row.deleted_at is not None:
-            return None
-
-        # 내용이 같으면 리비전을 만들지 않는다. 에디터가 자동 저장을 자주 보내므로,
-        # 이걸 거르지 않으면 이력이 의미 없는 항목으로 가득 찬다.
-        if row.text == text:
-            return _to_document(row)
-
-        next_no = await self._next_revision_no(document_id)
-        row.text = text
-        self._session.add(
-            DocumentRevisionRow(
-                id=uuid4(),
-                document_id=document_id,
-                revision_no=next_no,
-                text=text,
-                target_rspdl_version=row.target_rspdl_version,
-                author_id=author_id,
-                summary=summary,
-            )
-        )
-        await self._session.flush()
-        await self._bump_locked_project(row.project_id)
-        await self._session.refresh(row)
-        return _to_document(row)
-
-    async def soft_delete(self, document_id: UUID) -> bool:
-        # 벌크 UPDATE 를 쓰지 않는다. 같은 세션에 이미 로드된 객체가 있으면 in-memory
-        # 상태가 어긋나고, 뒤이은 속성 접근이 동기 lazy IO 를 일으켜 async 컨텍스트에서
-        # MissingGreenlet 으로 터진다. ORM 객체를 직접 고치면 identity map 이 일관된다.
-        probe = await self._session.get(DocumentRow, document_id)
-        if probe is None:
-            return False
-        await self._lock_project(probe.project_id)
-        row = (
-            await self._session.execute(
-                select(DocumentRow)
-                .where(DocumentRow.id == document_id)
-                .with_for_update()
-                .execution_options(populate_existing=True)
-            )
-        ).scalar_one_or_none()
-        if row is None or row.deleted_at is not None:
-            return False
-        row.deleted_at = datetime.now(UTC)
-        await self._session.flush()
-        await self._bump_locked_project(row.project_id)
-        return True
-
-    async def list_revisions(self, document_id: UUID) -> list[DocumentRevision]:
-        stmt = (
-            select(DocumentRevisionRow)
-            .where(DocumentRevisionRow.document_id == document_id)
-            .order_by(DocumentRevisionRow.revision_no.desc())
-        )
-        rows = (await self._session.execute(stmt)).scalars().all()
-        return [_to_revision(r) for r in rows]
-
-    async def _next_revision_no(self, document_id: UUID) -> int:
-        stmt = select(func.max(DocumentRevisionRow.revision_no)).where(
-            DocumentRevisionRow.document_id == document_id
-        )
-        current = (await self._session.execute(stmt)).scalar_one_or_none()
-        return (current or 0) + 1
-
-    async def _lock_project(self, project_id: UUID) -> ProjectRow:
-        return (
-            await self._session.execute(
-                select(ProjectRow)
-                .where(ProjectRow.id == project_id)
-                .with_for_update()
-                .execution_options(populate_existing=True)
-            )
-        ).scalar_one()
-
-    async def _bump_locked_project(self, project_id: UUID) -> None:
-        project = await self._session.get(ProjectRow, project_id)
-        assert project is not None
-        rows = (
-            (
-                await self._session.execute(
-                    select(DocumentRow)
-                    .where(DocumentRow.project_id == project_id, DocumentRow.deleted_at.is_(None))
-                    .order_by(DocumentRow.path)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        project.revision += 1
-        project.source_hash = project_source_hash(
-            [RspdlSource(path=row.path, text=row.text) for row in rows]
-        )
-        await self._session.flush()

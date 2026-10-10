@@ -40,12 +40,24 @@ export function AppShell({
    * 켜지 않는다.
    */
   lockToViewport = false,
+  /**
+   * 본문 여백을 없앨지 여부. 여러 열이 테두리로 나뉘어 화면 가장자리까지 닿는 작업공간처럼,
+   * 여백 대신 열 경계가 구획을 나누는 화면만 켠다. `fullBleed`·`lockToViewport` 와 함께 쓴다.
+   */
+  flush = false,
+  /**
+   * 왼쪽 기둥의 프로젝트 전환기 아래에 둘 내용. 프로젝트 안의 작업공간이 문서 파일 트리를 넘긴다.
+   * 주지 않으면 기둥이 안내 문구만 보여준다.
+   */
+  sidebar,
 }: {
   children: ReactNode
   breadcrumb?: ReactNode
   actions?: ReactNode
   fullBleed?: boolean
   lockToViewport?: boolean
+  flush?: boolean
+  sidebar?: ReactNode
 }) {
   const setMobileOpen = useSidebarStore((state) => state.setMobileOpen)
 
@@ -56,7 +68,7 @@ export function AppShell({
         lockToViewport && 'h-dvh overflow-hidden',
       )}
     >
-      <AppSidebar />
+      <AppSidebar content={sidebar} />
 
       {/* `min-w-0` 이 없으면 편집기처럼 넓은 자식이 그리드 칸을 밀어내 가로 스크롤이 생긴다. */}
       <div
@@ -94,9 +106,7 @@ export function AppShell({
               </nav>
             ) : null}
 
-            {actions ? (
-              <div className="ml-auto flex items-center gap-2">{actions}</div>
-            ) : null}
+            {actions ? <div className="ml-auto flex items-center gap-2">{actions}</div> : null}
           </div>
         </header>
 
@@ -106,13 +116,15 @@ export function AppShell({
         */}
         <main
           className={cn(
-            'flex-1 px-4 md:px-8',
+            'flex-1',
+            !flush && 'px-4 md:px-8',
             fullBleed ? 'flex min-h-0 flex-col' : 'w-full max-w-5xl',
             /*
               가둔 화면에서는 위아래 여백을 줄인다. 여백은 남는 공간에서 덜어내는 것인데,
               높이가 고정되면 남는 공간이 없어 그만큼 편집기와 대화창이 좁아진다.
             */
-            lockToViewport ? 'min-h-0 overflow-hidden py-4 md:py-5' : 'py-7 md:py-9',
+            lockToViewport ? 'min-h-0 overflow-hidden' : 'py-7 md:py-9',
+            lockToViewport && !flush && 'py-4 md:py-5',
           )}
         >
           {children}

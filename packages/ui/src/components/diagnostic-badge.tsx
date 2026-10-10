@@ -1,5 +1,5 @@
 import * as React from "react"
-import { InfoIcon, OctagonXIcon, TriangleAlertIcon } from "lucide-react"
+import { ErrorIcon, InfoIcon, WarningIcon } from "./icons"
 
 import { cn } from "../lib/cn"
 
@@ -22,22 +22,22 @@ export type DiagnosticSeverity = "error" | "warning" | "info"
 const SEVERITY = {
   error: {
     label: "오류",
-    Icon: OctagonXIcon,
-    // 글자는 `text-text` 로 둔다. 진단 색을 subtle 배경 위에 글자로 쓰면 특히 warning 에서
-    // 대비가 떨어져 읽기 어려워진다. 색은 아이콘과 테두리가 나른다.
-    tone: "border-diagnostic-error bg-diagnostic-error-subtle",
+    Icon: ErrorIcon,
+    // jwdesign 의 진단 글자색은 자기 subtle 배경 위에서 라이트·다크 모두 4.5:1 이상이라
+    // 라벨까지 진단 색으로 칠해도 읽힌다. 그래도 모양(아이콘)과 글자가 먼저다.
+    tone: "bg-diagnostic-error-subtle text-diagnostic-error",
     iconTone: "text-diagnostic-error",
   },
   warning: {
     label: "경고",
-    Icon: TriangleAlertIcon,
-    tone: "border-diagnostic-warning bg-diagnostic-warning-subtle",
+    Icon: WarningIcon,
+    tone: "bg-diagnostic-warning-subtle text-diagnostic-warning",
     iconTone: "text-diagnostic-warning",
   },
   info: {
     label: "정보",
     Icon: InfoIcon,
-    tone: "border-diagnostic-info bg-diagnostic-info-subtle",
+    tone: "bg-diagnostic-info-subtle text-diagnostic-info",
     iconTone: "text-diagnostic-info",
   },
 } as const satisfies Record<
@@ -68,7 +68,7 @@ function DiagnosticBadge({
       data-slot="diagnostic-badge"
       data-severity={severity}
       className={cn(
-        "inline-flex w-fit shrink-0 items-center gap-1.5 rounded-control border px-2 py-0.5 text-xs font-medium whitespace-nowrap text-text",
+        "inline-flex h-6 w-fit shrink-0 items-center gap-1 rounded-full px-2 text-xs font-semibold whitespace-nowrap",
         tone,
         className
       )}

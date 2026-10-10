@@ -5,36 +5,39 @@ import { Slot } from "radix-ui"
 import { cn } from "../lib/cn"
 
 /*
- * 눌린 순간 버튼이 1px 내려간다. 화면에는 촉각이 없으므로, 눌렸다는 사실을 눈으로라도
- * 돌려주지 않으면 사용자는 반응이 올 때까지 같은 버튼을 여러 번 누른다. 움직이는 값은
- * `transform` 이라 주변 요소를 밀지 않는다. `link` 는 글자라서 예외로 둔다 — 문장 속
- * 한 단어만 아래로 내려가면 오작동처럼 보인다.
+ * jwdesign Button. 눌린 순간 버튼이 살짝 줄어든다(scale 0.98). 화면에는 촉각이 없으므로,
+ * 눌렸다는 사실을 눈으로라도 돌려주지 않으면 사용자는 반응이 올 때까지 같은 버튼을 여러 번
+ * 누른다. 움직이는 값은 `transform` 이라 주변 요소를 밀지 않는다. `link` 는 글자라서 예외로
+ * 둔다 — 문장 속 한 단어만 줄어들면 오작동처럼 보인다.
+ *
+ * 채움 강조(`default`)는 한 화면에 하나. 나머지 행동은 secondary · weak · outline · ghost.
  */
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-control text-sm font-medium whitespace-nowrap transition-all duration-200 ease-out-expo active:translate-y-px outline-none focus-visible:border-accent focus-visible:ring-[3px] focus-visible:ring-accent/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-diagnostic-error aria-invalid:ring-diagnostic-error/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-control border border-transparent text-sm font-semibold whitespace-nowrap transition-[background-color,border-color,color,transform] duration-150 ease-standard active:scale-[0.98] outline-none focus-visible:focus-ring disabled:pointer-events-none disabled:opacity-40 aria-invalid:border-diagnostic-error [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-accent text-on-solid hover:bg-accent/90",
-        destructive:
-          "bg-diagnostic-error text-on-solid hover:bg-diagnostic-error/90 focus-visible:ring-diagnostic-error/20",
+        default: "bg-accent text-accent-fg hover:bg-accent-hover active:bg-accent-pressed",
+        destructive: "bg-danger text-on-danger hover:bg-danger-hover",
         outline:
-          "border bg-surface shadow-xs hover:bg-surface-raised hover:text-text",
+          "border-border-strong bg-surface text-text hover:bg-canvas-subtle",
         secondary:
-          "bg-surface-raised text-text hover:bg-surface-raised/80",
+          "bg-surface-raised text-text hover:bg-surface-raised-hover",
+        weak: "bg-accent-subtle text-accent-text hover:bg-accent-subtle-hover",
         ghost:
-          "hover:bg-surface-raised hover:text-text",
-        link: "text-accent underline-offset-4 hover:underline active:translate-y-0",
+          "text-text-muted hover:bg-state-hover hover:text-text active:bg-state-pressed",
+        link: "text-accent-text underline-offset-4 hover:underline active:scale-100",
       },
       size: {
-        default: "h-9 px-4 py-2 has-[>svg]:px-3",
-        xs: "h-6 gap-1 rounded-control px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-8 gap-1.5 rounded-control px-3 has-[>svg]:px-2.5",
-        lg: "h-10 rounded-control px-6 has-[>svg]:px-4",
-        icon: "size-9",
-        "icon-xs": "size-6 rounded-control [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-8",
-        "icon-lg": "size-10",
+        // jwdesign 컨트롤 높이: xs 28 · sm 32 · md 40 · lg 48
+        default: "h-10 px-4 text-[15px] has-[>svg]:px-3.5",
+        xs: "h-7 gap-1 rounded-sm px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+        sm: "h-8 gap-1 rounded-sm px-3 text-[13px] has-[>svg]:px-2.5",
+        lg: "h-12 rounded-lg px-5 text-base has-[>svg]:px-4",
+        icon: "size-10",
+        "icon-xs": "size-7 rounded-sm [&_svg:not([class*='size-'])]:size-3.5",
+        "icon-sm": "size-8 rounded-sm",
+        "icon-lg": "size-12 rounded-lg [&_svg:not([class*='size-'])]:size-5",
       },
     },
     defaultVariants: {
