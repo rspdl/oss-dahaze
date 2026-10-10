@@ -17,7 +17,6 @@ function nodes(): FlowNodes {
         mockup: null,
         position: { x: index * 100, y: 0 },
       },
-      viewport: 'desktop',
       selected: false,
       related: true,
       zoom: 1,

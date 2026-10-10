@@ -185,19 +185,6 @@
             "description": "화면 이름",
             "title": "Screen Name"
           },
-          "ui_theme": {
-            "anyOf": [
-              {
-                "maxLength": 40,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "지금 목업의 UI 스타일",
-            "title": "Ui Theme"
-          },
           "view": {
             "description": "보고 있던 뷰",
             "enum": [

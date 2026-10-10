@@ -2,9 +2,7 @@ import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import { composeCode } from './compose-code'
-import { reactCode } from './react-code'
-import { canMove, changeDirection, createDesignNode, createGroup, createSection, idFactory, type LayoutNode, defaultLayout, deleteNode, findNode, insertNode, moveNode, parseLayouts, resolveLayout, shiftNode, unwrapGroup, updateNode, wrapNode, type GroupNode } from './layout-tree'
+import { canMove, changeDirection, createDesignNode, createGroup, createSection, idFactory, type LayoutNode, defaultLayout, deleteNode, findNode, insertNode, moveNode, parseLayouts, patchNode, resolveLayout, shiftNode, unwrapGroup, updateNode, wrapNode, type GroupNode } from './layout-tree'
 import type { ScreenMockup } from './screen-layouts'
 import { ScreenMockupFrame } from './screen-mockup'
 
@@ -64,7 +62,7 @@ describe('배치 트리', () => {
     const parsed = parseLayouts({ unknown: { type: 'widget', id: 'x' }, loose: { type: 'group', id: 'root', style: { width: 'huge' } }, ok: defaultLayout(screen) })
     expect(parsed.ok).toEqual(defaultLayout(screen))
     expect(parsed.unknown).toBeUndefined()
-    expect(parsed.loose).toEqual({ type: 'group', id: 'root', style: { width: 'fill', height: 'hug', fill: 'none', border: false, radius: 0 }, layout: { direction: 'column', gap: 0, paddingX: 0, paddingY: 0, main: 'start', cross: 'start' }, children: [] })
+    expect(parsed.loose).toEqual({ type: 'group', id: 'root', style: { width: 'fill', height: 'hug' }, layout: { direction: 'column', gap: 0, paddingX: 0, paddingY: 0, main: 'start', cross: 'start' }, children: [] })
   })
 
   it('히어로 섹션은 디자인 전용 노드로만 만든다', () => {
@@ -78,21 +76,14 @@ describe('배치 트리', () => {
     const collect = (node: LayoutNode) => { if (node.type !== 'element') ids.add(node.id); if (node.type === 'group') node.children.forEach(collect) }
     collect(section)
     expect(ids.size).toBe(kinds.length)
-    expect(reactCode(screen, insertNode(defaultLayout(screen), section, 'group:root', 0))).toContain("import { Button } from '@/components/ui/button'")
   })
 
-  it('배치를 목업과 Compose 코드에 같은 규칙으로 반영한다', () => {
+  it('배치를 목업에 Column·Row 규칙으로 반영한다', () => {
     const root = updateNode(defaultLayout(screen), 'element:id:content', { layout: { direction: 'row', main: 'space-between', cross: 'center' } })
     const html = renderToStaticMarkup(<ScreenMockupFrame screen={screen} layout={root} />)
     expect(html).toContain('data-layout="row"')
     expect(html).toContain('justify-content:space-between')
     expect(html).toContain('결제하기')
-    const code = composeCode(screen, root)
-    expect(code).toContain('fun CheckoutScreen()')
-    expect(code).toContain('modifier = Modifier.fillMaxSize(),')
-    expect(code).toContain('horizontalArrangement = Arrangement.SpaceBetween')
-    expect(code).toContain('Button(onClick = { /* payment */ }')
-    expect(code).toContain('Text("주문 확인", style = MaterialTheme.typography.titleMedium)')
   })
 })
 
@@ -136,20 +127,32 @@ describe('프레임과 디자인 전용 노드', () => {
     expect(findNode(ungrouped, 'element:id:pay')).not.toBeNull()
   })
 
-  it('회색만 저장하고 예전 강조색은 회색으로 읽는다', () => {
-    const root = updateNode(withText(), 'design:d1', { style: { fill: 'strong' } })
+  it('겉모양은 css·축 값으로 저장하고, 예전 배경·테두리·모서리는 css 로 옮겨 읽는다', () => {
+    const root = patchNode(withText(), 'design:d1', { variant: 'title', css: { background: '$muted', letterSpacing: '0.1em' } })
     expect(parseLayouts({ s: root }).s).toEqual(root)
-    const legacy = JSON.parse(JSON.stringify(root).replace('"fill":"strong"', '"fill":"accent"'))
-    expect(findNode(parseLayouts({ s: legacy }).s!, 'design:d1')?.style.fill).toBe('gray')
+    const legacy = { type: 'design', id: 'd1', design: 'text', text: '안내', textStyle: 'display', tone: 'muted', style: { width: 'hug', height: 'hug', fill: 'accent', border: true, radius: 8 } }
+    expect(parseLayouts({ s: { type: 'group', id: 'root', children: [legacy] } }).s).toMatchObject({ children: [{
+      variant: 'display', tone: 'muted', style: { width: 'hug', height: 'hug' },
+      css: { background: '$border', border: '1px solid $border', borderRadius: 8 },
+    }] })
+    const element = { type: 'element', ref: 'id:pay', kind: 'button', appearance: 'link', style: { fill: 'raised' }, css: { background: 'red' } }
+    expect(parseLayouts({ s: { type: 'group', id: 'root', children: [element] } }).s).toMatchObject({ children: [{ variant: 'link', css: { background: 'red' } }] })
   })
 
-  it('디자인 노드를 목업과 Compose 코드에 그린다', () => {
+  it('비운 겉모양은 키째 지워 컴포넌트 기본값으로 돌아간다', () => {
+    const styled = patchNode(withText(), 'design:d1', { variant: 'title', css: { color: 'red' }, text: '바뀐 문구' })
+    expect(findNode(styled, 'design:d1')).toMatchObject({ variant: 'title', css: { color: 'red' }, text: '바뀐 문구' })
+    const cleared = patchNode(styled, 'design:d1', { variant: null, css: {} })
+    expect(findNode(cleared, 'design:d1')).not.toHaveProperty('variant')
+    expect(findNode(cleared, 'design:d1')).not.toHaveProperty('css')
+    expect(findNode(patchNode(cleared, 'element:id:pay', { text: 'x' }), 'element:id:pay')).not.toHaveProperty('text')
+  })
+
+  it('디자인 노드를 목업에 그린다', () => {
     const root = insertNode(insertNode(withText(), createDesignNode('spacer', 'd3'), 'element:id:content', 1), createDesignNode('rectangle', 'd4'), 'element:id:content', 2)
     const html = renderToStaticMarkup(<ScreenMockupFrame screen={screen} layout={root} />)
     expect(html).toContain('안내 문구')
-    const code = composeCode(screen, root)
-    expect(code).toContain('Text("안내 문구", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) // 디자인 전용')
-    expect(code).toContain('Spacer(modifier = Modifier.width(16.dp).height(16.dp)) // 디자인 전용')
-    expect(code).toContain('Box(modifier = Modifier.fillMaxWidth().height(120.dp).background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp))) // 디자인 전용')
+    // 사각형은 디자인 시스템의 `rectangle` 컴포넌트다. 색은 토큰으로 칠한다.
+    expect(html).toContain('background:var(--wf-border)')
   })
 })

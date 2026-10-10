@@ -241,7 +241,7 @@ class TreeService:
         path: str,
         screen_id: str,
         layout: dict[str, object] | None = None,
-        theme: str | None = None,
+        system: dict[str, object] | None = None,
         holder: str | None = None,
     ) -> tuple[str | None, TreeFile]:
         """배치 파일에서 화면 하나의 항목만 바꾼다. 파일이 없으면 만든다.
@@ -250,13 +250,13 @@ class TreeService:
         """
         if not path.endswith(WIREFRAME_SUFFIX) or not is_file_path(path):
             raise Conflict(f"배치 파일 경로가 아니다: {path!r} (.wireframe.json 으로 끝나야 한다)")
-        if layout is None and theme is None:
-            raise Conflict("layout 이나 theme 중 하나는 있어야 한다")
+        if layout is None and system is None:
+            raise Conflict("layout 이나 system 중 하나는 있어야 한다")
         snap = await self._begin_write(actor_id, project_id)
         existing = snap.live.get(path)
         before = None if existing is None else existing.text
         try:
-            content = merge_wireframe_screen(before or "", screen_id, layout=layout, theme=theme)
+            content = merge_wireframe_screen(before or "", screen_id, layout=layout, system=system)
         except ValueError as exc:
             raise Conflict(
                 f"{path} 를 읽지 못했다: {exc}. read 로 확인하고 edit 로 고친다"

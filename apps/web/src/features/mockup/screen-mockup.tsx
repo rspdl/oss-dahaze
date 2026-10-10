@@ -17,21 +17,11 @@ import type {
   PrototypeMode,
   SampleVariant,
 } from './prototype-contract'
-import { declaredElements, isContainer, nodeKey, resolveLayout, type ContainerLayout, type DeclaredElement, type DesignNode, type ElementAppearance, type LayoutNode, type ListAppearance } from './layout-tree'
+import { declaredElements, DESIGN_COMPONENT, effectiveLook, isContainer, nodeKey, resolveLayout, type ContainerLayout, type DeclaredElement, type DesignNode, type ElementNode, type LayoutNode } from './layout-tree'
 import { childStyle, containerStyle } from './layout-style'
 import type { AppShellModel } from './app-shell'
 import { AppShellFrame } from './app-shell-frame'
-import { themeVariables, type UiTheme } from './ui-theme'
-
-/** 테마 변수(`ui-theme.ts`)를 읽는 입력칸·버튼 모양. */
-const INPUT_STYLE: React.CSSProperties = { background: 'var(--wf-input-bg)', borderColor: 'var(--wf-input-border)', borderRadius: 'var(--wf-input-radius)' }
-function buttonStyle(variant: 'primary' | 'secondary' | 'ghost' | 'link'): React.CSSProperties {
-  if (variant === 'link') return { background: 'transparent', color: 'var(--wf-primary-link, var(--wf-fg))', borderColor: 'transparent', textDecoration: 'underline', textUnderlineOffset: 3, paddingInline: 0 }
-  if (variant === 'primary') return { background: 'var(--wf-primary)', color: 'var(--wf-primary-fg)', borderColor: 'var(--wf-primary-border)', borderRadius: 'var(--wf-button-radius)' }
-  if (variant === 'secondary') return { background: 'var(--wf-secondary)', color: 'var(--wf-secondary-fg)', borderColor: 'var(--wf-border-strong)', borderRadius: 'var(--wf-button-radius)' }
-  return { background: 'transparent', color: 'var(--wf-fg)', borderColor: 'transparent', borderRadius: 'var(--wf-button-radius)' }
-}
-const BUTTON_CLASS = 'inline-flex min-h-9 items-center justify-center border px-4 text-xs font-medium whitespace-nowrap'
+import { componentStyles, systemVariables, toStyle, type ComponentName, type ComponentStyles, type DesignSystem } from './design-system'
 
 /**
  * 선언된 레이아웃을 화면처럼 그린다.
@@ -48,17 +38,11 @@ const BUTTON_CLASS = 'inline-flex min-h-9 items-center justify-center border px-
  * 것은 아무 사실도 주장하지 않는다.
  */
 
-/** 목업을 그릴 폭. 실제 기기 폭이라야 배치가 진짜 화면처럼 읽힌다. */
-export type MockupViewport = 'desktop' | 'mobile'
-
-export const DEFAULT_VIEWPORT_DIMENSIONS: Record<MockupViewport, MockupDimensions> = {
-  desktop: { width: 1024, height: 768 },
-  mobile: { width: 390, height: 844 },
-}
+/** 목업 기본 크기. 화면은 PC 화면만 그린다 — 모바일 화면은 단순화를 위해 지원하지 않는다. */
+export const DEFAULT_MOCKUP_DIMENSIONS: MockupDimensions = { width: 1024, height: 768 }
 
 export interface ScreenMockupFrameProps {
   screen: ScreenMockup
-  viewport?: MockupViewport
   showCaption?: boolean
   dimensions?: MockupDimensions
   mode?: PrototypeMode
@@ -82,8 +66,8 @@ export interface ScreenMockupFrameProps {
   shell?: AppShellModel | null
   /** 체험 모드에서 메뉴 항목을 눌렀을 때. */
   onNavigate?: (screenKey: string) => void
-  /** 겉모양을 따를 UI 프레임워크. 구조는 바꾸지 않는다. */
-  theme?: UiTheme
+  /** 문서의 디자인 시스템(토큰·컴포넌트 덮어쓰기). 없으면 기본 회색 시스템이다. */
+  system?: DesignSystem
   className?: string
 }
 
@@ -94,9 +78,11 @@ export interface LayoutEditorBindings {
   onHover: (key: string | null) => void
 }
 
-interface ElementContext extends Omit<ScreenMockupFrameProps, 'screen' | 'viewport' | 'dimensions' | 'className' | 'showCaption' | 'layout' | 'shell' | 'onNavigate' | 'theme'> {
+
+interface ElementContext extends Omit<ScreenMockupFrameProps, 'screen' | 'dimensions' | 'className' | 'showCaption' | 'layout' | 'shell' | 'onNavigate' | 'system'> {
   screenKey: string
   declared: Map<string, DeclaredElement>
+  system?: DesignSystem
 }
 
 /** 입력칸 모양을 사람이 읽을 이름으로. 색이나 모양에만 기대지 않기 위해 텍스트로도 남긴다. */
@@ -119,30 +105,35 @@ const CONTROL_FORMAT: Partial<Record<ControlKind, string>> = {
   select: '선택하세요',
 }
 
-function FieldLabel({ field, hint = false }: { field: MockupField; hint?: boolean }) {
+
+/** 한 노드를 그릴 컴포넌트 스타일. 노드의 `css` 는 크기 규칙보다도 뒤에 덮으므로 여기 넣지 않는다. */
+function stylesOf(node: LayoutNode, name: ComponentName, context: ElementContext, fallback: Partial<Record<'variant' | 'size' | 'tone', string>> = {}): ComponentStyles {
+  const look = effectiveLook(node)
+  return componentStyles(context.system, name, { variant: look.variant ?? fallback.variant, size: look.size ?? fallback.size, tone: look.tone ?? fallback.tone }, { parts: node.parts })
+}
+
+/** 크기 규칙이 정한 속성. 이것만 컴포넌트 스타일을 이긴다 — `min-height: 0` 같은 바탕값은 지면 안 된다. */
+const SIZING_KEYS = ['width', 'height', 'flex', 'flexShrink', 'alignSelf', 'justifySelf', 'gridArea'] as const
+
+/** 크기 바탕값 → 컴포넌트 → 크기 규칙 → 노드 css 순으로 쌓은 노드 자신의 스타일. */
+function rootStyle(styles: ComponentStyles, sizing: React.CSSProperties, node: LayoutNode, extra: React.CSSProperties = {}): React.CSSProperties {
+  const decided = Object.fromEntries(SIZING_KEYS.flatMap((key) => sizing[key] === undefined ? [] : [[key, sizing[key]]]))
+  return { ...sizing, ...styles.root, ...decided, ...extra, ...toStyle(node.css) }
+}
+
+function FieldLabel({ field, style, hintStyle, hint = false }: { field: MockupField; style: React.CSSProperties; hintStyle: React.CSSProperties; hint?: boolean }) {
   return (
     <span className="flex min-w-0 items-baseline gap-1">
-      <span
-        className={cn(
-          'truncate text-xs font-medium',
-          field.resolved ? 'text-text' : 'text-diagnostic-error',
-        )}
-      >
-        {field.name}
-      </span>
-      {field.required ? (
-        <span aria-label="필수" className="text-xs font-semibold text-text-muted">*</span>
-      ) : null}
-      {field.resolved ? null : (
-        <span className="text-[10px] text-diagnostic-error">선언을 찾지 못함</span>
-      )}
-      {hint && field.resolved ? <span className="ml-auto shrink-0 pl-2 text-[10px] text-text-subtle">{CONTROL_LABEL[field.control]}</span> : null}
+      <span className="truncate" style={field.resolved ? style : { ...style, color: 'var(--color-diagnostic-error)' }}>{field.name}</span>
+      {field.required ? <span aria-label="필수" style={{ ...style, fontWeight: 600 }}>*</span> : null}
+      {field.resolved ? null : <span className="text-[10px] text-diagnostic-error">선언을 찾지 못함</span>}
+      {hint && field.resolved ? <span className="ml-auto shrink-0 pl-2" style={hintStyle}>{CONTROL_LABEL[field.control]}</span> : null}
     </span>
   )
 }
 
 function ControlIcon({ control }: { control: ControlKind }) {
-  const common = { 'aria-hidden': true, viewBox: '0 0 16 16', className: 'size-3.5 shrink-0 text-text-subtle', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4 } as const
+  const common = { 'aria-hidden': true, viewBox: '0 0 16 16', className: 'size-3.5 shrink-0', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4 } as const
   switch (control) {
     case 'date':
     case 'datetime':
@@ -164,20 +155,21 @@ function ControlIcon({ control }: { control: ControlKind }) {
  * `select` 는 선언된 값들을 칸 아래에 그대로 보여준다. 그것은 지어낸 내용이 아니라 문서가 말한
  * 사실이라 화면에 드러나는 편이 낫다.
  */
-function Control({ field, experience, value, onChange }: { field: MockupField; experience: boolean; value?: string | number | boolean | null; onChange?: (value: string | boolean) => void }) {
+function Control({ field, styles, experience, value, onChange }: { field: MockupField; styles: ComponentStyles; experience: boolean; value?: string | number | boolean | null; onChange?: (value: string | boolean) => void }) {
+  const control = styles.part('control')
   if (experience) {
     if (field.control === 'checkbox') return <input aria-label={field.name} type="checkbox" checked={value === true} onChange={(event) => onChange?.(event.target.checked)} />
     if (field.control === 'select') {
-      return <select aria-label={field.name} value={typeof value === 'string' ? value : ''} onChange={(event) => onChange?.(event.target.value)} style={INPUT_STYLE} className="h-9 border px-2.5 text-xs"><option value="">선택하세요</option>{field.options?.map((option) => <option key={option}>{option}</option>)}</select>
+      return <select aria-label={field.name} value={typeof value === 'string' ? value : ''} onChange={(event) => onChange?.(event.target.value)} style={{ ...control, color: 'var(--wf-foreground)' }}><option value="">선택하세요</option>{field.options?.map((option) => <option key={option}>{option}</option>)}</select>
     }
     const type = field.control === 'datetime' ? 'datetime-local' : field.control
-    return <input aria-label={field.name} type={type} value={typeof value === 'string' || typeof value === 'number' ? value : ''} onChange={(event) => onChange?.(event.target.value)} style={INPUT_STYLE} className="h-9 border px-2.5 text-xs" />
+    return <input aria-label={field.name} type={type} value={typeof value === 'string' || typeof value === 'number' ? value : ''} onChange={(event) => onChange?.(event.target.value)} style={{ ...control, color: 'var(--wf-foreground)' }} />
   }
   if (field.control === 'checkbox') {
     return (
-      <span className="flex h-9 items-center gap-2">
-        <span aria-hidden className="flex h-4 w-7 shrink-0 items-center rounded-full p-0.5" style={{ background: 'var(--wf-border-strong)' }}><span className="size-3 rounded-full bg-white" /></span>
-        <span className="text-[11px] text-text-subtle">아니오</span>
+      <span className="flex items-center gap-2" style={{ minHeight: control.minHeight }}>
+        <span aria-hidden className="flex h-4 w-7 shrink-0 items-center rounded-full p-0.5" style={{ background: 'var(--wf-border-strong)' }}><span className="size-3 rounded-full" style={{ background: 'var(--wf-background)' }} /></span>
+        <span style={styles.part('hint')}>아니오</span>
       </span>
     )
   }
@@ -185,27 +177,16 @@ function Control({ field, experience, value, onChange }: { field: MockupField; e
   const format = CONTROL_FORMAT[field.control]
   return (
     <span className="flex flex-col gap-1">
-      <span className="flex h-9 items-center gap-2 border px-2.5" style={INPUT_STYLE}>
-        <span className={cn('min-w-0 flex-1 truncate text-[11px] text-text-subtle/70', field.control === 'number' && 'text-right')}>{format ?? ''}</span>
+      <span style={control}>
+        <span className={cn('min-w-0 flex-1 truncate', field.control === 'number' && 'text-right')}>{format ?? ''}</span>
         <ControlIcon control={field.control} />
       </span>
       {field.control === 'select' && field.options !== null && field.options.length > 0 ? (
         <span className="flex flex-wrap gap-1">
-          {field.options.map((option) => (
-            <span key={option} className="rounded-sm bg-surface-raised px-1.5 py-0.5 text-[10px] text-text-muted">{option}</span>
-          ))}
+          {field.options.map((option) => <span key={option} style={styles.part('option')}>{option}</span>)}
         </span>
       ) : null}
     </span>
-  )
-}
-
-function Input({ field, experience, value, onChange }: { field: MockupField; experience: boolean; value?: string | number | boolean | null; onChange?: (value: string | boolean) => void }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <FieldLabel field={field} hint />
-      <Control field={field} experience={experience} value={value} onChange={onChange} />
-    </div>
   )
 }
 
@@ -222,70 +203,63 @@ export function exampleValue(field: MockupField, index: number, long = false): s
   }
 }
 
+type ListRecords = NonNullable<ModelSampleSet['variants'][SampleVariant]>
+
 /**
- * 목록.
+ * 목록. 디자인 시스템 `list` 컴포넌트의 `variant` 가 표·카드 격자·한 줄 목록 중 어떤 UI 인지 정한다.
  *
- * 선언된 필드가 열이 된다. 줄은 비워 둔다 — 샘플 내용이 붙기 전에 값을 지어내면 기획자가
- * 쓰지 않은 것을 쓴 것처럼 보인다. 빈 줄은 "여기에 데이터가 온다" 는 자리일 뿐이다.
+ * 선언된 필드가 열이 된다. 샘플이 없으면 값 대신 형식을 보여준다 — 문서가 말하지 않은 값을 지어내면
+ * 기획자가 쓰지 않은 것을 쓴 것처럼 보인다.
  */
-function ListElement({
-  modelId,
-  modelName,
-  fields,
-  records,
-  isExample,
-  selectedId,
-  onSelect,
-  appearance = 'table',
-}: {
+function ListContent({ styles, modelId, modelName, fields, records, isExample, selectedId, onSelect }: {
+  styles: ComponentStyles
   modelId: string
   modelName: string
   fields: MockupField[]
-  records: ModelSampleSet['variants'][SampleVariant] | null
+  records: ListRecords | null
   isExample: boolean
   selectedId?: string
   onSelect?: (modelId: string, recordId: string) => void
-  appearance?: ListAppearance
 }) {
-  if (appearance !== 'table' && records !== null && records.length > 0 && fields.length > 0) {
-    return <ListAsItems appearance={appearance} modelId={modelId} modelName={modelName} fields={fields} records={records} isExample={isExample} selectedId={selectedId} onSelect={onSelect} />
-  }
+  const appearance = styles.value('variant')
+  const header = (
+    <div style={styles.part('header')}>
+      <span style={styles.part('title')}>{modelName}</span>
+      <span style={styles.part('meta')}>{records === null ? '' : `${records.length}건`}{isExample ? ' · 형식 예시' : ''}</span>
+    </div>
+  )
+  if (records !== null && records.length === 0) return <>{header}<div style={styles.part('empty')}>{modelName} 샘플이 비어 있습니다</div></>
+  if (fields.length === 0) return <>{header}<div style={styles.part('empty')}>보여줄 필드가 없다</div></>
+  if (appearance !== 'table' && records !== null) return <>{header}<ListItems appearance={appearance === 'list' ? 'list' : 'cards'} styles={styles} modelId={modelId} fields={fields} records={records} selectedId={selectedId} onSelect={onSelect} /></>
+  const rows = records ?? []
+  const last = (index: number) => records !== null && index === rows.length - 1 ? { borderBottom: 'none' } : {}
   return (
-    <div className="overflow-hidden border border-border bg-surface" style={{ borderRadius: 'var(--wf-radius)', boxShadow: 'var(--wf-card-shadow)' }}>
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <span className="text-xs font-semibold text-text">{modelName}</span>
-        <span className="text-[10px] text-text-subtle">{records === null ? '' : `${records.length}건`}{isExample ? ' · 형식 예시' : ''}</span>
-      </div>
-      {records !== null && records.length === 0 ? (
-        <div className="px-3 py-5 text-center text-[11px] text-text-subtle">{modelName} 샘플이 비어 있습니다</div>
-      ) : fields.length === 0 ? (
-        <div className="px-3 py-3 text-[11px] text-text-subtle">보여줄 필드가 없다</div>
-      ) : (
-        <table className="w-full table-fixed">
-          <thead>
-            <tr className="border-b border-border bg-surface-raised/60">
+    <>
+      {header}
+      <table className="w-full table-fixed border-collapse">
+        <thead>
+          <tr>
+            {fields.map((field) => (
+              <th key={field.id} style={{ ...styles.part('head'), ...(field.control === 'number' ? { textAlign: 'right' } : {}) }}>
+                <span className="block truncate" style={field.resolved ? undefined : { color: 'var(--color-diagnostic-error)' }}>{field.name}</span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((record, index) => (
+            <tr key={record.id} aria-selected={record.id === selectedId} style={record.id === selectedId ? styles.part('selected') : undefined} onClick={() => onSelect?.(modelId, record.id)}>
               {fields.map((field) => (
-                <th key={field.id} className={cn('px-3 py-1.5 text-left', field.control === 'number' && 'text-right')}>
-                  <span className={cn('block truncate text-[10px] font-semibold', field.resolved ? 'text-text-muted' : 'text-diagnostic-error')}>{field.name}</span>
-                </th>
+                <td key={field.id} style={{ ...styles.part('cell'), ...last(index), ...(field.control === 'number' ? { textAlign: 'right' } : {}) }}>
+                  <span className={cn('block truncate', field.control !== 'text' && 'font-mono text-[10px]')}>{String(record.values[field.id] ?? '')}</span>
+                </td>
               ))}
             </tr>
-          </thead>
-          <tbody>
-            {(records ?? []).map((record) => (
-              <tr key={record.id} aria-selected={record.id === selectedId} className={cn('border-b border-border last:border-b-0', record.id === selectedId && 'bg-accent-subtle')} onClick={() => onSelect?.(modelId, record.id)}>
-                {fields.map((field) => (
-                  <td key={field.id} className={cn('px-3 py-2', field.control === 'number' && 'text-right')}>
-                    <span className={cn('block truncate text-[11px] text-text-muted', field.control !== 'text' && 'font-mono text-[10px]')}>{String(record.values[field.id] ?? '')}</span>
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {records === null ? [0, 1, 2].map((row) => <tr key={row} aria-hidden className="border-b border-border last:border-b-0">{fields.map((field) => <td key={field.id} className="px-3 py-2"><span className="block h-2 rounded-full bg-shimmer" /></td>)}</tr>) : null}
-          </tbody>
-        </table>
-      )}
-    </div>
+          ))}
+          {records === null ? [0, 1, 2].map((row) => <tr key={row} aria-hidden>{fields.map((field) => <td key={field.id} style={{ ...styles.part('cell'), ...(row === 2 ? { borderBottom: 'none' } : {}) }}><span className="block h-2 rounded-full bg-shimmer" /></td>)}</tr>) : null}
+        </tbody>
+      </table>
+    </>
   )
 }
 
@@ -293,90 +267,55 @@ function ListElement({
  * 목록을 카드 격자나 한 줄 목록으로. 표와 같은 필드를 보여준다 — 첫 글자 필드가 제목, 선택 필드는
  * 배지, 나머지는 이름: 값 줄이다. 어떤 필드를 고를지 지어내지 않고 선언된 순서를 따른다.
  */
-function ListAsItems({ appearance, modelId, modelName, fields, records, isExample, selectedId, onSelect }: {
+function ListItems({ appearance, styles, modelId, fields, records, selectedId, onSelect }: {
   appearance: 'cards' | 'list'
+  styles: ComponentStyles
   modelId: string
-  modelName: string
   fields: MockupField[]
-  records: NonNullable<ModelSampleSet['variants'][SampleVariant]>
-  isExample: boolean
+  records: ListRecords
   selectedId?: string
   onSelect?: (modelId: string, recordId: string) => void
 }) {
   const titleField = fields.find((field) => field.control === 'text') ?? fields[0]!
   const badgeFields = fields.filter((field) => field !== titleField && (field.control === 'select' || field.control === 'checkbox'))
   const rest = fields.filter((field) => field !== titleField && !badgeFields.includes(field))
-  const value = (record: (typeof records)[number], field: MockupField) => String(record.values[field.id] ?? '')
-  const header = (
-    <div className="flex items-baseline gap-2 pb-2">
-      <span className="text-xs font-semibold text-text">{modelName}</span>
-      <span className="text-[10px] text-text-subtle">{records.length}건{isExample ? ' · 형식 예시' : ''}</span>
-    </div>
-  )
-  const card = { borderRadius: 'var(--wf-radius)', boxShadow: 'var(--wf-card-shadow)' }
+  const value = (record: ListRecords[number], field: MockupField) => String(record.values[field.id] ?? '')
+  const badge = (text: string, key: string) => <span key={key} className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap" style={{ background: 'var(--wf-muted)', color: 'var(--wf-foreground)' }}>{text}</span>
   if (appearance === 'list') {
     return (
-      <div>
-        {header}
-        <ul className="divide-y divide-border overflow-hidden border border-border bg-surface" style={card}>
-          {records.map((record) => (
-            <li key={record.id} aria-current={record.id === selectedId ? true : undefined} className={cn('flex items-center gap-3 px-3 py-2.5', record.id === selectedId && 'bg-surface-raised')} onClick={() => onSelect?.(modelId, record.id)}>
-              <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-raised text-[11px] font-semibold text-text-muted">{value(record, titleField).slice(0, 1)}</span>
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-xs font-medium text-text">{value(record, titleField)}</span>
-                {rest.length === 0 ? null : <span className="truncate text-[11px] text-text-muted">{rest.map((field) => value(record, field)).join(' · ')}</span>}
-              </span>
-              {badgeFields.map((field) => <Badge key={field.id} variant="secondary">{value(record, field)}</Badge>)}
-              <span aria-hidden className="text-text-subtle">›</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <ul className="overflow-hidden" style={{ border: '1px solid var(--wf-border)', borderRadius: 'var(--wf-radius-lg)' }}>
+        {records.map((record, index) => (
+          <li key={record.id} aria-current={record.id === selectedId ? true : undefined} style={{ ...styles.part('item'), ...(index === records.length - 1 ? { borderBottom: 'none' } : {}), ...(record.id === selectedId ? styles.part('selected') : {}) }} onClick={() => onSelect?.(modelId, record.id)}>
+            <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold" style={{ background: 'var(--wf-muted)', color: 'var(--wf-muted-foreground)' }}>{value(record, titleField).slice(0, 1)}</span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-xs font-medium" style={{ color: 'var(--wf-foreground)' }}>{value(record, titleField)}</span>
+              {rest.length === 0 ? null : <span className="truncate text-[11px]" style={{ color: 'var(--wf-muted-foreground)' }}>{rest.map((field) => value(record, field)).join(' · ')}</span>}
+            </span>
+            {badgeFields.map((field) => badge(value(record, field), field.id))}
+            <span aria-hidden style={{ color: 'var(--wf-subtle-foreground)' }}>›</span>
+          </li>
+        ))}
+      </ul>
     )
   }
   return (
-    <div>
-      {header}
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-        {records.map((record) => (
-          <div key={record.id} aria-selected={record.id === selectedId} className={cn('flex flex-col gap-2 border border-border bg-surface p-4', record.id === selectedId && 'outline-2 outline-text')} style={card} onClick={() => onSelect?.(modelId, record.id)}>
-            <div className="flex items-start gap-2">
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text">{value(record, titleField)}</span>
-              {badgeFields.map((field) => <Badge key={field.id} variant="secondary">{value(record, field)}</Badge>)}
-            </div>
-            <dl className="grid gap-1">
-              {rest.map((field) => (
-                <div key={field.id} className="flex items-baseline justify-between gap-3 text-[11px]">
-                  <dt className="shrink-0 text-text-subtle">{field.name}</dt>
-                  <dd className={cn('min-w-0 truncate text-text-muted', field.control !== 'text' && 'font-mono text-[10px]')}>{value(record, field)}</dd>
-                </div>
-              ))}
-            </dl>
+    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+      {records.map((record) => (
+        <div key={record.id} aria-selected={record.id === selectedId} style={{ ...styles.part('card'), ...(record.id === selectedId ? { outline: '2px solid var(--wf-ring)' } : {}) }} onClick={() => onSelect?.(modelId, record.id)}>
+          <div className="flex items-start gap-2">
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: 'var(--wf-foreground)' }}>{value(record, titleField)}</span>
+            {badgeFields.map((field) => badge(value(record, field), field.id))}
           </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function Badge({ variant, children }: { variant: 'primary' | 'secondary' | 'ghost'; children: React.ReactNode }) {
-  const style = variant === 'primary'
-    ? { background: 'var(--wf-primary)', color: 'var(--wf-primary-fg)', borderColor: 'transparent' }
-    : variant === 'ghost' ? { background: 'transparent', color: 'var(--wf-fg)', borderColor: 'var(--wf-border-strong)' }
-      : { background: 'var(--wf-muted)', color: 'var(--wf-fg)', borderColor: 'transparent' }
-  return <span className="inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap" style={style}>{children}</span>
-}
-
-/**
- * 선언할 수 없는 자리.
- *
- * 지도·차트처럼 의미 단위 어휘로 옮길 수 없는 것은 이름표만 달고 비운다. 채우는 것은
- * 디자인의 일이다.
- */
-function Placeholder({ text }: { text: string }) {
-  return (
-    <div className="flex h-full min-h-20 items-center justify-center rounded-md border border-dashed border-border-strong bg-surface-raised">
-      <span className="text-[11px] text-text-subtle">{text}</span>
+          <dl className="grid gap-1">
+            {rest.map((field) => (
+              <div key={field.id} className="flex items-baseline justify-between gap-3 text-[11px]">
+                <dt className="shrink-0" style={{ color: 'var(--wf-subtle-foreground)' }}>{field.name}</dt>
+                <dd className={cn('min-w-0 truncate', field.control !== 'text' && 'font-mono text-[10px]')} style={{ color: 'var(--wf-muted-foreground)' }}>{value(record, field)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ))}
     </div>
   )
 }
@@ -421,26 +360,21 @@ function editorProps(key: string, parentKey: string | null, context: ElementCont
 function LayoutNodeView({ node, parent, parentKey, context }: { node: LayoutNode; parent: ContainerLayout | null; parentKey: string | null; context: ElementContext }) {
   const key = nodeKey(node)
   const editing = editorProps(key, parentKey, context)
-  const style = childStyle(node.style, parent)
+  const sizing = childStyle(node.style, parent)
   if (isContainer(node)) {
     const kind = node.type === 'element' ? node.kind : 'group'
     const Tag = kind === 'header' ? 'header' : kind === 'section' ? 'section' : 'div'
-    return <Tag {...editing} data-layout={node.layout.direction} style={{ ...style, ...containerStyle(node.layout) }}>
+    const styles = stylesOf(node, 'frame', context)
+    return <Tag {...editing} data-layout={node.layout.direction} style={rootStyle(styles, sizing, node, containerStyle(node.layout))}>
       {node.children.map((child) => <LayoutNodeView key={nodeKey(child)} node={child} parent={node.layout} parentKey={key} context={context} />)}
       {node.children.length === 0 && context.editor !== undefined ? <EmptyFrame /> : null}
     </Tag>
   }
-  if (node.type === 'design') {
-    // Row 안의 구분선은 세로선이다. 너비 규칙과 상관없이 1px 폭으로 위아래를 채운다.
-    const shown = node.design === 'divider' && parent?.direction === 'row' ? { ...style, flex: '0 0 auto', alignSelf: 'stretch', width: undefined } : style
-    return <div {...editing} style={shown}><DesignContent node={node} parent={parent} editing={context.editor !== undefined} /></div>
-  }
+  if (node.type === 'design') return <DesignView node={node} parent={parent} sizing={sizing} editing={editing} context={context} />
   if (node.type !== 'element') return null
   const entry = context.declared.get(node.ref)
   if (entry === undefined) return null
-  return <div {...editing} style={style}>
-    <LeafContent element={entry.element} context={context} appearance={node.appearance} stretch={{ width: node.style.width !== 'hug', height: node.style.height !== 'hug' }} />
-  </div>
+  return <ElementView node={node} element={entry.element} sizing={sizing} editing={editing} context={context} />
 }
 
 /** 편집기에서만 보이는 빈 프레임 자리. 요소를 끌어 넣을 수 있게 크기를 준다. */
@@ -448,58 +382,53 @@ function EmptyFrame() {
   return <div aria-hidden className="flex min-h-10 min-w-16 flex-1 items-center justify-center self-stretch rounded border border-dashed border-border-strong text-[10px] text-text-subtle">비어 있음</div>
 }
 
-const TEXT_CLASS = { display: 'text-[34px] leading-tight font-bold tracking-tight', title: 'text-base font-semibold tracking-tight', body: 'text-sm', caption: 'text-[11px]' } as const
-const TONE_CLASS = { strong: 'text-text', default: 'text-text-muted', muted: 'text-text-subtle' } as const
+type Editing = ReturnType<typeof editorProps>
 
-/** 아이콘·아바타는 내용 크기가 없다. 크기를 정하지 않았으면 기본 크기로 그린다. */
-function fixedWhenHug(node: DesignNode, size: number): React.CSSProperties {
-  return { ...(node.style.width === 'hug' ? { width: size } : {}), ...(node.style.height === 'hug' ? { height: size } : {}) }
-}
-
-/** 디자인 전용 노드. 문서에 없는 것이라 회색으로만 그린다. */
-function DesignContent({ node, parent, editing }: { node: DesignNode; parent: ContainerLayout | null; editing: boolean }) {
+/** 디자인 전용 노드. 문서에 없는 것이라 디자인 시스템 컴포넌트 그대로 그린다. */
+function DesignView({ node, parent, sizing, editing, context }: { node: DesignNode; parent: ContainerLayout | null; sizing: React.CSSProperties; editing: Editing; context: ElementContext }) {
+  const styles = stylesOf(node, DESIGN_COMPONENT[node.design], context)
+  const style = (extra: React.CSSProperties = {}) => rootStyle(styles, sizing, node, extra)
+  const text = node.text ?? ''
   switch (node.design) {
     case 'text':
-      return <p className={cn('whitespace-pre-wrap', TEXT_CLASS[node.textStyle ?? 'body'], TONE_CLASS[node.tone ?? 'default'])}>{node.text === '' ? '\u00a0' : node.text}</p>
+      return <p {...editing} style={style()}>{text === '' ? ' ' : text}</p>
     case 'rectangle':
-      return <div className="size-full min-h-4" />
+      return <div {...editing} style={style()} />
     case 'divider':
+      // Row 안의 구분선은 세로선이다. 너비 규칙과 상관없이 1px 폭으로 위아래를 채운다.
       return parent?.direction === 'row'
-        ? <div className="h-full min-h-4 w-px self-stretch bg-border-strong" />
-        : <div className="h-px w-full bg-border-strong" />
+        ? <div {...editing} style={style({ flex: '0 0 auto', alignSelf: 'stretch', width: 1, minHeight: 16 })} />
+        : <div {...editing} style={style({ height: 1, ...(node.style.width === 'hug' ? { width: '100%' } : {}) })} />
     case 'spacer':
-      return <div className={cn('size-full', editing && 'bg-[repeating-linear-gradient(45deg,transparent_0_4px,var(--color-border)_4px_5px)]')} />
+      return <div {...editing} style={style(context.editor === undefined ? {} : { backgroundImage: 'repeating-linear-gradient(45deg, transparent 0 4px, var(--color-border) 4px 5px)' })} />
     case 'image':
       return (
-        <div className="relative flex size-full min-h-16 items-center justify-center overflow-hidden" style={{ background: 'var(--wf-image)', borderRadius: 'inherit' }}>
-          <svg aria-hidden className="absolute inset-0 size-full" preserveAspectRatio="none" viewBox="0 0 100 100"><path d="M0 0 100 100M100 0 0 100" stroke="var(--wf-border-strong)" strokeWidth="0.4" vectorEffect="non-scaling-stroke" /></svg>
-          <span className="relative rounded px-2 py-0.5 text-[11px] text-text-muted" style={{ background: 'var(--wf-bg)' }}>{node.text === undefined || node.text === '' ? '이미지' : node.text}</span>
+        <div {...editing} style={style()}>
+          <svg aria-hidden className="absolute inset-0 size-full" preserveAspectRatio="none" viewBox="0 0 100 100"><path d="M0 0 100 100M100 0 0 100" style={styles.part('cross')} strokeWidth="0.4" vectorEffect="non-scaling-stroke" /></svg>
+          <span style={styles.part('caption')}>{text === '' ? '이미지' : text}</span>
         </div>
       )
     case 'button':
-      return <span className={BUTTON_CLASS} style={{ ...buttonStyle(node.variant ?? 'primary'), width: node.style.width === 'hug' ? undefined : '100%' }}>{node.text === undefined || node.text === '' ? '버튼' : node.text}</span>
+      return <span {...editing} style={style()}>{text === '' ? '버튼' : text}</span>
     case 'badge':
-      return <Badge variant={node.variant ?? 'secondary'}>{node.text || '배지'}</Badge>
-    case 'avatar': {
-      const initials = (node.text ?? '').trim().slice(0, 2) || '?'
-      return <span aria-label={node.text} className="flex size-full min-h-8 min-w-8 items-center justify-center rounded-full text-[11px] font-semibold" style={{ background: 'var(--wf-muted)', color: 'var(--wf-muted-fg)', ...fixedWhenHug(node, 40) }}>{initials}</span>
-    }
+      return <span {...editing} style={style()}>{text === '' ? '배지' : text}</span>
+    case 'avatar':
+      return <span {...editing} aria-label={text} style={style()}>{text.trim().slice(0, 2) || '?'}</span>
     case 'icon':
-      return <span aria-label={node.text} className="flex size-full min-h-5 min-w-5 items-center justify-center" style={{ background: 'var(--wf-muted)', borderRadius: 'var(--wf-input-radius)', ...fixedWhenHug(node, 28) }}><svg aria-hidden viewBox="0 0 16 16" className="size-3/5 text-text-subtle" fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M2.5 8h11M8 2.5v11" /></svg></span>
+      return <span {...editing} aria-label={text} style={style()}><svg aria-hidden viewBox="0 0 16 16" className="size-3/5" fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M2.5 8h11M8 2.5v11" /></svg></span>
     case 'stat':
       return (
-        // 통계는 늘 카드다. 테두리를 따로 주지 않아도 테마의 카드 모양으로 그린다.
-        <div className="flex size-full flex-col gap-1 border border-border bg-surface p-4" style={{ borderRadius: 'var(--wf-radius)', boxShadow: 'var(--wf-card-shadow)' }}>
-          <span className="text-[11px] text-text-muted">{node.text || '지표'}</span>
-          <span className="text-2xl font-semibold tracking-tight text-text">{node.value || '—'}</span>
+        <div {...editing} style={style()}>
+          <span style={styles.part('label')}>{text || '지표'}</span>
+          <span style={styles.part('value')}>{node.value || '—'}</span>
         </div>
       )
     case 'tabs': {
-      const tabs = (node.text ?? '').split(',').map((tab) => tab.trim()).filter(Boolean)
+      const tabs = text.split(',').map((tab) => tab.trim()).filter(Boolean)
       return (
-        <div role="tablist" className="flex w-full gap-1 border-b border-border">
+        <div {...editing} role="tablist" style={style()}>
           {(tabs.length === 0 ? ['탭'] : tabs).map((tab, index) => (
-            <span key={`${index}:${tab}`} role="tab" aria-selected={index === 0} className={cn('-mb-px border-b-2 px-3 py-2 text-xs', index === 0 ? 'font-semibold text-text' : 'border-transparent text-text-muted')} style={index === 0 ? { borderColor: 'var(--wf-primary-border)' } : undefined}>{tab}</span>
+            <span key={`${index}:${tab}`} role="tab" aria-selected={index === 0} style={index === 0 ? { ...styles.part('tab'), ...styles.part('active') } : styles.part('tab')}>{tab}</span>
           ))}
         </div>
       )
@@ -507,59 +436,86 @@ function DesignContent({ node, parent, editing }: { node: DesignNode; parent: Co
     case 'progress': {
       const percent = Math.min(100, Math.max(0, Number(node.value) || 0))
       return (
-        <div className="flex w-full flex-col gap-1">
-          <span className="flex justify-between text-[11px] text-text-muted"><span>{node.text}</span><span className="font-mono">{percent}%</span></span>
-          <span className="h-2 w-full overflow-hidden rounded-full" style={{ background: 'var(--wf-muted)' }}><span className="block h-full rounded-full" style={{ width: `${percent}%`, background: 'var(--wf-primary-border)' }} /></span>
+        <div {...editing} style={style()}>
+          <span style={styles.part('label')}><span>{text}</span><span className="font-mono">{percent}%</span></span>
+          <span style={styles.part('track')}><span style={{ display: 'block', ...styles.part('bar'), width: `${percent}%` }} /></span>
         </div>
       )
     }
     case 'search':
       return (
-        <span className="flex h-9 w-full items-center gap-2 border px-3" style={INPUT_STYLE}>
-          <svg aria-hidden viewBox="0 0 16 16" className="size-3.5 shrink-0 text-text-subtle" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg>
-          <span className="truncate text-[11px] text-text-subtle">{node.text || '검색'}</span>
+        <span {...editing} style={style()}>
+          <svg aria-hidden viewBox="0 0 16 16" className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg>
+          <span className="truncate">{text || '검색'}</span>
         </span>
       )
+    case 'input':
+      return (
+        <div {...editing} style={style()}>
+          {text === '' ? null : <span style={styles.part('label')}>{text}</span>}
+          <span style={styles.part('control')}><span className="min-w-0 flex-1 truncate">{node.value ?? ''}</span></span>
+        </div>
+      )
+    case 'checkbox':
+      return <span {...editing} style={style()}><span aria-hidden style={styles.part('box')} />{text}</span>
+    case 'switch':
+      return <span {...editing} style={style()}><span aria-hidden style={styles.part('track')}><span style={styles.part('thumb')} /></span>{text}</span>
   }
 }
 
-function LeafContent({ element, context, stretch, appearance }: { element: MockupElement; context: ElementContext; stretch: { width: boolean; height: boolean }; appearance?: ElementAppearance }) {
-  const size = { width: stretch.width ? '100%' : undefined, height: stretch.height ? '100%' : undefined }
+/** 문서에 선언한 요소. 무엇이 있는지는 문서가 정하고, 모양은 디자인 시스템 컴포넌트가 정한다. */
+function ElementView({ node, element, sizing, editing, context }: { node: ElementNode; element: MockupElement; sizing: React.CSSProperties; editing: Editing; context: ElementContext }) {
   switch (element.kind) {
-    case 'heading':
+    case 'heading': {
+      const styles = stylesOf(node, 'text', context)
+      return <h3 {...editing} style={rootStyle(styles, sizing, node)}>{element.text}</h3>
+    }
+    case 'input': {
+      const styles = stylesOf(node, 'field', context)
+      const value = context.values?.[element.field.id] ?? selectedSampleValue(context, element.field.id)
       return (
-        <h3 className="text-[15px] tracking-tight text-text" style={{ fontWeight: 'var(--wf-heading-weight)' as React.CSSProperties['fontWeight'] }}>{element.text}</h3>
+        <div {...editing} style={rootStyle(styles, sizing, node)}>
+          <FieldLabel field={element.field} style={styles.part('label')} hintStyle={styles.part('hint')} hint />
+          <Control field={element.field} styles={styles} experience={context.mode === 'experience'} value={value} onChange={(next) => context.onValueChange?.(element.field.id, next)} />
+        </div>
       )
-    case 'input':
-      return <Input field={element.field} experience={context.mode === 'experience'} value={context.values?.[element.field.id] ?? selectedSampleValue(context, element.field.id)} onChange={(value) => context.onValueChange?.(element.field.id, value)} />
+    }
     case 'list': {
+      const styles = stylesOf(node, 'list', context)
       const supplied = context.samples?.find((set) => set.modelId === element.modelId)
       const variant = context.sampleVariant ?? 'normal'
       const count = variant === 'empty' ? 0 : variant === 'many' ? 12 : 3
       const fallback = Array.from({ length: count }, (_, index) => ({ id: `${element.modelId}:example:${index + 1}`, values: Object.fromEntries(element.fields.map((field) => [field.id, exampleValue(field, index, variant === 'long')])) }))
-      return <ListElement appearance={appearance === 'cards' || appearance === 'list' ? appearance : 'table'} modelId={element.modelId} modelName={element.modelName} fields={element.fields} records={supplied?.variants[variant] ?? fallback} isExample={supplied === undefined} selectedId={context.selectedSampleIdByModel?.[element.modelId]} onSelect={context.onSampleSelect} />
+      return (
+        <div {...editing} style={rootStyle(styles, sizing, node)}>
+          <ListContent styles={styles} modelId={element.modelId} modelName={element.modelName} fields={element.fields} records={supplied?.variants[variant] ?? fallback} isExample={supplied === undefined} selectedId={context.selectedSampleIdByModel?.[element.modelId]} onSelect={context.onSampleSelect} />
+        </div>
+      )
     }
     case 'button': {
       // 행동을 선언한 버튼이 주 버튼이다. 행동이 없는 버튼(돌아가기 등)은 보조 버튼으로 그린다.
-      const className = BUTTON_CLASS
-      const chosen = appearance === 'primary' || appearance === 'secondary' || appearance === 'ghost' || appearance === 'link' ? appearance : element.actionId === null ? 'secondary' : 'primary'
-      const look = { ...size, ...buttonStyle(chosen) }
-      if (context.mode !== 'experience') return <span style={look} className={className}>{element.name}</span>
-      if (element.id === null) return <button type="button" disabled title="안정적 요소 ID가 없어 체험할 수 없습니다" style={look} className={cn(className, 'opacity-50')}>{element.name}</button>
+      const styles = stylesOf(node, 'button', context, { variant: element.actionId === null ? 'secondary' : 'primary' })
+      const look = rootStyle(styles, sizing, node)
+      if (context.mode !== 'experience') return <span {...editing} style={look}>{element.name}</span>
+      if (element.id === null) return <button {...editing} type="button" disabled title="안정적 요소 ID가 없어 체험할 수 없습니다" style={{ ...look, opacity: 0.5 }}>{element.name}</button>
       const elementId = element.id
       const outcomes = context.outcomesByElementId?.[elementId] ?? []
-      if (outcomes.length === 0) return <button type="button" disabled title="선언된 결과가 없어 체험할 수 없습니다" style={look} className={cn(className, 'opacity-50')}>{element.name}</button>
+      if (outcomes.length === 0) return <button {...editing} type="button" disabled title="선언된 결과가 없어 체험할 수 없습니다" style={{ ...look, opacity: 0.5 }}>{element.name}</button>
       const selectedOutcome = outcomeForPreviewAction(outcomes, context.selectedOutcomeIdByElementId?.[elementId])
-      return <button type="button" disabled={selectedOutcome === undefined} title={selectedOutcome === undefined ? '결과 시나리오를 먼저 선택하세요' : undefined} style={look} className={cn(className, 'disabled:opacity-50')} onClick={(event) => { event.stopPropagation(); dispatchPreviewAction(context.onAction, context.screenKey, elementId, outcomes, context.selectedOutcomeIdByElementId?.[elementId]) }}>{element.name}</button>
+      return <button {...editing} type="button" disabled={selectedOutcome === undefined} title={selectedOutcome === undefined ? '결과 시나리오를 먼저 선택하세요' : undefined} style={selectedOutcome === undefined ? { ...look, opacity: 0.5 } : look} onClick={(event) => { event.stopPropagation(); dispatchPreviewAction(context.onAction, context.screenKey, elementId, outcomes, context.selectedOutcomeIdByElementId?.[elementId]) }}>{element.name}</button>
     }
-    case 'placeholder':
-      return <Placeholder text={element.text} />
+    case 'placeholder': {
+      // 지도·차트처럼 의미 단위 어휘로 옮길 수 없는 자리. 이름표만 달고 비운다. 채우는 것은 디자인의 일이다.
+      const styles = stylesOf(node, 'placeholder', context)
+      return <div {...editing} style={rootStyle(styles, sizing, node)}>{element.text}</div>
+    }
     case 'unrecognized':
-      return <Unrecognized rawKind={element.rawKind} reason={element.reason} />
+      return <div {...editing} style={sizing}><Unrecognized rawKind={element.rawKind} reason={element.reason} /></div>
     default:
       return null
   }
 }
+
 
 /** 시나리오를 고르는 것만으로는 실행하지 않는다. 선언된 버튼을 누를 때 선택 결과를 해석한다. */
 export function outcomeForPreviewAction(outcomes: readonly ActionOutcome[], selectedOutcomeId?: string): ActionOutcome | undefined {
@@ -614,14 +570,10 @@ function selectedSampleValue(context: ElementContext, fieldId: string): string |
 }
 
 /**
- * 화면 하나를 기기 폭에 맞춰 그린다.
- *
- * 폭은 prop 이다. 프로젝트마다 고르는 설정은 서버에 있지만 그 값을 읽는 것은 보드의 일이고,
- * 렌더러는 어느 폭으로 그릴지만 안다.
+ * 화면 하나를 PC 화면 크기로 그린다. 크기를 바꾸려면 `dimensions` 를 준다.
  */
 export function ScreenMockupFrame({
   screen,
-  viewport = 'desktop',
   showCaption = true,
   className,
   dimensions,
@@ -631,14 +583,14 @@ export function ScreenMockupFrame({
   onAction, onOutcomeSelect, onOutcomeDismiss,
   selectedSampleIdByModel, onSampleSelect,
   values, onValueChange,
-  shell, onNavigate, theme = 'wireframe',
+  shell, onNavigate, system,
 }: ScreenMockupFrameProps) {
   const declared = React.useMemo(() => declaredElements(screen), [screen])
   const root = React.useMemo(() => resolveLayout(screen, layout), [screen, layout])
-  const context: ElementContext = { screenKey: screen.key, declared, mode, sampleVariant, samples, outcomesByElementId, selectedOutcomeIdByElementId, activeOutcome, editor, onAction, onOutcomeSelect, onOutcomeDismiss, selectedSampleIdByModel, onSampleSelect, values, onValueChange }
+  const context: ElementContext = { screenKey: screen.key, declared, system, mode, sampleVariant, samples, outcomesByElementId, selectedOutcomeIdByElementId, activeOutcome, editor, onAction, onOutcomeSelect, onOutcomeDismiss, selectedSampleIdByModel, onSampleSelect, values, onValueChange }
   const rootEditing = editorProps(nodeKey(root), null, context)
   const controls = mode === 'experience' ? scenarioControls(screen.elements, outcomesByElementId ?? {}) : []
-  const viewportDimensions = dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
+  const viewportDimensions = dimensions ?? DEFAULT_MOCKUP_DIMENSIONS
   const body = screen.elements.length === 0 ? (
     <div className="px-4 py-6 text-[11px] text-text-subtle">
       레이아웃에 요소가 없다
@@ -667,12 +619,25 @@ export function ScreenMockupFrame({
 
       {controls.length === 0 ? null : <div aria-label="결과 시나리오 선택" className="flex min-w-0 flex-wrap gap-2 border-b border-border bg-surface-raised px-4 py-2 text-[11px] text-text-muted">{controls.map((control) => <label key={control.elementId} className="flex min-w-0 flex-1 flex-wrap items-center gap-2"><span className="min-w-0 break-words">{control.name} 결과 시나리오</span><select aria-label={`${control.name} 결과 시나리오`} value={outcomeForPreviewAction(control.outcomes, selectedOutcomeIdByElementId?.[control.elementId])?.id ?? ''} onChange={(event) => onOutcomeSelect?.(control.elementId, event.target.value)} className="min-w-0 max-w-full flex-[1_1_12rem] rounded border border-border-strong bg-surface px-2 py-1 text-text"><option value="" disabled>결과 선택</option>{control.outcomes.map((outcome) => <option key={outcome.id} value={outcome.id}>{outcome.label}</option>)}</select></label>)}</div>}
 
-      <div data-mockup-viewport data-ui-theme={theme} className="relative flex shrink-0 flex-col overflow-hidden bg-surface" style={{ ...viewportDimensions, ...themeVariables(theme) }}>
+      <div data-mockup-viewport className="relative flex shrink-0 flex-col overflow-hidden" style={{ ...viewportDimensions, ...systemVariables(system) }}>
       {shell === null || shell === undefined ? body : (
-        <AppShellFrame shell={shell} width={viewportDimensions.width} interactive={mode === 'experience'} onNavigate={onNavigate}>{body}</AppShellFrame>
+        <AppShellFrame shell={shell} interactive={mode === 'experience'} onNavigate={onNavigate}>{body}</AppShellFrame>
       )}
       {mode === 'experience' ? <OutcomePreview outcome={activeOutcome} onDismiss={onOutcomeDismiss} /> : null}
       </div>
     </figure>
+  )
+}
+
+/**
+ * 디자인 노드 하나를 목업 밖에서 그린다. 편집기가 컴포넌트·모양을 글 대신 그림으로 고르게 할 때 쓴다.
+ * 문서의 디자인 시스템 토큰을 이 상자 안에 깔아 목업과 같은 모양이 나온다.
+ */
+export function DesignPreview({ node, system, className }: { node: DesignNode; system?: DesignSystem; className?: string }) {
+  const context: ElementContext = { screenKey: '', declared: new Map(), system }
+  return (
+    <span aria-hidden className={cn('pointer-events-none flex items-center justify-center', className)} style={{ ...systemVariables(system), background: 'transparent' }}>
+      <DesignView node={node} parent={null} sizing={{ position: 'relative', minWidth: 0, maxWidth: '100%' }} editing={{}} context={context} />
+    </span>
   )
 }

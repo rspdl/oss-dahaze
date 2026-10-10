@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { LayoutNode } from '@/features/mockup/layout-tree'
 import { documentPathFor, parseWireframes, wireframePathFor, wireframeWrites } from './wireframe-file'
 
-const tree: LayoutNode = { type: 'group', id: 'root', style: { width: 'fill', height: 'fill', fill: 'none', border: false, radius: 0 }, layout: { direction: 'column', gap: 8, paddingX: 16, paddingY: 16, main: 'start', cross: 'start' }, children: [] }
+const tree: LayoutNode = { type: 'group', id: 'root', style: { width: 'fill', height: 'fill' }, layout: { direction: 'column', gap: 8, paddingX: 16, paddingY: 16, main: 'start', cross: 'start' }, children: [] }
 
 describe('wireframe file paths', () => {
   it('sits next to its document', () => {
@@ -49,6 +49,17 @@ describe('wireframeWrites', () => {
     )
     expect(writes[0]?.exists).toBe(true)
     expect(JSON.parse(writes[0]!.text)).toEqual({ version: 1, note: 'keep', screens: { hidden: { position: { x: 5, y: 5 } }, s1: { memo: 'keep', position: { x: 1, y: 1 }, layout: tree } } })
+  })
+
+  it('reads and writes the document design system, dropping the old framework theme', () => {
+    const existing = { version: 1, theme: 'shadcn', screens: { s1: { position: { x: 0, y: 0 } } } }
+    const files = [{ path: '/a.wireframe.json', text: JSON.stringify(existing) }]
+    expect(parseWireframes(files).design.systems).toEqual({})
+    const system = { tokens: { primary: '#2563eb' }, components: { button: { base: { borderRadius: '$radius-full' } } } }
+    const writes = wireframeWrites(files, { layouts: {}, positions: {}, systems: {} }, { layouts: {}, positions: {}, systems: { '/a.rspdl': system } })
+    const written = JSON.parse(writes[0]!.text)
+    expect(written).toEqual({ version: 1, system, screens: existing.screens })
+    expect(parseWireframes([{ path: '/a.wireframe.json', text: writes[0]!.text }]).design.systems).toEqual({ '/a.rspdl': system })
   })
 
   it('refuses to overwrite a file it could not read', () => {

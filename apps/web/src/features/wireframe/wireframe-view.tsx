@@ -15,7 +15,7 @@ import { Button, EmptyState, ErrorState, Skeleton, cn } from '@dahaze/ui'
 
 import { buildAppShell } from '@/features/mockup/app-shell'
 import { collectScreenMockups } from '@/features/mockup/screen-layouts'
-import { DEFAULT_VIEWPORT_DIMENSIONS, type MockupViewport } from '@/features/mockup/screen-mockup'
+import { DEFAULT_MOCKUP_DIMENSIONS } from '@/features/mockup/screen-mockup'
 import { declaredElements, elementLabel, type GroupNode, type LayoutNode } from '@/features/mockup/layout-tree'
 import type { PrototypeAction, PrototypeMode } from '@/features/mockup/prototype-contract'
 import { useTreeCompilation } from '@/features/workspace/use-tree-compilation'
@@ -119,11 +119,6 @@ export function WireframeView({
     />
   )
 }
-
-const VIEWPORTS: { id: MockupViewport; label: string }[] = [
-  { id: 'desktop', label: '데스크톱' },
-  { id: 'mobile', label: '모바일' },
-]
 
 function Wireframes({
   projectId,
@@ -237,18 +232,17 @@ function Wireframes({
   }, [])
 
   /* ---------- 보드 ---------- */
-  const [viewport, setViewport] = useState<MockupViewport>('desktop')
-  const [dimensions, setDimensions] = useState(DEFAULT_VIEWPORT_DIMENSIONS.desktop)
+  const [dimensions, setDimensions] = useState(DEFAULT_MOCKUP_DIMENSIONS)
   const [mode, setMode] = useState<PrototypeMode>('edit')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [composingKey, setComposingKey] = useState<string | null>(null)
 
   const positions = editor.working.positions
   const layouts = editor.working.layouts
-  const themes = editor.working.themes
+  const systems = editor.working.systems
   const graph = useMemo(
-    () => buildFlowGraph(board, mockups.screens, viewport, { positions, nodeWidth: FLOW_CARD_WIDTH, nodeHeight: FLOW_CARD_HEIGHT }),
-    [board, mockups.screens, viewport, positions],
+    () => buildFlowGraph(board, mockups.screens, { positions, nodeWidth: FLOW_CARD_WIDTH, nodeHeight: FLOW_CARD_HEIGHT }),
+    [board, mockups.screens, positions],
   )
   const outcomes = useMemo(() => outcomesByScreen(graph, board.handlerPaths), [graph, board.handlerPaths])
   const selected: FlowNode | null = graph.nodes.find((node) => node.id === selectedId) ?? null
@@ -289,7 +283,7 @@ function Wireframes({
     ...prototype,
     layout: layouts[node.id],
     shell: shells.get(node.id) ?? null,
-    theme: themes?.[node.screen.path] ?? 'wireframe',
+    system: systems?.[node.screen.path],
     outcomesByElementId: outcomes[node.id],
     selectedOutcomeIdByElementId: chosenOutcomes[node.id],
     activeOutcome: activeAction?.screenKey === node.id ? activeAction.outcome : null,
@@ -298,7 +292,7 @@ function Wireframes({
       setChosenOutcomes((current) => ({ ...current, [node.id]: { ...current[node.id], [elementId]: outcomeId } }))
     },
     onOutcomeDismiss: () => setActiveAction(null),
-  }), [activeAction, chosenOutcomes, layouts, outcomes, prototype, shells, themes])
+  }), [activeAction, chosenOutcomes, layouts, outcomes, prototype, shells, systems])
 
   const composing = composingKey === null ? undefined : graph.nodes.find((node) => node.id === composingKey)
 
@@ -308,7 +302,6 @@ function Wireframes({
   const focusPath = focusNode?.screen.path
   const focusWireframe = focusPath === undefined ? undefined : wireframePathFor(focusPath)
   const focusExists = focusWireframe !== undefined && wireframeFiles.some((file) => file.path === focusWireframe)
-  const focusTheme = focusPath === undefined ? undefined : themes?.[focusPath] ?? 'wireframe'
   const focusElements = useMemo(() => {
     const mockup = focusNode?.mockup
     if (mockup === null || mockup === undefined) return undefined
@@ -323,12 +316,10 @@ function Wireframes({
   useEffect(() => {
     setFocus(focusNode === undefined || focusNode === null
       ? { view: 'wireframe' }
-      : { view: 'wireframe', documentPath: focusNode.screen.path, screenId: focusNode.screen.id, screenName: focusNode.screen.name, wireframePath: focusWireframe, wireframeExists: focusExists, uiTheme: focusTheme, elements: focusElements })
-  }, [focusElements, focusExists, focusNode, focusTheme, focusWireframe, setFocus])
+      : { view: 'wireframe', documentPath: focusNode.screen.path, screenId: focusNode.screen.id, screenName: focusNode.screen.name, wireframePath: focusWireframe, wireframeExists: focusExists, elements: focusElements })
+  }, [focusElements, focusExists, focusNode, focusWireframe, setFocus])
   useEffect(() => () => setFocus(null), [setFocus])
   const saveLabel = editor.status === 'saving' ? '저장 중' : editor.status === 'conflict' ? '충돌' : editor.status === 'error' ? '저장 실패' : isDirty(editor) ? '저장 대기' : '저장됨'
-  const isPreset = (candidate: MockupViewport) =>
-    dimensions.width === DEFAULT_VIEWPORT_DIMENSIONS[candidate].width && dimensions.height === DEFAULT_VIEWPORT_DIMENSIONS[candidate].height
 
   const reload = () => setEditor(createDesignEditorState(projectId, persisted.design, serverStamp))
   const notice = (
@@ -367,13 +358,6 @@ function Wireframes({
           화면 {graph.nodes.length} · 연결 {graph.edges.length}
           {stale ? ' · 다시 컴파일하는 중' : ''}
         </span>
-        <div role="group" aria-label="목업 크기" className="flex gap-0.5 rounded-lg border bg-surface p-0.5">
-          {VIEWPORTS.map((entry) => (
-            <button key={entry.id} type="button" aria-pressed={isPreset(entry.id)} className="rounded-md px-2.5 py-1 text-xs text-text-muted aria-pressed:bg-surface-raised aria-pressed:font-medium aria-pressed:text-text" onClick={() => { setViewport(entry.id); setDimensions(DEFAULT_VIEWPORT_DIMENSIONS[entry.id]) }}>
-              {entry.label}
-            </button>
-          ))}
-        </div>
         <div role="group" aria-label="보드 모드" className="flex gap-0.5 rounded-lg border bg-surface p-0.5">
           <button type="button" aria-pressed={mode === 'edit'} className="rounded-md px-2.5 py-1 text-xs text-text-muted aria-pressed:bg-surface-raised aria-pressed:font-medium aria-pressed:text-text" onClick={() => setMode('edit')}>편집</button>
           <button type="button" aria-pressed={mode === 'experience'} disabled={selected === null} title={selected === null ? '체험할 화면을 먼저 고르세요' : '버튼을 눌러 연결된 화면으로 이동해 봅니다'} className="rounded-md px-2.5 py-1 text-xs text-text-muted aria-pressed:bg-surface-raised aria-pressed:font-medium aria-pressed:text-text disabled:opacity-40" onClick={() => setMode('experience')}>체험</button>
@@ -393,7 +377,6 @@ function Wireframes({
       <div className="relative flex min-h-0 flex-1 gap-2 p-2">
         <FlowBoard
           graph={graph}
-          viewport={viewport}
           selectedId={selected?.id ?? null}
           onSelect={select}
           prototype={prototype}
@@ -422,8 +405,13 @@ function Wireframes({
             screen={composing.mockup}
             savedLayout={layouts[composing.id]}
             shell={shells.get(composing.id) ?? null}
-            theme={themes?.[composing.screen.path] ?? 'wireframe'}
-            onThemeChange={(theme) => setEditor((state) => editDesign(state, (design) => ({ ...design, themes: { ...design.themes, [composing.screen.path]: theme } })))}
+            system={systems?.[composing.screen.path]}
+            onSystemChange={(system) => setEditor((state) => editDesign(state, (design) => {
+              const next = { ...design.systems }
+              if (system === undefined) delete next[composing.screen.path]
+              else next[composing.screen.path] = system
+              return { ...design, systems: next }
+            }))}
             onLayoutChange={(next: GroupNode) => setEditor((state) => editDesign(state, (design) => ({ ...design, layouts: { ...design.layouts, [composing.id]: next as LayoutNode } })))}
             dimensions={dimensions}
             onDimensionsChange={setDimensions}

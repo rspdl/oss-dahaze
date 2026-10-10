@@ -77,7 +77,7 @@ async def test_message_keeps_viewing_context(client: httpx.AsyncClient, project_
     sent = await client.post(
         f"/api/agent/sessions/{session['id']}/messages",
         json={
-            "text": "이 화면을 shadcn 으로",
+            "text": "이 화면 버튼을 둥글게",
             "request_id": str(uuid4()),
             "context": {"view": "wireframe", "screen_id": "m.a", "screen_name": "가 화면"},
         },
@@ -86,7 +86,7 @@ async def test_message_keeps_viewing_context(client: httpx.AsyncClient, project_
 
     items = await client.get(f"/api/agent/sessions/{session['id']}/items")
     assert items.json()[0]["payload"] == {
-        "text": "이 화면을 shadcn 으로",
+        "text": "이 화면 버튼을 둥글게",
         "context": {"view": "wireframe", "screen_id": "m.a", "screen_name": "가 화면"},
     }
 

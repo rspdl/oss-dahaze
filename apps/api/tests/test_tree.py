@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -17,7 +18,7 @@ from dahaze_api.application.errors import (
 )
 from dahaze_api.application.tree import TreeService
 from dahaze_api.domain.entities import Project, ProjectRole, User
-from dahaze_api.domain.tree import ChangeKind
+from dahaze_api.domain.tree import ChangeKind, merge_wireframe_screen
 from dahaze_api.infrastructure.db.repositories import SqlProjectRepository
 from dahaze_api.infrastructure.db.tree_repository import SqlTreeRepository
 
@@ -147,7 +148,10 @@ async def test_wireframe_layout_file_sits_next_to_document(
         ("[]", "JSON 객체"),
         ('{"screens": []}', "`screens`"),
         ('{"screens": {"a": {"layout": {"type": "element"}}}}', "루트 노드"),
-        ('{"theme": "tailwind-pro"}', "`theme`"),
+        ('{"system": "shadcn"}', "`system`"),
+        ('{"system": {"tokens": ["primary"]}}', "`system.tokens`"),
+        ('{"system": {"tokens": {"primary": {"r": 1}}}}', "`system.tokens.primary`"),
+        ('{"system": {"components": {"button": "round"}}}', "`system.components.button`"),
     ],
 )
 async def test_wireframe_layout_file_must_be_readable(
@@ -167,12 +171,29 @@ async def test_wireframe_layout_file_must_be_readable(
         project_id=project.id,
         parent="/",
         name="a.wireframe.json",
-        content='{"version": 1, "theme": "shadcn", "screens": {}}',
+        content='{"version": 1, "system": {"tokens": {"primary": "#2563eb"}}, "screens": {}}',
     )
     with pytest.raises(Conflict, match=problem):
         await tree.edit(
             actor_id=user.id, project_id=project.id, path="/a.wireframe.json", content=content
         )
+
+
+def test_merging_a_screen_sets_the_design_system_and_drops_the_old_theme() -> None:
+    before = '{"version": 1, "theme": "shadcn", "note": "keep", "screens": {"b": {"position": {}}}}'
+    system: dict[str, object] = {"tokens": {"primary": "#2563eb"}}
+    merged = json.loads(
+        merge_wireframe_screen(before, "a", layout={"type": "group"}, system=system)
+    )
+    assert merged == {
+        "version": 1,
+        "note": "keep",
+        "system": system,
+        "screens": {"b": {"position": {}}, "a": {"layout": {"type": "group"}}},
+    }
+    cleared = json.loads(merge_wireframe_screen(json.dumps(merged), "a", system={}))
+    assert "system" not in cleared
+    assert cleared["screens"] == merged["screens"]
 
 
 async def test_error_text_is_saved_as_is(tree: TreeService, user: User, project: Project) -> None:

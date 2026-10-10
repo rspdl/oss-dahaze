@@ -592,7 +592,7 @@ async def test_wireframe_tool_changes_one_screen_and_edit_cannot_drop_others(
                         path="/a.wireframe.json",
                         screen_id="m.two",
                         layout=root,
-                        theme="shadcn",
+                        system={"tokens": {"primary": "#2563eb"}},
                     ),
                     call("edit", path="/a.wireframe.json", content='{"screens": {"m.two": {}}}'),
                 ),
@@ -605,7 +605,7 @@ async def test_wireframe_tool_changes_one_screen_and_edit_cannot_drop_others(
     assert finished is not None and finished.stop_reason is StopReason.DONE
     saved = await scope.tree.read(actor_id=user.id, project_id=project.id, path="/a.wireframe.json")
     data = json.loads(saved.text)
-    assert data["theme"] == "shadcn"
+    assert data["system"] == {"tokens": {"primary": "#2563eb"}}
     assert set(data["screens"]) == {"m.one", "m.two"}
     items = await scope.agents.list_items(turn.session_id)
     results = [i.payload for i in items if i.kind is ItemKind.TOOL_RESULT]

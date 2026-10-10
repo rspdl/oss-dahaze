@@ -1,5 +1,5 @@
 import type { LayoutNode } from '@/features/mockup/layout-tree'
-import type { UiTheme } from '@/features/mockup/ui-theme'
+import type { DesignSystem } from '@/features/mockup/design-system'
 
 /**
  * 와이어프레임 편집 상태: 저장된 배치(`base`), 고치는 중인 배치(`working`), 되돌리기 기록.
@@ -18,8 +18,8 @@ export type DesignState = {
   /** 화면 key 마다 Column·Row·Box 배치 트리. */
   layouts: Record<string, LayoutNode>
   positions: Record<string, ScreenPosition>
-  /** 문서 경로마다 목업을 그릴 UI 프레임워크. 없으면 회색 와이어프레임. */
-  themes?: Record<string, UiTheme>
+  /** 문서 경로마다 디자인 시스템(토큰·컴포넌트 덮어쓰기). 없으면 기본 회색 시스템. */
+  systems?: Record<string, DesignSystem>
 }
 
 export type DesignEditorState = {
@@ -38,7 +38,7 @@ export type DesignEditorState = {
   error: string | null
 }
 
-export const EMPTY_DESIGN: DesignState = { layouts: {}, positions: {}, themes: {} }
+export const EMPTY_DESIGN: DesignState = { layouts: {}, positions: {}, systems: {} }
 
 export function createDesignEditorState(scope: string, persisted: DesignState, serverStamp = ''): DesignEditorState {
   return {
@@ -155,12 +155,12 @@ export function cloneDesign(design: DesignState): DesignState {
   return {
     layouts: structuredClone(design.layouts),
     positions: Object.fromEntries(Object.entries(design.positions).map(([key, value]) => [key, { ...value }])),
-    themes: { ...design.themes },
+    systems: structuredClone(design.systems ?? {}),
   }
 }
 
 export function sameDesign(left: DesignState, right: DesignState): boolean {
-  const normal = (design: DesignState) => ({ layouts: design.layouts, positions: design.positions, themes: design.themes ?? {} })
+  const normal = (design: DesignState) => ({ layouts: design.layouts, positions: design.positions, systems: design.systems ?? {} })
   return stableJson(normal(left)) === stableJson(normal(right))
 }
 

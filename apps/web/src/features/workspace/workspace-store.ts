@@ -32,7 +32,6 @@ export interface ViewFocus {
   screenName?: string
   wireframePath?: string
   wireframeExists?: boolean
-  uiTheme?: string
   /** 화면에 선언된 요소. AI 가 배치의 ref 를 지어내지 않게 한다. */
   elements?: { id: string; kind: string; label: string; owner?: string }[]
 }

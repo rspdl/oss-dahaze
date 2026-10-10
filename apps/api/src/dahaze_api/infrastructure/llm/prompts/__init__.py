@@ -46,19 +46,31 @@ def _grammar_reference(*, planning: bool) -> str:
     return f"{heading}{rest}".strip()
 
 
-# `agent_system_ko.md` 안에서 파일 구성 규칙을 감싸는 구분자. MCP 서버 instructions 가 이 구간만
-# 가져다 쓴다. 규칙 원문을 한 곳에 두어 앱 AI 와 MCP 가 같은 문장을 받게 한다.
+# `agent_system_ko.md` 안에서 MCP 서버 instructions 와 함께 쓰는 구간의 구분자. 규칙 원문을 한 곳에
+# 두어 앱 AI 와 MCP 가 같은 문장을 받게 한다.
 _TREE_LAYOUT_START = "<!-- tree-layout -->"
 _TREE_LAYOUT_END = "<!-- /tree-layout -->"
+_WIREFRAME_START = "<!-- wireframe -->"
+_WIREFRAME_END = "<!-- /wireframe -->"
+_MARKERS = (_TREE_LAYOUT_START, _TREE_LAYOUT_END, _WIREFRAME_START, _WIREFRAME_END)
 
 
 def _agent_system() -> str:
     text = _read("agent_system_ko.md")
-    if _TREE_LAYOUT_START not in text or _TREE_LAYOUT_END not in text:
-        raise RuntimeError("agent_system_ko.md 에 tree-layout 구분자가 없다")
-    markers = {_TREE_LAYOUT_START, _TREE_LAYOUT_END}
-    lines = [line for line in text.splitlines() if line.strip() not in markers]
+    missing = [marker for marker in _MARKERS if marker not in text]
+    if missing:
+        raise RuntimeError(f"agent_system_ko.md 에 구분자가 없다: {', '.join(missing)}")
+    lines = [line for line in text.splitlines() if line.strip() not in _MARKERS]
     return "\n".join(lines).strip()
+
+
+def _section(start: str, end: str) -> str:
+    text = _read("agent_system_ko.md")
+    _, found_start, rest = text.partition(start)
+    body, found_end, _ = rest.partition(end)
+    if not found_start or not found_end:
+        raise RuntimeError(f"agent_system_ko.md 에 {start} 구분자가 없다")
+    return body.strip()
 
 
 def tree_layout_guide() -> str:
@@ -67,12 +79,16 @@ def tree_layout_guide() -> str:
     파일 하나가 모듈 하나이고 백틱 참조가 파일 밖으로 나가지 않는다는 규칙은 rspdl 0.1.4 에서
     실제 컴파일로 확인한 것이다. 컴파일러가 파일 사이 참조를 지원하면 이 구간을 고친다.
     """
-    text = _read("agent_system_ko.md")
-    _, start, rest = text.partition(_TREE_LAYOUT_START)
-    body, end, _ = rest.partition(_TREE_LAYOUT_END)
-    if not start or not end:
-        raise RuntimeError("agent_system_ko.md 에 tree-layout 구분자가 없다")
-    return body.strip()
+    return _section(_TREE_LAYOUT_START, _TREE_LAYOUT_END)
+
+
+def wireframe_guide() -> str:
+    """와이어프레임 배치 파일과 디자인 시스템 형식. 앱 AI 프롬프트와 MCP instructions 가 함께 쓴다.
+
+    형식의 원본은 웹의 `features/mockup/design-system.ts`·`layout-tree.ts` 다. 컴포넌트·축·파트·토큰
+    이름이 그쪽과 어긋나지 않는지 웹 테스트(`ui-components.test.tsx`)가 이 문서를 읽어 확인한다.
+    """
+    return _section(_WIREFRAME_START, _WIREFRAME_END)
 
 
 def build_agent_instructions(*, project_name: str, planning: bool, grammar: str) -> str:

@@ -45,7 +45,7 @@ from dahaze_api.infrastructure.db.repositories import (
     SqlUserRepository,
 )
 from dahaze_api.infrastructure.db.session import get_session_factory
-from dahaze_api.infrastructure.llm.prompts import tree_layout_guide
+from dahaze_api.infrastructure.llm.prompts import tree_layout_guide, wireframe_guide
 from dahaze_api.interface.mcp.auth import (
     BearerAuthMiddleware,
     McpAuthError,
@@ -84,8 +84,8 @@ dahaze 는 RSPDL 로 쓴 제품 기획을 프로젝트 작업 트리에 저장�
   요청했을 때만 쓴다.
 """
 
-# 파일 구성 규칙과 쓰기 전 판단 절차는 앱 AI 프롬프트와 같은 원문을 쓴다 (ADR-0005).
-INSTRUCTIONS = f"{_BASE_INSTRUCTIONS}\n{tree_layout_guide()}\n"
+# 파일 구성 규칙·쓰기 전 판단 절차·와이어프레임 형식은 앱 AI 프롬프트와 같은 원문을 쓴다 (ADR-0005).
+INSTRUCTIONS = f"{_BASE_INSTRUCTIONS}\n{tree_layout_guide()}\n\n{wireframe_guide()}\n"
 
 # 도구 호출 하나가 쓸 DB 세션의 수명을 여는 함수. 테스트가 자기 세션을 밀어 넣는 지점이다.
 SessionScope = Callable[[], AbstractAsyncContextManager[AsyncSession]]
@@ -453,7 +453,7 @@ class McpTools:
         path: str,
         screen_id: str,
         layout: dict[str, Any] | None = None,
-        theme: str | None = None,
+        system: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         async with self._acting(headers) as actor:
             if layout is not None and path.endswith(".wireframe.json"):
@@ -475,7 +475,7 @@ class McpTools:
                 path=path,
                 screen_id=screen_id,
                 layout=layout,
-                theme=theme,
+                system=system,
                 holder=actor.lock_holder,
             )
             return file_out(file).model_dump(mode="json")
@@ -866,7 +866,8 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         description=(
             "와이어프레임 배치 파일(`<문서>.wireframe.json`)에서 화면 하나의 항목만 바꾼다. 다른 "
             "화면의 항목과 모르는 키는 그대로 둔다. 파일이 없으면 만든다. `layout` 은 그 화면의 "
-            "루트 노드 전체, `theme` 은 문서의 UI 스타일(wireframe·shadcn·material·bootstrap)이다."
+            "루트 노드 전체, `system` 은 문서의 디자인 시스템(`tokens`·`components`) 전체다. "
+            "형식은 앱 AI 프롬프트의 \"와이어프레임 디자인 시스템\" 과 같다."
         ),
     )
     async def wireframe(
@@ -875,7 +876,7 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
         screen_id: str,
         ctx: Context,
         layout: dict[str, Any] | None = None,
-        theme: str | None = None,
+        system: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return await tools.tree_wireframe(
             ctx.headers,
@@ -883,7 +884,7 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
             path=path,
             screen_id=screen_id,
             layout=layout,
-            theme=theme,
+            system=system,
         )
 
     @mcp.tool(

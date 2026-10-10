@@ -42,6 +42,28 @@ import {
   Warning,
   WarningOctagon,
   X,
+  ArrowCounterClockwise,
+  ArrowDown,
+  ArrowRight,
+  ArrowLineUp,
+  ArrowsInLineHorizontal,
+  ArrowsInLineVertical,
+  ArrowsOutLineHorizontal,
+  ArrowsOutLineVertical,
+  Cards,
+  Code,
+  Columns,
+  CursorClick,
+  Image,
+  ListBullets,
+  Palette,
+  Rows,
+  Ruler,
+  SelectionPlus,
+  SelectionSlash,
+  SquaresFour,
+  Stack,
+  TextT,
 } from "@phosphor-icons/react/ssr"
 import type { IconProps as PhosphorIconProps } from "@phosphor-icons/react"
 
@@ -123,6 +145,30 @@ export const FlowIcon = bold(FlowArrow, "FlowIcon")
 export const SlidersIcon = bold(SlidersHorizontal, "SlidersIcon")
 export const SettingsIcon = bold(GearSix, "SettingsIcon")
 export const PanelLeftIcon = bold(SidebarSimple, "PanelLeftIcon")
+
+/* 화면 편집기(와이어프레임) */
+export const FrameColumnIcon = bold(Rows, "FrameColumnIcon")
+export const FrameRowIcon = bold(Columns, "FrameRowIcon")
+export const FrameBoxIcon = bold(Stack, "FrameBoxIcon")
+export const CardIcon = bold(Cards, "CardIcon")
+export const TextIcon = bold(TextT, "TextIcon")
+export const ImageIcon = bold(Image, "ImageIcon")
+export const ClickIcon = bold(CursorClick, "ClickIcon")
+export const GridIcon = bold(SquaresFour, "GridIcon")
+export const ListIcon = bold(ListBullets, "ListIcon")
+export const WrapIcon = bold(SelectionPlus, "WrapIcon")
+export const UnwrapIcon = bold(SelectionSlash, "UnwrapIcon")
+export const ParentIcon = bold(ArrowLineUp, "ParentIcon")
+export const CodeIcon = bold(Code, "CodeIcon")
+export const PaletteIcon = bold(Palette, "PaletteIcon")
+export const ResetIcon = bold(ArrowCounterClockwise, "ResetIcon")
+export const ArrowDownIcon = bold(ArrowDown, "ArrowDownIcon")
+export const ArrowRightIcon = bold(ArrowRight, "ArrowRightIcon")
+export const HugWidthIcon = bold(ArrowsInLineHorizontal, "HugWidthIcon")
+export const HugHeightIcon = bold(ArrowsInLineVertical, "HugHeightIcon")
+export const FillWidthIcon = bold(ArrowsOutLineHorizontal, "FillWidthIcon")
+export const FillHeightIcon = bold(ArrowsOutLineVertical, "FillHeightIcon")
+export const RulerIcon = bold(Ruler, "RulerIcon")
 
 /** 오른쪽 패널 여닫기. 왼쪽 패널 아이콘을 좌우로 뒤집는다. */
 export function PanelRightIcon({ className, ...props }: IconProps) {

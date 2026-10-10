@@ -1,16 +1,21 @@
 import type { ElementSelection } from './prototype-contract'
 import type { MockupElement, ScreenMockup } from './screen-layouts'
+import { parseCss, parseParts, type ComponentName, type Css } from './design-system'
 
 /**
  * 화면 배치를 Jetpack Compose 의 Column · Row · Box 와 같은 트리로 표현한다.
  *
- * 요소가 무엇인지는 문서가 정한다. 이 트리는 그 요소를 **어떻게 늘어놓을지**만 담고 기획
+ * 요소가 무엇인지는 문서가 정한다. 이 트리는 그 요소를 **어떻게 늘어놓고 어떻게 보일지**만 담고 기획
  * 원문과 따로 저장된다. 그래서 요소는 자기가 선언된 영역(머리글·영역·입력 그룹·화면 최상위)
  * 안에서만 옮길 수 있다. 영역 밖으로 옮기면 기획 구조가 바뀌므로 그것은 컴파일러를 거치는
  * 제안으로 처리한다.
  *
- * 텍스트·사각형·구분선·여백은 **디자인 전용** 노드다. 기획 의미가 없고 배치 정보에만 있으므로
- * 어디로든 옮기고 지울 수 있다. 색은 회색 단계만 쓴다.
+ * 모든 노드는 와이어프레임 디자인 시스템(`design-system.ts`)의 컴포넌트 하나로 그린다. 프레임은
+ * `frame`, 디자인 노드는 자기 종류, 문서 요소는 종류에 맞는 컴포넌트다. 노드는 그 컴포넌트의 축
+ * 값(`variant`·`size`·`tone`)을 고르고, `css`·`parts` 로 아무 CSS 나 덮어쓴다.
+ *
+ * 크기(`style.width`·`style.height`)만 CSS 가 아니라 Compose 의 wrapContent·fill·고정 규칙이다.
+ * 부모의 방향에 따라 flex 속성이 달라지기 때문이다(`layout-style.ts`).
  */
 
 export type Direction = 'column' | 'row' | 'box'
@@ -20,8 +25,6 @@ export type Arrangement = 'start' | 'center' | 'end' | 'space-between'
 export type Align = 'start' | 'center' | 'end'
 /** `hug` 은 내용 크기(wrapContent), `fill` 은 남은 공간 채우기, 숫자는 고정 px. */
 export type Size = 'hug' | 'fill' | number
-/** 회색 단계만 쓴다. 흰색 → 밝은 회색 → 회색 → 진한 회색. */
-export type Fill = 'none' | 'surface' | 'raised' | 'gray' | 'strong'
 
 export interface ContainerLayout {
   direction: Direction
@@ -37,35 +40,39 @@ export interface ContainerLayout {
 export interface NodeStyle {
   width: Size
   height: Size
-  fill: Fill
-  border: boolean
-  radius: number
 }
+
+/**
+ * 모든 노드가 가지는 겉모양.
+ * - `variant`·`size`·`tone`: 컴포넌트 축의 값. 축이 없는 컴포넌트에서는 무시한다.
+ * - `css`: 노드 자신에 덧씌우는 CSS. 값의 `$이름` 은 디자인 토큰이다.
+ * - `parts`: 컴포넌트 안쪽 조각(표 칸, 입력 라벨 등)에 덧씌우는 CSS.
+ */
+export interface NodeLook {
+  variant?: string
+  size?: string
+  tone?: string
+  css?: Css
+  parts?: Record<string, Css>
+}
+
+export const AXIS_KEYS = ['variant', 'size', 'tone'] as const
+export type AxisKey = (typeof AXIS_KEYS)[number]
 
 export type ElementKind = MockupElement['kind']
 
-/**
- * 문서 요소를 어떤 UI 로 보일지. 의미(무엇이 있는가)는 문서가 정하고 모양만 고른다.
- * - 목록: `table` 표(기본) · `cards` 카드 격자 · `list` 한 줄 목록
- * - 버튼: `primary` · `secondary` · `ghost` · `link`. 없으면 행동이 있는 버튼이 주 버튼이다.
- */
-export type ListAppearance = 'table' | 'cards' | 'list'
-export type ButtonAppearance = 'primary' | 'secondary' | 'ghost' | 'link'
-export type ElementAppearance = ListAppearance | ButtonAppearance
-
-export interface ElementNode {
+export interface ElementNode extends NodeLook {
   type: 'element'
   /** `id:<요소 id>` 또는 id 가 없을 때 `path:<요소 경로>`. */
   ref: string
   kind: ElementKind
   style: NodeStyle
-  appearance?: ElementAppearance
   /** 머리글·영역·입력 그룹처럼 자식을 가진 요소만 둔다. */
   layout?: ContainerLayout
   children?: LayoutNode[]
 }
 
-export interface GroupNode {
+export interface GroupNode extends NodeLook {
   type: 'group'
   id: string
   style: NodeStyle
@@ -76,30 +83,24 @@ export interface GroupNode {
 export type DesignKind =
   | 'text' | 'rectangle' | 'divider' | 'spacer' | 'image' | 'button'
   | 'badge' | 'avatar' | 'icon' | 'stat' | 'tabs' | 'progress' | 'search'
-/** `display` 는 히어로 제목처럼 큰 글자. */
-export type TextStyle = 'display' | 'title' | 'body' | 'caption'
-export type TextTone = 'strong' | 'default' | 'muted'
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost'
+  | 'input' | 'checkbox' | 'switch'
 
 /**
  * 문서에 없는 디자인 전용 노드. 히어로 영역의 큰 제목·이미지 자리·CTA 버튼처럼 기획 의미가 없는
- * 표현을 맡는다. 디자인 전용 버튼은 행동이 없다 — 행동이 있는 버튼은 문서에 선언한다.
+ * 표현을 맡는다. 디자인 전용 버튼·입력은 행동이 없다 — 행동이 있는 것은 문서에 선언한다.
  */
-export interface DesignNode {
+export interface DesignNode extends NodeLook {
   type: 'design'
   id: string
   design: DesignKind
   style: NodeStyle
   /**
-   * 텍스트의 내용, 버튼·배지의 이름, 이미지 자리의 설명, 아바타의 이름, 통계의 이름, 검색칸의 안내 문구.
-   * 탭은 쉼표로 나눈 탭 이름이고 첫 탭이 선택된 탭이다.
+   * 텍스트의 내용, 버튼·배지의 이름, 이미지 자리의 설명, 아바타의 이름, 통계의 이름, 검색칸의 안내 문구,
+   * 입력·체크박스·스위치의 라벨. 탭은 쉼표로 나눈 탭 이름이고 첫 탭이 선택된 탭이다.
    */
   text?: string
-  /** 통계 카드의 값, 진행 막대의 퍼센트(0~100). 문서에 없는 자리 값이다. */
+  /** 통계 카드의 값, 진행 막대의 퍼센트(0~100), 입력칸의 안내 문구. 문서에 없는 자리 값이다. */
   value?: string
-  textStyle?: TextStyle
-  tone?: TextTone
-  variant?: ButtonVariant
 }
 
 export type LayoutNode = ElementNode | GroupNode | DesignNode
@@ -115,21 +116,51 @@ export function isContainer(node: LayoutNode): node is ContainerNode {
   return node.type === 'group' || (node.type === 'element' && node.layout !== undefined && node.children !== undefined)
 }
 
+/** 노드를 그릴 디자인 시스템 컴포넌트. */
+export const DESIGN_COMPONENT: Record<DesignKind, ComponentName> = {
+  text: 'text', rectangle: 'rectangle', divider: 'divider', spacer: 'spacer', image: 'image', button: 'button',
+  badge: 'badge', avatar: 'avatar', icon: 'icon', stat: 'stat', tabs: 'tabs', progress: 'progress', search: 'search',
+  input: 'field', checkbox: 'checkbox', switch: 'switch',
+}
+
+export const ELEMENT_COMPONENT: Record<ElementKind, ComponentName | null> = {
+  header: 'frame', section: 'frame', form: 'frame', heading: 'text', input: 'field', list: 'list', button: 'button', placeholder: 'placeholder', unrecognized: null,
+}
+
+export function componentOf(node: LayoutNode): ComponentName | null {
+  if (node.type === 'group') return 'frame'
+  if (node.type === 'design') return DESIGN_COMPONENT[node.design]
+  return ELEMENT_COMPONENT[node.kind]
+}
+
+/** 문서 요소가 축을 고르지 않았을 때의 겉모양. 머리글은 옅은 면, 입력 그룹은 테두리, 제목은 진한 제목 글자. */
+export const ELEMENT_DEFAULT_LOOK: Partial<Record<ElementKind, Pick<NodeLook, AxisKey>>> = {
+  header: { variant: 'muted' },
+  form: { variant: 'outline' },
+  heading: { variant: 'title', tone: 'strong' },
+}
+
+/** 노드가 고른 축 값. 문서 요소는 고르지 않은 축에 종류별 기본값을 쓴다. */
+export function effectiveLook(node: LayoutNode): Pick<NodeLook, AxisKey> {
+  const defaults = node.type === 'element' ? ELEMENT_DEFAULT_LOOK[node.kind] : undefined
+  return { variant: node.variant ?? defaults?.variant, size: node.size ?? defaults?.size, tone: node.tone ?? defaults?.tone }
+}
+
 export function elementRef(element: MockupElement, path: string): string {
   return element.id === null ? `path:${path}` : `id:${element.id}`
 }
 
-/** 요소 종류별 기본 배치. 지금까지 목업이 그리던 모양과 같다. */
+/** 요소 종류별 기본 배치. */
 function defaultElementNode(element: MockupElement, path: string): ElementNode {
   const base = { type: 'element' as const, ref: elementRef(element, path), kind: element.kind }
-  const style = (overrides: Partial<NodeStyle>): NodeStyle => ({ width: 'fill', height: 'hug', fill: 'none', border: false, radius: 0, ...overrides })
+  const style = (overrides: Partial<NodeStyle>): NodeStyle => ({ width: 'fill', height: 'hug', ...overrides })
   switch (element.kind) {
     case 'header':
-      return { ...base, style: style({ fill: 'raised' }), layout: { direction: 'row', gap: 12, paddingX: 16, paddingY: 12, main: 'start', cross: 'center' }, children: element.children.map((child, index) => defaultElementNode(child, `${path}.children.${index}`)) }
+      return { ...base, style: style({}), layout: { direction: 'row', gap: 12, paddingX: 16, paddingY: 12, main: 'start', cross: 'center' }, children: element.children.map((child, index) => defaultElementNode(child, `${path}.children.${index}`)) }
     case 'section':
       return { ...base, style: style({}), layout: { direction: 'column', gap: 12, paddingX: 16, paddingY: 12, main: 'start', cross: 'start' }, children: element.children.map((child, index) => defaultElementNode(child, `${path}.children.${index}`)) }
     case 'form':
-      return { ...base, style: style({ fill: 'surface', border: true, radius: 6 }), layout: { direction: 'column', gap: 12, paddingX: 12, paddingY: 12, main: 'start', cross: 'start' }, children: element.inputs.map((child, index) => defaultElementNode(child, `${path}.inputs.${index}`)) }
+      return { ...base, style: style({}), layout: { direction: 'column', gap: 12, paddingX: 12, paddingY: 12, main: 'start', cross: 'start' }, children: element.inputs.map((child, index) => defaultElementNode(child, `${path}.inputs.${index}`)) }
     case 'heading':
     case 'button':
       return { ...base, style: style({ width: 'hug' }) }
@@ -141,7 +172,7 @@ function defaultElementNode(element: MockupElement, path: string): ElementNode {
 export function defaultLayout(screen: ScreenMockup): GroupNode {
   return {
     type: 'group', id: ROOT_ID,
-    style: { width: 'fill', height: 'fill', fill: 'none', border: false, radius: 0 },
+    style: { width: 'fill', height: 'fill' },
     layout: { direction: 'column', gap: 0, paddingX: 0, paddingY: 0, main: 'start', cross: 'start' },
     children: screen.elements.map((element, index) => defaultElementNode(element, `elements.${index}`)),
   }
@@ -184,14 +215,14 @@ export function resolveLayout(screen: ScreenMockup, saved: LayoutNode | undefine
     자기 영역 밖에 놓인 요소. 자리는 지킬 수 없지만 고른 모양(표·카드·크기)까지 버리면 사람이나 AI 가
     고친 것이 소리 없이 사라진다. 모양을 기억했다가 자기 영역 끝에 붙일 때 입힌다.
   */
-  const stray = new Map<string, Pick<ElementNode, 'style' | 'appearance'>>()
+  const stray = new Map<string, Pick<ElementNode, 'style' | keyof NodeLook>>()
   const prune = (nodes: LayoutNode[], owner: string | null): LayoutNode[] => nodes.flatMap((node): LayoutNode[] => {
     if (node.type === 'design') return [node]
     // 빈 그룹도 남긴다. 사용자가 만든 프레임이고, 지우는 것도 사용자가 한다.
     if (node.type === 'group') return [{ ...node, children: prune(node.children, owner) }]
     const entry = declared.get(node.ref)
     if (entry !== undefined && entry.element.kind === node.kind && entry.owner !== owner && !placed.has(node.ref)) {
-      stray.set(node.ref, { style: node.style, ...(node.appearance === undefined ? {} : { appearance: node.appearance }) })
+      stray.set(node.ref, { style: node.style, ...lookOf(node) })
     }
     if (entry === undefined || entry.element.kind !== node.kind || entry.owner !== owner || placed.has(node.ref)) return []
     placed.add(node.ref)
@@ -221,6 +252,15 @@ export function resolveLayout(screen: ScreenMockup, saved: LayoutNode | undefine
     })
   }
   return root
+}
+
+/** 노드의 겉모양 필드만. 값이 없는 키는 싣지 않는다. */
+export function lookOf(node: NodeLook): NodeLook {
+  const look: NodeLook = {}
+  for (const key of AXIS_KEYS) if (node[key] !== undefined) look[key] = node[key]
+  if (node.css !== undefined) look.css = node.css
+  if (node.parts !== undefined) look.parts = node.parts
+  return look
 }
 
 export function walkLayout(node: LayoutNode, visit: (node: LayoutNode, parent: ContainerNode | null) => void, parent: ContainerNode | null = null): void {
@@ -327,6 +367,26 @@ export function updateNode(root: GroupNode, key: string, update: { style?: Parti
   }) as GroupNode
 }
 
+export type NodePatch = { [K in keyof NodeLook]?: NodeLook[K] | null } & { text?: string | null; value?: string | null }
+
+/**
+ * 겉모양·내용을 고친다. `null` 이나 빈 값은 그 키를 지운다 — 지운 축은 컴포넌트 기본값으로 돌아간다.
+ * `text`·`value` 는 디자인 노드에만 있다.
+ */
+export function patchNode(root: GroupNode, key: string, patch: NodePatch): GroupNode {
+  return mapNode(root, (node) => {
+    if (nodeKey(node) !== key) return node
+    const next: Record<string, unknown> = { ...node }
+    for (const [field, value] of Object.entries(patch)) {
+      if ((field === 'text' || field === 'value') && node.type !== 'design') continue
+      const empty = value === null || value === undefined || (typeof value === 'object' && Object.keys(value).length === 0) || (value === '' && field !== 'text' && field !== 'value')
+      if (empty) delete next[field]
+      else next[field] = value
+    }
+    return next as unknown as LayoutNode
+  }) as GroupNode
+}
+
 /**
  * 방향을 바꿔도 화면에서 보이는 정렬은 그대로 둔다. Row 는 주 축이 가로이고 Column·Box 는
  * 세로이므로, Row 와 나머지 사이를 오갈 때 두 축의 정렬을 맞바꾼다.
@@ -346,7 +406,7 @@ export function wrapNode(root: GroupNode, key: string, direction: Direction, new
   if (node === null) return root
   const group: GroupNode = {
     type: 'group', id: newId,
-    style: { width: node.style.width === 'fill' ? 'fill' : 'hug', height: 'hug', fill: 'none', border: false, radius: 0 },
+    style: { width: node.style.width === 'fill' ? 'fill' : 'hug', height: 'hug' },
     layout: { direction, gap: 8, paddingX: 0, paddingY: 0, main: 'start', cross: direction === 'row' ? 'center' : 'start' },
     children: [node],
   }
@@ -404,64 +464,53 @@ export const newGroupId = (root: LayoutNode) => newNodeId(root, 'g')
 export function createGroup(direction: Direction, id: string): GroupNode {
   return {
     type: 'group', id,
-    style: { width: 'fill', height: 'hug', fill: 'none', border: false, radius: 0 },
+    style: { width: 'fill', height: 'hug' },
     layout: { direction, gap: 8, paddingX: 0, paddingY: 0, main: 'start', cross: direction === 'row' ? 'center' : 'start' },
     children: [],
   }
 }
 
 export function createDesignNode(design: DesignKind, id: string): DesignNode {
-  const style = (overrides: Partial<NodeStyle>): NodeStyle => ({ width: 'hug', height: 'hug', fill: 'none', border: false, radius: 0, ...overrides })
+  const style = (overrides: Partial<NodeStyle>): NodeStyle => ({ width: 'hug', height: 'hug', ...overrides })
   switch (design) {
-    case 'text': return { type: 'design', id, design, text: '텍스트', textStyle: 'body', tone: 'default', style: style({}) }
-    case 'rectangle': return { type: 'design', id, design, style: style({ width: 'fill', height: 120, fill: 'gray', radius: 4 }) }
+    case 'text': return { type: 'design', id, design, text: '텍스트', variant: 'body', tone: 'default', style: style({}) }
+    case 'rectangle': return { type: 'design', id, design, style: style({ width: 'fill', height: 120 }) }
     case 'divider': return { type: 'design', id, design, style: style({ width: 'fill' }) }
     case 'spacer': return { type: 'design', id, design, style: style({ width: 16, height: 16 }) }
-    case 'image': return { type: 'design', id, design, text: '이미지', style: style({ width: 'fill', height: 220, radius: 8 }) }
+    case 'image': return { type: 'design', id, design, text: '이미지', style: style({ width: 'fill', height: 220 }) }
     case 'button': return { type: 'design', id, design, text: '버튼', variant: 'primary', style: style({}) }
     case 'badge': return { type: 'design', id, design, text: '배지', variant: 'secondary', style: style({}) }
-    case 'avatar': return { type: 'design', id, design, text: '사용자', style: style({ width: 40, height: 40 }) }
-    case 'icon': return { type: 'design', id, design, text: '아이콘', style: style({ width: 24, height: 24 }) }
+    case 'avatar': return { type: 'design', id, design, text: '사용자', style: style({}) }
+    case 'icon': return { type: 'design', id, design, text: '아이콘', style: style({}) }
     case 'stat': return { type: 'design', id, design, text: '지표 이름', value: '—', style: style({ width: 'fill' }) }
     case 'tabs': return { type: 'design', id, design, text: '전체, 진행 중, 완료', style: style({ width: 'fill' }) }
     case 'progress': return { type: 'design', id, design, text: '진행률', value: '60', style: style({ width: 'fill' }) }
     case 'search': return { type: 'design', id, design, text: '검색', style: style({ width: 'fill' }) }
+    case 'input': return { type: 'design', id, design, text: '라벨', value: '안내 문구', style: style({ width: 'fill' }) }
+    case 'checkbox': return { type: 'design', id, design, text: '항목', style: style({}) }
+    case 'switch': return { type: 'design', id, design, text: '설정', style: style({}) }
   }
 }
 
-/** 카드 프레임. 테두리·모서리·안쪽 여백이 있는 Column 이다. 테마가 카드 그림자를 정한다. */
+/** 카드 프레임. 디자인 시스템의 `frame` 카드 모양을 고른 Column 이다. */
 export function createCard(id: string): GroupNode {
   return {
-    type: 'group', id,
-    style: { width: 'fill', height: 'hug', fill: 'surface', border: true, radius: 12 },
+    type: 'group', id, variant: 'card',
+    style: { width: 'fill', height: 'hug' },
     layout: { direction: 'column', gap: 8, paddingX: 20, paddingY: 20, main: 'start', cross: 'start' },
     children: [],
   }
 }
 
-export function updateDesign(root: GroupNode, key: string, patch: Partial<Pick<DesignNode, 'text' | 'textStyle' | 'tone' | 'variant' | 'value'>>): GroupNode {
-  return mapNode(root, (node) => nodeKey(node) === key && node.type === 'design' ? { ...node, ...patch } : node) as GroupNode
-}
-
 export const DESIGN_LABEL: Record<DesignKind, string> = {
   text: '텍스트', rectangle: '사각형', divider: '구분선', spacer: '여백', image: '이미지', button: '버튼',
   badge: '배지', avatar: '아바타', icon: '아이콘', stat: '통계', tabs: '탭', progress: '진행 막대', search: '검색칸',
-}
-
-/** 요소 노드의 모양을 바꾼다. 목록은 표·카드·목록, 버튼은 주·보조·텍스트·링크. */
-export function setAppearance(root: GroupNode, key: string, appearance: ElementAppearance | undefined): GroupNode {
-  return mapNode(root, (node) => {
-    if (nodeKey(node) !== key || node.type !== 'element') return node
-    const next = { ...node }
-    if (appearance === undefined) delete next.appearance
-    else next.appearance = appearance
-    return next
-  }) as GroupNode
+  input: '입력칸', checkbox: '체크박스', switch: '스위치',
 }
 
 /* ---------- 섹션 템플릿 ---------- */
 
-export type SectionTemplate = 'hero-center' | 'hero-split' | 'feature-grid' | 'cta-banner' | 'card-grid' | 'stats-row' | 'profile-card' | 'pricing' | 'tabs-panel'
+export type SectionTemplate = 'hero-center' | 'hero-split' | 'feature-grid' | 'cta-banner' | 'card-grid' | 'stats-row' | 'profile-card' | 'pricing' | 'tabs-panel' | 'signup-form'
 
 export const SECTION_LABEL: Record<SectionTemplate, string> = {
   'hero-center': '히어로 · 가운데',
@@ -473,6 +522,7 @@ export const SECTION_LABEL: Record<SectionTemplate, string> = {
   'profile-card': '프로필 카드',
   'pricing': '가격표 3단',
   'tabs-panel': '탭 + 검색 막대',
+  'signup-form': '가입 폼 카드',
 }
 
 /** 트리에서 아직 쓰지 않은 id 를 차례로 낸다. 노드 여러 개를 한 번에 만들 때 겹치지 않게. */
@@ -492,43 +542,45 @@ export function idFactory(root: LayoutNode): (prefix: 'g' | 'd') => string {
  * 사람이 고쳐 쓴다. 문서의 버튼·입력을 히어로 안에 두고 싶으면 같은 영역 안에서 끌어 넣는다.
  */
 export function createSection(template: SectionTemplate, nextId: (prefix: 'g' | 'd') => string): GroupNode {
-  const group = (direction: Direction, layout: Partial<ContainerLayout>, style: Partial<NodeStyle>, children: LayoutNode[]): GroupNode => ({
-    type: 'group', id: nextId('g'),
-    style: { width: 'fill', height: 'hug', fill: 'none', border: false, radius: 0, ...style },
-    layout: { direction, gap: 12, paddingX: 0, paddingY: 0, main: 'start', cross: 'start', ...layout },
-    children,
-  })
-  const text = (value: string, textStyle: TextStyle, tone: TextTone = 'default', style: Partial<NodeStyle> = {}): DesignNode => ({ type: 'design', id: nextId('d'), design: 'text', text: value, textStyle, tone, style: { width: 'hug', height: 'hug', fill: 'none', border: false, radius: 0, ...style } })
-  const button = (value: string, variant: ButtonVariant): DesignNode => ({ type: 'design', id: nextId('d'), design: 'button', text: value, variant, style: { width: 'hug', height: 'hug', fill: 'none', border: false, radius: 0 } })
-  const image = (value: string, height: number): DesignNode => ({ type: 'design', id: nextId('d'), design: 'image', text: value, style: { width: 'fill', height, fill: 'none', border: false, radius: 12 } })
-  const design = (kind: DesignKind, value: string, extra: { variant?: ButtonVariant; value?: string; style?: Partial<NodeStyle> } = {}): DesignNode => {
-    const node = createDesignNode(kind, nextId('d'))
-    const withText = kind === 'rectangle' || kind === 'divider' || kind === 'spacer' ? {} : { text: value }
-    return { ...node, ...withText, ...(extra.variant === undefined ? {} : { variant: extra.variant }), ...(extra.value === undefined ? {} : { value: extra.value }), style: { ...node.style, ...extra.style } }
+  const group = (direction: Direction, layout: Partial<ContainerLayout>, look: NodeLook & { style?: Partial<NodeStyle> }, children: LayoutNode[]): GroupNode => {
+    const { style, ...rest } = look
+    return {
+      type: 'group', id: nextId('g'), ...rest,
+      style: { width: 'fill', height: 'hug', ...style },
+      layout: { direction, gap: 12, paddingX: 0, paddingY: 0, main: 'start', cross: 'start', ...layout },
+      children,
+    }
   }
-  const actions = () => group('row', { gap: 8, cross: 'center' }, { width: 'hug' }, [button('시작하기', 'primary'), button('더 알아보기', 'secondary')])
+  const design = (kind: DesignKind, text: string | null, look: NodeLook & { value?: string; style?: Partial<NodeStyle> } = {}): DesignNode => {
+    const node = createDesignNode(kind, nextId('d'))
+    const { style, ...rest } = look
+    return { ...node, ...(text === null ? {} : { text }), ...rest, style: { ...node.style, ...style } }
+  }
+  const text = (value: string, variant: string, tone = 'default') => design('text', value, { variant, tone })
+  const button = (value: string, variant: string) => design('button', value, { variant })
+  const actions = () => group('row', { gap: 8, cross: 'center' }, { style: { width: 'hug' } }, [button('시작하기', 'primary'), button('더 알아보기', 'outline')])
   switch (template) {
     case 'hero-center':
-      return group('column', { gap: 16, paddingX: 32, paddingY: 64, cross: 'center' }, { fill: 'raised' }, [
-        text('새 소식', 'caption', 'muted'),
+      return group('column', { gap: 16, paddingX: 32, paddingY: 64, cross: 'center' }, { variant: 'muted' }, [
+        design('badge', '새 소식', { variant: 'outline' }),
         text('한 문장으로 말하는 가치 제안', 'display', 'strong'),
-        text('누가 무엇을 얻는지 한두 줄로 설명합니다.', 'body', 'muted'),
+        text('누가 무엇을 얻는지 한두 줄로 설명합니다.', 'body', 'default'),
         actions(),
       ])
     case 'hero-split':
       return group('row', { gap: 32, paddingX: 32, paddingY: 48, cross: 'center' }, {}, [
         group('column', { gap: 16 }, {}, [
           text('한 문장으로 말하는 가치 제안', 'display', 'strong'),
-          text('누가 무엇을 얻는지 한두 줄로 설명합니다.', 'body', 'muted'),
+          text('누가 무엇을 얻는지 한두 줄로 설명합니다.', 'body', 'default'),
           actions(),
         ]),
-        image('대표 이미지', 280),
+        design('image', '대표 이미지', { style: { width: 'fill', height: 280 } }),
       ])
     case 'feature-grid': {
-      const card = (title: string) => group('column', { gap: 8, paddingX: 20, paddingY: 20 }, { border: true, radius: 12 }, [
-        { type: 'design', id: nextId('d'), design: 'rectangle', style: { width: 36, height: 36, fill: 'gray', border: false, radius: 8 } },
+      const card = (title: string) => group('column', { gap: 8, paddingX: 20, paddingY: 20 }, { variant: 'card' }, [
+        design('icon', '기능 아이콘', { css: { width: 36, height: 36 } }),
         text(title, 'title', 'strong'),
-        text('이 기능이 해결하는 문제를 짧게 씁니다.', 'body', 'muted'),
+        text('이 기능이 해결하는 문제를 짧게 씁니다.', 'body', 'default'),
       ])
       return group('column', { gap: 24, paddingX: 32, paddingY: 48, cross: 'center' }, {}, [
         text('주요 기능', 'title', 'strong'),
@@ -536,13 +588,13 @@ export function createSection(template: SectionTemplate, nextId: (prefix: 'g' | 
       ])
     }
     case 'card-grid': {
-      const card = (title: string) => group('column', { gap: 10, paddingX: 0, paddingY: 0 }, { border: true, radius: 12, fill: 'surface' }, [
-        image('카드 이미지', 140),
+      const card = (title: string) => group('column', { gap: 0 }, { variant: 'card', css: { overflow: 'hidden' } }, [
+        design('image', '카드 이미지', { style: { width: 'fill', height: 140 }, css: { borderRadius: 0 } }),
         group('column', { gap: 6, paddingX: 16, paddingY: 12 }, {}, [
-          design('badge', '분류', { variant: 'secondary' }),
+          design('badge', '분류'),
           text(title, 'title', 'strong'),
-          text('카드에 들어갈 짧은 설명입니다.', 'body', 'muted'),
-          button('자세히', 'secondary'),
+          text('카드에 들어갈 짧은 설명입니다.', 'body', 'default'),
+          button('자세히', 'outline'),
         ]),
       ])
       return group('row', { gap: 16, paddingX: 24, paddingY: 24 }, {}, [card('카드 제목 하나'), card('카드 제목 둘'), card('카드 제목 셋')])
@@ -552,19 +604,19 @@ export function createSection(template: SectionTemplate, nextId: (prefix: 'g' | 
       return group('row', { gap: 12, paddingX: 24, paddingY: 16 }, {}, [stat('지표 하나'), stat('지표 둘'), stat('지표 셋'), stat('지표 넷')])
     }
     case 'profile-card':
-      return group('row', { gap: 16, paddingX: 20, paddingY: 20, cross: 'center' }, { border: true, radius: 12, fill: 'surface' }, [
-        design('avatar', '이름', { style: { width: 56, height: 56 } }),
-        group('column', { gap: 4 }, {}, [text('이름', 'title', 'strong'), text('역할이나 소개 한 줄', 'body', 'muted')]),
+      return group('row', { gap: 16, paddingX: 20, paddingY: 20, cross: 'center' }, { variant: 'card' }, [
+        design('avatar', '이름', { size: 'lg' }),
+        group('column', { gap: 4 }, {}, [text('이름', 'title', 'strong'), text('역할이나 소개 한 줄', 'body', 'default')]),
         design('badge', '상태', { variant: 'primary' }),
       ])
     case 'pricing': {
-      const tier = (name: string, featured: boolean) => group('column', { gap: 12, paddingX: 24, paddingY: 24 }, { border: true, radius: 12, fill: featured ? 'raised' : 'surface' }, [
+      const tier = (name: string, featured: boolean) => group('column', { gap: 12, paddingX: 24, paddingY: 24 }, featured ? { variant: 'card', css: { borderColor: '$primary', boxShadow: '$shadow-md' } } : { variant: 'card' }, [
         text(name, 'title', 'strong'),
         text('가격', 'display', 'strong'),
-        design('divider', ''),
-        text('포함 항목 하나', 'body', 'muted'),
-        text('포함 항목 둘', 'body', 'muted'),
-        button('선택하기', featured ? 'primary' : 'secondary'),
+        design('divider', null),
+        text('포함 항목 하나', 'body', 'default'),
+        text('포함 항목 둘', 'body', 'default'),
+        design('button', '선택하기', { variant: featured ? 'primary' : 'outline', style: { width: 'fill' } }),
       ])
       return group('row', { gap: 16, paddingX: 24, paddingY: 32 }, {}, [tier('기본', false), tier('추천', true), tier('전문가', false)])
     }
@@ -574,9 +626,17 @@ export function createSection(template: SectionTemplate, nextId: (prefix: 'g' | 
         design('search', '검색어를 입력하세요'),
       ])
     case 'cta-banner':
-      return group('row', { gap: 16, paddingX: 32, paddingY: 28, main: 'space-between', cross: 'center' }, { fill: 'strong', radius: 12 }, [
-        group('column', { gap: 4 }, { width: 'hug' }, [text('지금 바로 시작하세요', 'title', 'strong'), text('설치 없이 바로 써 볼 수 있습니다.', 'body', 'default')]),
-        button('무료로 시작', 'primary'),
+      return group('row', { gap: 16, paddingX: 32, paddingY: 28, main: 'space-between', cross: 'center' }, { variant: 'primary' }, [
+        group('column', { gap: 4 }, { style: { width: 'hug' } }, [text('지금 바로 시작하세요', 'title', 'strong'), text('설치 없이 바로 써 볼 수 있습니다.', 'body', 'default')]),
+        design('button', '무료로 시작', { variant: 'secondary' }),
+      ])
+    case 'signup-form':
+      return group('column', { gap: 16, paddingX: 24, paddingY: 24 }, { variant: 'card', style: { width: 360 } }, [
+        group('column', { gap: 4 }, {}, [text('계정 만들기', 'title', 'strong'), text('이메일로 바로 시작합니다.', 'body', 'default')]),
+        design('input', '이메일', { value: 'name@example.com' }),
+        design('input', '비밀번호', { value: '••••••••' }),
+        design('checkbox', '약관에 동의합니다'),
+        design('button', '가입하기', { variant: 'primary', style: { width: 'fill' } }),
       ])
   }
 }
@@ -617,9 +677,7 @@ export function elementLabel(element: MockupElement): string {
 const DIRECTIONS = new Set<string>(['column', 'row', 'box'])
 const ARRANGEMENTS = new Set<string>(['start', 'center', 'end', 'space-between'])
 const ALIGNS = new Set<string>(['start', 'center', 'end'])
-const FILLS = new Set<string>(['none', 'surface', 'raised', 'gray', 'strong'])
-const DESIGNS = new Set<string>(['text', 'rectangle', 'divider', 'spacer', 'image', 'button', 'badge', 'avatar', 'icon', 'stat', 'tabs', 'progress', 'search'])
-const APPEARANCES = new Set<string>(['table', 'cards', 'list', 'primary', 'secondary', 'ghost', 'link'])
+const DESIGNS = new Set<string>(Object.keys(DESIGN_LABEL))
 const KINDS = new Set<string>(Object.keys(KIND_LABEL))
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -641,15 +699,37 @@ function parseSize(value: unknown, fallback: Size): Size {
 */
 function parseStyle(value: unknown, defaults: NodeStyle): NodeStyle {
   if (!isRecord(value)) return defaults
-  // 회색만 쓰기 전에 저장된 'accent' 는 회색으로 읽는다.
-  const fill = value.fill === 'accent' ? 'gray' : value.fill
-  return {
-    width: parseSize(value.width, defaults.width),
-    height: parseSize(value.height, defaults.height),
-    fill: typeof fill === 'string' && FILLS.has(fill) ? fill as Fill : defaults.fill,
-    border: typeof value.border === 'boolean' ? value.border : defaults.border,
-    radius: number(value.radius, 0, 200) ?? defaults.radius,
+  return { width: parseSize(value.width, defaults.width), height: parseSize(value.height, defaults.height) }
+}
+
+/** 디자인 시스템 전의 회색 단계 배경. */
+const LEGACY_FILL: Record<string, string> = { surface: '$background', raised: '$muted', gray: '$border', accent: '$border', strong: '$border-strong' }
+
+/** 예전 `style` 의 배경·테두리·모서리를 CSS 로 옮긴다. 노드의 `css` 가 같은 속성을 쓰면 그것이 이긴다. */
+function legacyCss(style: unknown): Css | undefined {
+  if (!isRecord(style)) return undefined
+  const css: Css = {}
+  if (typeof style.fill === 'string' && LEGACY_FILL[style.fill] !== undefined) css.background = LEGACY_FILL[style.fill]!
+  if (style.border === true) css.border = '1px solid $border'
+  const radius = number(style.radius, 1, 200)
+  if (radius !== null) css.borderRadius = radius
+  return Object.keys(css).length === 0 ? undefined : css
+}
+
+const AXIS_VALUE = /^[a-z][a-z0-9-]{0,31}$/
+
+function parseLook(value: Record<string, unknown>, legacyVariant?: unknown): NodeLook {
+  const look: NodeLook = {}
+  for (const key of AXIS_KEYS) {
+    const raw = key === 'variant' && value.variant === undefined ? legacyVariant : value[key]
+    if (typeof raw === 'string' && AXIS_VALUE.test(raw)) look[key] = raw
   }
+  const legacy = legacyCss(value.style)
+  const css = parseCss(value.css)
+  if (legacy !== undefined || css !== undefined) look.css = { ...legacy, ...css }
+  const parts = parseParts(value.parts)
+  if (parts !== undefined) look.parts = parts
+  return look
 }
 
 function parseContainer(value: unknown): ContainerLayout | null {
@@ -665,8 +745,11 @@ function parseContainer(value: unknown): ContainerLayout | null {
   }
 }
 
-const HUG: NodeStyle = { width: 'hug', height: 'hug', fill: 'none', border: false, radius: 0 }
+const HUG: NodeStyle = { width: 'hug', height: 'hug' }
 const FILL_WIDTH: NodeStyle = { ...HUG, width: 'fill' }
+/** 내용 글을 갖는 디자인 노드. 나머지는 모양만 있다. */
+const TEXTLESS = new Set<DesignKind>(['rectangle', 'divider', 'spacer'])
+const VALUED = new Set<DesignKind>(['stat', 'progress', 'input'])
 
 export function parseLayoutNode(value: unknown, depth = 0): LayoutNode | null {
   if (!isRecord(value) || depth > 32) return null
@@ -675,26 +758,20 @@ export function parseLayoutNode(value: unknown, depth = 0): LayoutNode | null {
   if (value.type === 'group') {
     const layout = parseContainer(value.layout ?? {})
     if (typeof value.id !== 'string' || layout === null) return null
-    return { type: 'group', id: value.id, style, layout, children: children ?? [] }
+    return { type: 'group', id: value.id, ...parseLook(value), style, layout, children: children ?? [] }
   }
   if (value.type === 'design' && typeof value.id === 'string' && typeof value.design === 'string' && DESIGNS.has(value.design)) {
-    const node: DesignNode = { type: 'design', id: value.id, design: value.design as DesignKind, style }
-    if (!['rectangle', 'divider', 'spacer'].includes(node.design)) {
-      node.text = typeof value.text === 'string' ? value.text.slice(0, 2000) : node.design === 'text' ? '' : DESIGN_LABEL[node.design]
-    }
-    if ((node.design === 'stat' || node.design === 'progress') && (typeof value.value === 'string' || typeof value.value === 'number')) node.value = String(value.value).slice(0, 200)
-    if (node.design === 'badge') node.variant = value.variant === 'primary' || value.variant === 'ghost' ? value.variant : 'secondary'
-    if (node.design === 'text') {
-      node.textStyle = value.textStyle === 'display' || value.textStyle === 'title' || value.textStyle === 'caption' ? value.textStyle : 'body'
-      node.tone = value.tone === 'strong' || value.tone === 'muted' ? value.tone : 'default'
-    }
-    if (node.design === 'button') node.variant = value.variant === 'secondary' || value.variant === 'ghost' ? value.variant : 'primary'
+    const design = value.design as DesignKind
+    // 예전 텍스트는 글자 크기를 `textStyle` 에 두었다. 지금은 텍스트 컴포넌트의 `variant` 축이다.
+    const node: DesignNode = { type: 'design', id: value.id, design, ...parseLook(value, design === 'text' ? value.textStyle : undefined), style }
+    if (!TEXTLESS.has(design)) node.text = typeof value.text === 'string' ? value.text.slice(0, 2000) : design === 'text' ? '' : DESIGN_LABEL[design]
+    if (VALUED.has(design) && (typeof value.value === 'string' || typeof value.value === 'number')) node.value = String(value.value).slice(0, 200)
     return node
   }
   if (value.type === 'element' && typeof value.ref === 'string' && typeof value.kind === 'string' && KINDS.has(value.kind)) {
     const layout = value.layout === undefined ? undefined : parseContainer(value.layout) ?? undefined
-    const appearance = typeof value.appearance === 'string' && APPEARANCES.has(value.appearance) ? { appearance: value.appearance as ElementAppearance } : {}
-    return { type: 'element', ref: value.ref, kind: value.kind as ElementKind, style, ...appearance, ...(layout === undefined ? {} : { layout, children: children ?? [] }) }
+    // 예전에는 목록·버튼의 모양을 `appearance` 에 두었다. 지금은 컴포넌트의 `variant` 축이다.
+    return { type: 'element', ref: value.ref, kind: value.kind as ElementKind, ...parseLook(value, value.appearance), style, ...(layout === undefined ? {} : { layout, children: children ?? [] }) }
   }
   return null
 }

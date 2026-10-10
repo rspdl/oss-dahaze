@@ -92,7 +92,6 @@ class AgentMessageContext(BaseModel):
     wireframe_exists: bool | None = Field(
         default=None, description="배치 파일이 작업 트리에 이미 있는지"
     )
-    ui_theme: str | None = Field(default=None, max_length=40, description="지금 목업의 UI 스타일")
     elements: list[AgentContextElement] | None = Field(
         default=None, max_length=200, description="화면에 선언된 요소"
     )

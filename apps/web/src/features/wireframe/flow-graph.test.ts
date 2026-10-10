@@ -12,7 +12,7 @@ function response(result: unknown): CompileResult {
 
 const collected = collectBoard(response(screenStructure))
 const mockups = collectScreenMockups(response(screenStructure))
-const graph = buildFlowGraph(collected, mockups.screens, 'desktop')
+const graph = buildFlowGraph(collected, mockups.screens)
 
 function shortId(id: string): string {
   return id.split(':').pop() ?? id
@@ -38,7 +38,7 @@ describe('buildFlowGraph', () => {
   it('레이아웃이 없는 화면은 목업 없이 노드로만 남는다', () => {
     /* 빈 상자로 그리기 위해서다. 조작 선언에서 모양을 유추하지 않는다 — 유추한 화면은
        기획자가 쓰지 않은 것을 쓴 것처럼 보이게 한다. */
-    const bare = buildFlowGraph(collected, [], 'desktop')
+    const bare = buildFlowGraph(collected, [])
     expect(bare.nodes).toHaveLength(5)
     expect(bare.nodes.every((node) => node.mockup === null)).toBe(true)
   })
@@ -49,7 +49,7 @@ describe('buildFlowGraph', () => {
     expect(labels).toContain('목록에서 하나 고름')
     // `시설 상세 → 예약 신청` 경로에는 설명이 없다. 빈 칸 대신 출발 요소가 보인다.
     expect(labels).toContain('예약 신청')
-    expect(buildFlowGraph(collected, [], 'desktop').edges.map((edge) => edge.label)).toContain('apply')
+    expect(buildFlowGraph(collected, []).edges.map((edge) => edge.label)).toContain('apply')
   })
 
   it('경로를 따라 층을 쌓는다', () => {
@@ -64,14 +64,6 @@ describe('buildFlowGraph', () => {
     expect(columnOf('reservation.reservation_done')).toBeGreaterThan(
       columnOf('reservation.create_reservation'),
     )
-  })
-
-  it('모바일 폭에서는 열 간격이 좁아진다', () => {
-    const mobile = buildFlowGraph(collected, mockups.screens, 'mobile')
-    const secondColumn = (nodes: { position: { x: number } }[]) =>
-      Math.min(...nodes.map((node) => node.position.x).filter((x) => x > 0))
-
-    expect(secondColumn(mobile.nodes)).toBeLessThan(secondColumn(graph.nodes))
   })
 
   it('끝점을 찾지 못한 경로는 그리지 않고 따로 알린다', () => {
@@ -89,13 +81,13 @@ describe('buildFlowGraph', () => {
         },
       ],
     }
-    const built = buildFlowGraph(broken, mockups.screens, 'desktop')
+    const built = buildFlowGraph(broken, mockups.screens)
     expect(built.edges).toHaveLength(0)
     expect(built.danglingPaths).toHaveLength(1)
   })
 
   it('환경 필터로 숨긴 화면의 경로를 끊긴 경로라고 부르지 않는다', () => {
-    const built = buildFlowGraph(collected, mockups.screens, 'desktop', { visibleScreenKeys: new Set() })
+    const built = buildFlowGraph(collected, mockups.screens, { visibleScreenKeys: new Set() })
     expect(built.nodes).toHaveLength(0)
     expect(built.edges).toHaveLength(0)
     expect(built.danglingPaths).toHaveLength(0)
@@ -126,7 +118,7 @@ describe('buildFlowGraph', () => {
         },
       ],
     }
-    const built = buildFlowGraph(cyclic, mockups.screens, 'desktop')
+    const built = buildFlowGraph(cyclic, mockups.screens)
     expect(built.nodes).toHaveLength(5)
     expect(built.edges).toHaveLength(2)
     const list = built.nodes.find((node) => shortId(node.id) === 'reservation.facility_list')!
@@ -135,11 +127,11 @@ describe('buildFlowGraph', () => {
   })
 
   it('reserves space for each full card while preserving manual positions', () => {
-    const built = buildFlowGraph({ ...collected, paths: [] }, mockups.screens, 'desktop', { nodeWidth: 360, nodeHeight: 308 })
+    const built = buildFlowGraph({ ...collected, paths: [] }, mockups.screens, { nodeWidth: 360, nodeHeight: 308 })
     const ys = built.nodes.map((node) => node.position.y).sort((a, b) => a - b)
     for (let index = 1; index < ys.length; index++) expect(ys[index]! - ys[index - 1]!).toBeGreaterThanOrEqual(308)
     const key = built.nodes[0]!.id
-    const moved = buildFlowGraph(collected, mockups.screens, 'desktop', { positions: { [key]: { x: 42, y: 99 } } })
+    const moved = buildFlowGraph(collected, mockups.screens, { positions: { [key]: { x: 42, y: 99 } } })
     expect(moved.nodes.find((node) => node.id === key)?.position).toEqual({ x: 42, y: 99 })
   })
 
@@ -147,7 +139,6 @@ describe('buildFlowGraph', () => {
     const empty = buildFlowGraph(
       { categories: [], screens: [], paths: [], handlerPaths: [], recognized: true, compiled: true, unparsed: [] },
       [],
-      'desktop',
     )
     expect(empty.nodes).toHaveLength(0)
     expect(empty.edges).toHaveLength(0)

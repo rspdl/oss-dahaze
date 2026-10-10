@@ -8,7 +8,7 @@ import {
 } from '@xyflow/react'
 import { cn } from '@dahaze/ui'
 
-import { DEFAULT_VIEWPORT_DIMENSIONS, ScreenMockupFrame, type MockupViewport, type ScreenMockupFrameProps } from '../mockup/screen-mockup'
+import { DEFAULT_MOCKUP_DIMENSIONS, ScreenMockupFrame, type ScreenMockupFrameProps } from '../mockup/screen-mockup'
 import type { FlowGraph, FlowNode } from './flow-graph'
 
 export const FLOW_CARD_WIDTH = 360
@@ -17,23 +17,22 @@ const PREVIEW_HEIGHT = 260
 
 interface FlowNodeData extends Record<string, unknown> {
   node: FlowNode
-  viewport: MockupViewport
   selected: boolean
   related: boolean
-  prototype: Omit<ScreenMockupFrameProps, 'screen' | 'viewport'>
+  prototype: Omit<ScreenMockupFrameProps, 'screen'>
   onSelect: (id: string) => void
 }
 
 type ScreenFlowNode = Node<FlowNodeData, 'screen'>
 
 const ScreenNodeCard = memo(function ScreenNodeCard({ data }: NodeProps<ScreenFlowNode>) {
-  const { node, viewport, selected, related, prototype, onSelect } = data
-  const dimensions = prototype.dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
+  const { node, selected, related, prototype, onSelect } = data
+  const dimensions = prototype.dimensions ?? DEFAULT_MOCKUP_DIMENSIONS
   const experience = prototype.mode === 'experience'
   const scale = Math.min((FLOW_CARD_WIDTH - 24) / (dimensions.width + 2), (PREVIEW_HEIGHT - 20) / (dimensions.height + 2))
   const frame = node.mockup === null
     ? <div className="flex items-center justify-center rounded border border-dashed bg-surface text-sm text-text-subtle" style={dimensions}>선언된 레이아웃이 없습니다</div>
-    : <ScreenMockupFrame screen={node.mockup} viewport={viewport} {...prototype} showCaption={experience} />
+    : <ScreenMockupFrame screen={node.mockup} {...prototype} showCaption={experience} />
   if (experience) return frame
 
   return <article aria-label={`화면: ${node.screen.name}`} className={cn('screen-drag-handle cursor-grab active:cursor-grabbing', !related && !selected && 'opacity-40')} style={{ width: FLOW_CARD_WIDTH }}>
@@ -114,13 +113,12 @@ export function flowBoardEdges(graph: FlowGraph, selectedId: string | null): Edg
   })
 }
 
-export function FlowBoard({ graph, viewport, selectedId, onSelect, prototype = {}, prototypeForNode, editable = false, onPositionChange, onOpen }: {
+export function FlowBoard({ graph, selectedId, onSelect, prototype = {}, prototypeForNode, editable = false, onPositionChange, onOpen }: {
   graph: FlowGraph
-  viewport: MockupViewport
   selectedId: string | null
   onSelect: (id: string | null) => void
-  prototype?: Omit<ScreenMockupFrameProps, 'screen' | 'viewport'>
-  prototypeForNode?: (node: FlowNode) => Omit<ScreenMockupFrameProps, 'screen' | 'viewport'>
+  prototype?: Omit<ScreenMockupFrameProps, 'screen'>
+  prototypeForNode?: (node: FlowNode) => Omit<ScreenMockupFrameProps, 'screen'>
   editable?: boolean
   onPositionChange?: (screenKey: string, position: { x: number; y: number }) => void
   /** 화면 카드를 더블클릭했을 때. 없으면 그 화면으로 확대한다. */
@@ -142,18 +140,18 @@ export function FlowBoard({ graph, viewport, selectedId, onSelect, prototype = {
     const visible = experience ? graph.nodes.filter((node) => node.id === experienceId) : graph.nodes
     const baseNodes: ScreenFlowNode[] = visible.map((node) => {
       const config = prototypeForNode?.(node) ?? prototype
-      const dimensions = config.dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
+      const dimensions = config.dimensions ?? DEFAULT_MOCKUP_DIMENSIONS
       return {
         id: node.id, type: 'screen', dragHandle: '.screen-drag-handle',
         position: experience ? { x: 0, y: 0 } : node.position,
         initialWidth: experience ? dimensions.width + 2 : FLOW_CARD_WIDTH,
         initialHeight: experience ? dimensions.height + 48 : FLOW_CARD_HEIGHT,
         ariaLabel: node.screen.name,
-        data: { node, viewport, selected: false, related: selectedId === null || neighbors.has(node.id), prototype: config, onSelect: selectNode },
+        data: { node, selected: false, related: selectedId === null || neighbors.has(node.id), prototype: config, onSelect: selectNode },
       }
     })
     return { nodes: applyFlowNodeSelection(baseNodes, selectedId), edges: experience ? [] : flowBoardEdges(graph, selectedId) }
-  }, [graph, viewport, experience, experienceId, selectedId, prototype, prototypeForNode, selectNode])
+  }, [graph, experience, experienceId, selectedId, prototype, prototypeForNode, selectNode])
 
   /*
    * React Flow 는 노드 크기를 재고 끄는 위치를 onNodesChange 로 돌려준다. 그 변경을 받지 않으면
@@ -169,7 +167,7 @@ export function FlowBoard({ graph, viewport, selectedId, onSelect, prototype = {
   const onNodesChange = useCallback((changes: NodeChange<ScreenFlowNode>[]) => setFlowNodes((current) => applyNodeChanges(changes, current)), [])
 
   const nodeSetKey = graph.nodes.map((node) => node.id).join('|')
-  const dimensions = prototype.dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
+  const dimensions = prototype.dimensions ?? DEFAULT_MOCKUP_DIMENSIONS
   // Only a new environment or a prototype navigation reframes the board. Selecting,
   // editing and saving must leave the user's camera alone.
   useEffect(() => {

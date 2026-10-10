@@ -155,7 +155,8 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
             "와이어프레임 배치 파일(<문서>.wireframe.json)에서 화면 하나의 항목만 바꾼다. 다른 "
             "화면의 항목과 모르는 키는 그대로 둔다. 파일이 없으면 만든다. 배치 파일은 edit 대신 "
             '이 도구로 고친다. layout 은 그 화면의 루트 노드 전체({"type": "group", "id": '
-            '"root", ...}), theme 은 문서 전체의 UI 스타일이다. 바꾸지 않을 것은 빼고 보낸다.'
+            '"root", ...}), system 은 문서 전체의 디자인 시스템(tokens·components) 전체다. '
+            "바꾸지 않을 것은 빼고 보낸다."
         ),
         parameters=_object(
             {
@@ -165,10 +166,14 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
                     "type": "object",
                     "description": "그 화면의 배치 트리 루트. 바꾸지 않으면 뺀다",
                 },
-                "theme": {
-                    "type": "string",
-                    "enum": ["wireframe", "shadcn", "material", "bootstrap"],
-                    "description": "문서의 UI 스타일. 바꾸지 않으면 뺀다",
+                "system": {
+                    "type": "object",
+                    "description": (
+                        "문서의 디자인 시스템 전체: {tokens: {이름: CSS 값}, "
+                        "components: {컴포넌트: {base, variants: {축: {값: CSS}}, "
+                        "parts: {파트: CSS}}}}. 빈 객체는 기본으로 되돌린다. "
+                        "바꾸지 않으면 뺀다"
+                    ),
                 },
             },
             ["path", "screen_id"],
@@ -465,11 +470,11 @@ class AgentToolbox:
         path = _arg(args, "path")
         screen_id = _arg(args, "screen_id")
         layout = args.get("layout")
-        theme = args.get("theme")
+        system = args.get("system")
         if layout is not None and not isinstance(layout, dict):
             raise InvalidArguments("layout 은 루트 노드 객체여야 한다")
-        if theme is not None and not isinstance(theme, str):
-            raise InvalidArguments("theme 은 문자열이어야 한다")
+        if system is not None and not isinstance(system, dict):
+            raise InvalidArguments("system 은 tokens·components 를 가진 객체여야 한다")
         if layout is not None and path.endswith(".wireframe.json"):
             problems = await self._inspector.check_wireframe_layout(
                 actor_id=self._actor_id,
@@ -488,7 +493,7 @@ class AgentToolbox:
             path=path,
             screen_id=screen_id,
             layout=layout,
-            theme=theme,
+            system=system,
             holder=self._holder,
         )
         return ToolOutcome(

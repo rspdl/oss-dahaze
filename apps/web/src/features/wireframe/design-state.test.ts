@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { LayoutNode } from '@/features/mockup/layout-tree'
 import { acknowledgeDesign, createDesignEditorState, editDesign, reconcileServerDesign, redoDesign, restoreDesignDraft, serializeDesignDraft, undoDesign } from './design-state'
 
-const tree: LayoutNode = { type: 'group', id: 'root', style: { width: 'fill', height: 'fill', fill: 'none', border: false, radius: 0 }, layout: { direction: 'row', gap: 8, paddingX: 0, paddingY: 0, main: 'start', cross: 'center' }, children: [] }
+const tree: LayoutNode = { type: 'group', id: 'root', style: { width: 'fill', height: 'fill' }, layout: { direction: 'row', gap: 8, paddingX: 0, paddingY: 0, main: 'start', cross: 'center' }, children: [] }
 
 describe('design editor state', () => {
   it('retains a newer edit when an older save is acknowledged', () => {

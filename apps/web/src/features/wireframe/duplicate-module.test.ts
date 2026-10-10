@@ -33,7 +33,7 @@ describe('같은 모듈 id 를 쓰는 두 문서', () => {
   })
 
   describe('화면 흐름 보드', () => {
-    const graph = buildFlowGraph(collected, mockups.screens, 'desktop')
+    const graph = buildFlowGraph(collected, mockups.screens)
 
     it('문서마다 노드를 따로 세운다', () => {
       expect(graph.nodes).toHaveLength(2)

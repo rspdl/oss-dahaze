@@ -55,8 +55,6 @@ def user_content(payload: Mapping[str, Any]) -> str:
         lines.append(f"- 배치 파일: {context['wireframe_path']} ({state})")
         if context.get("screen_id"):
             lines.append(f"- screens 키: {context['screen_id']}")
-    if context.get("ui_theme"):
-        lines.append(f"- UI 스타일: {context['ui_theme']}")
     elements = context.get("elements")
     if isinstance(elements, list) and elements:
         lines.append("- 선언된 요소 (배치 ref 는 `id:<요소 id>`, 들여쓰기는 담긴 영역):")

@@ -1,4 +1,4 @@
-import { DEFAULT_VIEWPORT_DIMENSIONS, type MockupViewport } from '../mockup/screen-mockup'
+import { DEFAULT_MOCKUP_DIMENSIONS } from '../mockup/screen-mockup'
 import type { MockupElement, ScreenMockup } from '@/features/mockup/screen-layouts'
 import type { ActionOutcome } from '@/features/mockup/prototype-contract'
 import { refKey, type BoardHandlerPath, type BoardPath, type BoardScreen, type CollectedBoard } from './board-ir'
@@ -77,15 +77,14 @@ export function outcomesByScreen(graph: FlowGraph, handlerPaths: readonly BoardH
 
 const HANDLER_NAME = { state: '상태 표시', message: '메시지', popup: '팝업', loading: '로딩' } as const
 
-/** 목업 폭. `screen-mockup.tsx` 의 기기 폭과 같아야 노드가 잘리지 않는다. */
-const NODE_WIDTH: Record<MockupViewport, number> = { desktop: 1024, mobile: 390 }
+/** 목업 폭. `screen-mockup.tsx` 의 기본 크기와 같아야 노드가 잘리지 않는다. */
+const NODE_WIDTH = DEFAULT_MOCKUP_DIMENSIONS.width
 const COLUMN_GAP = 180
 const ROW_GAP = 120
 
 export function buildFlowGraph(
   collected: CollectedBoard,
   mockups: ScreenMockup[],
-  viewport: MockupViewport,
   options: { visibleScreenKeys?: ReadonlySet<string>; positions?: Readonly<Record<string, { x: number; y: number }>>; nodeWidth?: number; nodeHeight?: number } = {},
 ): FlowGraph {
   /* 전부 `path + id` 로 가른다. 같은 모듈 id 를 쓰는 두 문서에서 화면 id 가 글자 그대로
@@ -177,8 +176,8 @@ export function buildFlowGraph(
     for (const key of traversal.filter((key) => component.has(key))) {
       const column = depth.get(key) ?? 0
       const y = nextY.get(column) ?? componentTop
-      automaticPositions.set(key, { x: column * ((options.nodeWidth ?? NODE_WIDTH[viewport]) + COLUMN_GAP), y })
-      nextY.set(column, y + (options.nodeHeight ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport].height + 48) + ROW_GAP)
+      automaticPositions.set(key, { x: column * ((options.nodeWidth ?? NODE_WIDTH) + COLUMN_GAP), y })
+      nextY.set(column, y + (options.nodeHeight ?? DEFAULT_MOCKUP_DIMENSIONS.height + 48) + ROW_GAP)
     }
     componentTop = Math.max(...nextY.values()) + ROW_GAP
   }

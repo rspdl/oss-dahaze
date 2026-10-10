@@ -1,5 +1,5 @@
 import { parseLayoutNode } from '../mockup/layout-tree'
-import { isUiTheme, type UiTheme } from '../mockup/ui-theme'
+import { parseDesignSystem, type DesignSystem } from '../mockup/design-system'
 import { sameDesign, type DesignState, type ScreenPosition } from './design-state'
 
 /**
@@ -12,12 +12,15 @@ import { sameDesign, type DesignState, type ScreenPosition } from './design-stat
  * ```json
  * {
  *   "version": 1,
- *   "theme": "shadcn",
+ *   "system": { "tokens": { "primary": "#2563eb" }, "components": { "button": { "base": { ... } } } },
  *   "screens": {
  *     "<화면 id>": { "position": { "x": 0, "y": 0 }, "layout": { "type": "group", ... } }
  *   }
  * }
  * ```
+ *
+ * `system` 은 그 문서 목업의 디자인 시스템이다(`design-system.ts`). 예전 `theme`(UI 프레임워크 이름)은
+ * 더 읽지 않고, 그 문서를 다시 쓸 때 지운다.
  *
  * 쓸 때는 **바꾼 화면 항목만** 고친다. 문서에 구문 오류가 있으면 그 문서의 화면이 컴파일 결과에서
  * 빠지는데, 그때 파일을 통째로 다시 쓰면 보이지 않는 화면의 배치가 지워진다. 모르는 키도 남긴다.
@@ -70,7 +73,7 @@ export interface ParsedWireframes {
 export function parseWireframes(files: readonly WireframeFile[]): ParsedWireframes {
   const layouts: DesignState['layouts'] = {}
   const positions: DesignState['positions'] = {}
-  const themes: Record<string, UiTheme> = {}
+  const systems: Record<string, DesignSystem> = {}
   const invalid: ParsedWireframes['invalid'] = []
   for (const file of files) {
     const raw = parseRaw(file.text)
@@ -79,7 +82,8 @@ export function parseWireframes(files: readonly WireframeFile[]): ParsedWirefram
       continue
     }
     const documentPath = documentPathFor(file.path)
-    if (isUiTheme(raw.theme)) themes[documentPath] = raw.theme
+    const system = parseDesignSystem(raw.system)
+    if (system !== undefined) systems[documentPath] = system
     for (const [screenId, entry] of Object.entries(screensOf(raw))) {
       if (!isRecord(entry)) continue
       const key = screenKey(documentPath, screenId)
@@ -89,7 +93,7 @@ export function parseWireframes(files: readonly WireframeFile[]): ParsedWirefram
       if (position !== null) positions[key] = position
     }
   }
-  return { design: { layouts, positions, themes }, invalid }
+  return { design: { layouts, positions, systems }, invalid }
 }
 
 export interface WireframeWrite {
@@ -126,10 +130,10 @@ export function wireframeWrites(
     changed.add(split.screenId)
     changedByDocument.set(split.documentPath, changed)
   }
-  const themeChanged = new Set<string>()
-  for (const documentPath of new Set([...Object.keys(base.themes ?? {}), ...Object.keys(working.themes ?? {})])) {
-    if ((base.themes ?? {})[documentPath] === (working.themes ?? {})[documentPath]) continue
-    themeChanged.add(documentPath)
+  const systemChanged = new Set<string>()
+  for (const documentPath of new Set([...Object.keys(base.systems ?? {}), ...Object.keys(working.systems ?? {})])) {
+    if (sameDesign({ layouts: {}, positions: {}, systems: { s: (base.systems ?? {})[documentPath] ?? {} } }, { layouts: {}, positions: {}, systems: { s: (working.systems ?? {})[documentPath] ?? {} } })) continue
+    systemChanged.add(documentPath)
     if (!changedByDocument.has(documentPath)) changedByDocument.set(documentPath, new Set())
   }
 
@@ -143,10 +147,11 @@ export function wireframeWrites(
       throw new Error(`${path} 를 읽지 못해서 쓰지 않았어요. 파일을 먼저 고쳐 주세요.`)
     }
     const next: Record<string, unknown> = { version: WIREFRAME_VERSION, ...(raw ?? {}) }
-    if (themeChanged.has(documentPath)) {
-      const theme = (working.themes ?? {})[documentPath]
-      if (theme === undefined || theme === 'wireframe') delete next.theme
-      else next.theme = theme
+    delete next.theme
+    if (systemChanged.has(documentPath)) {
+      const system = (working.systems ?? {})[documentPath]
+      if (system === undefined || Object.keys(system).length === 0) delete next.system
+      else next.system = system
     }
     const screens: Record<string, unknown> = { ...screensOf(raw ?? {}) }
     for (const screenId of [...screenIds].sort()) {

@@ -59,9 +59,6 @@ def is_rspdl_path(path: str) -> bool:
     return path.endswith(RSPDL_SUFFIX)
 
 
-WIREFRAME_THEMES = frozenset({"wireframe", "shadcn", "material", "bootstrap"})
-
-
 def wireframe_problem(path: str, text: str) -> str | None:
     """배치 파일이 읽을 수 있는 모양인지. 문제가 없으면 `None`.
 
@@ -86,9 +83,31 @@ def wireframe_problem(path: str, text: str) -> str | None:
         layout = entry.get("layout")
         if layout is not None and (not isinstance(layout, dict) or layout.get("type") != "group"):
             return f'`screens.{screen_id}.layout` 은 `"type": "group"` 인 루트 노드여야 한다'
-    theme = value.get("theme")
-    if theme is not None and theme not in WIREFRAME_THEMES:
-        return f"`theme` 은 {', '.join(sorted(WIREFRAME_THEMES))} 중 하나여야 한다"
+    return wireframe_system_problem(value.get("system"))
+
+
+def wireframe_system_problem(system: object) -> str | None:
+    """문서의 디자인 시스템이 읽을 수 있는 모양인지. 값 하나하나는 화면이 너그럽게 읽는다."""
+    if system is None:
+        return None
+    if not isinstance(system, dict):
+        return "`system` 은 `tokens`·`components` 를 가진 객체여야 한다"
+    tokens = system.get("tokens")
+    if tokens is not None:
+        if not isinstance(tokens, dict):
+            return "`system.tokens` 는 토큰 이름을 키로 하는 객체여야 한다"
+        for name, value in tokens.items():
+            if not isinstance(value, str | int | float) or isinstance(value, bool):
+                return f"`system.tokens.{name}` 은 CSS 값 문자열이어야 한다"
+    components = system.get("components")
+    if components is not None:
+        if not isinstance(components, dict):
+            return "`system.components` 는 컴포넌트 이름을 키로 하는 객체여야 한다"
+        for name, override in components.items():
+            if not isinstance(override, dict):
+                return (
+                    f"`system.components.{name}` 은 `base`·`variants`·`parts` 를 가진 객체여야 한다"
+                )
     return None
 
 
@@ -108,7 +127,7 @@ def merge_wireframe_screen(
     *,
     layout: dict[str, object] | None = None,
     position: dict[str, object] | None = None,
-    theme: str | None = None,
+    system: dict[str, object] | None = None,
 ) -> str:
     """배치 파일에서 화면 하나의 항목만 바꾼 전문. 다른 화면과 모르는 키는 그대로 둔다.
 
@@ -119,11 +138,13 @@ def merge_wireframe_screen(
     if not isinstance(value, dict):
         raise ValueError("배치 파일의 최상위가 JSON 객체가 아니다")
     value.setdefault("version", 1)
-    if theme is not None:
-        if theme == "wireframe":
-            value.pop("theme", None)
+    # 예전 `theme`(UI 프레임워크 이름)은 디자인 시스템으로 바뀌었다. 문서를 고칠 때 지운다.
+    value.pop("theme", None)
+    if system is not None:
+        if system:
+            value["system"] = system
         else:
-            value["theme"] = theme
+            value.pop("system", None)
     if layout is not None or position is not None:
         screens = value.get("screens")
         if not isinstance(screens, dict):

@@ -590,7 +590,6 @@ function messageContext(focus: ViewFocus | null): AgentMessageContext | undefine
     screen_name: focus.screenName,
     wireframe_path: focus.wireframePath,
     wireframe_exists: focus.wireframeExists,
-    ui_theme: focus.uiTheme,
     elements: focus.elements,
   }
 }
@@ -632,7 +631,7 @@ function Composer({ busy, onSend }: { busy: boolean; onSend: (text: string, cont
           id="workspace-agent-input"
           rows={3}
           value={text}
-          placeholder={busy ? 'AI가 작업하는 동안에는 기다려 주세요' : attached ? '이 화면을 어떻게 바꿀까요? 예: shadcn 스타일로, 위에 히어로 섹션' : '무엇을 만들거나 고칠까요?'}
+          placeholder={busy ? 'AI가 작업하는 동안에는 기다려 주세요' : attached ? '이 화면을 어떻게 바꿀까요? 예: 주 색을 파랑으로, 위에 히어로 섹션' : '무엇을 만들거나 고칠까요?'}
           className="max-h-48 min-h-0 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {

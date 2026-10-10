@@ -12,7 +12,11 @@ from unittest.mock import MagicMock
 
 from dahaze_api.application.agent_tools import TOOL_NAMES, TOOL_SPECS
 from dahaze_api.domain.rspdl import RspdlSource
-from dahaze_api.infrastructure.llm.prompts import build_agent_instructions, tree_layout_guide
+from dahaze_api.infrastructure.llm.prompts import (
+    build_agent_instructions,
+    tree_layout_guide,
+    wireframe_guide,
+)
 from dahaze_api.infrastructure.rspdl import LocalRspdlCompiler
 from dahaze_api.interface.mcp.server import INSTRUCTIONS, create_mcp_server
 
@@ -81,6 +85,16 @@ def test_mcp_instructions_reuse_the_same_layout_text() -> None:
     assert guide.startswith("# 파일 구성")
     assert guide in _instructions()
     assert guide in INSTRUCTIONS
+
+
+def test_mcp_instructions_carry_the_wireframe_design_system() -> None:
+    """MCP 로 배치를 쓰는 AI 도 앱 AI 와 같은 디자인 시스템 형식을 받는다."""
+    guide = wireframe_guide()
+    assert guide.startswith("## 무엇을 어디서 고치나")
+    assert "## 와이어프레임 디자인 시스템" in guide
+    assert guide in _instructions()
+    assert guide in INSTRUCTIONS
+    assert "shadcn" not in guide and "theme" not in guide
 
 
 def test_layout_guide_names_only_existing_tools() -> None:
