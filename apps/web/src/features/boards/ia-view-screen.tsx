@@ -38,36 +38,12 @@ function IaView({ projectId }: { projectId: string }) {
       emptyDescription="문서에 화면을 선언하고 머리말의 `정보구조:` 로 묶으면, 그 계층이 여기에 트리로 나타납니다."
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        <header className="border-b pb-4">
-          <p className="text-xs font-medium tracking-[0.14em] text-text-subtle">
-            INFORMATION ARCHITECTURE
-          </p>
-          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-text">화면 구조</h1>
-          <p className="mt-1.5 max-w-[65ch] text-sm leading-relaxed text-text-muted">
-            선언된 분류와 화면을 선언한 순서 그대로 그렸습니다. 정보구조에서 형제의 순서는 곧
-            메뉴 순서입니다.
-          </p>
-          <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-text-subtle">
-            <div>
-              <dt className="sr-only">분류</dt>
-              <dd>
-                <span className="font-mono text-text">{data.board.categories.length}</span> 분류
-              </dd>
-            </div>
-            <div>
-              <dt className="sr-only">화면</dt>
-              <dd>
-                <span className="font-mono text-text">{data.board.screens.length}</span> 화면
-              </dd>
-            </div>
-            <div>
-              <dt className="sr-only">RSPDL 버전</dt>
-              <dd className="font-mono">rspdl {data.compilation.data?.rspdl_version}</dd>
-            </div>
-          </dl>
+        <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b pb-3">
+          <h1 className="text-lg font-semibold">화면 구조</h1>
+          <span className="text-xs text-text-subtle">{data.board.categories.length} 분류 · {data.board.screens.length} 화면 · 선언 순서 = 메뉴 순서</span>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col pt-4 md:flex-row md:gap-4">
+        <div className="flex min-h-0 flex-1 flex-col pt-3 xl:flex-row xl:gap-4">
           <IaBoard tree={tree} selectedId={selected?.id ?? null} onSelect={setSelectedId} />
           <SelectedSource projectId={projectId} data={data} node={selected} />
         </div>

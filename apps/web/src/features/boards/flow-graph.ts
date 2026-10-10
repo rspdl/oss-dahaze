@@ -1,5 +1,5 @@
-import type { MockupViewport } from '@/features/mockup/screen-mockup'
-import type { ScreenMockup } from '@/features/mockup/screen-layouts'
+import { DEFAULT_VIEWPORT_DIMENSIONS, type MockupViewport } from '../mockup/screen-mockup'
+import type { MockupElement, ScreenMockup } from '@/features/mockup/screen-layouts'
 import type { ActionOutcome } from '@/features/mockup/prototype-contract'
 import { refKey, type BoardPath, type BoardScreen, type CollectedBoard } from './board-ir'
 
@@ -53,20 +53,21 @@ export function outcomesByScreen(graph: FlowGraph): Record<string, Record<string
 const NODE_WIDTH: Record<MockupViewport, number> = { desktop: 1024, mobile: 390 }
 const COLUMN_GAP = 180
 const ROW_GAP = 120
-/** 빈 상자의 높이. 목업은 내용만큼 자라므로 층 간격은 넉넉히 둔다. */
-const ROW_HEIGHT = 520
 
 export function buildFlowGraph(
   collected: CollectedBoard,
   mockups: ScreenMockup[],
   viewport: MockupViewport,
-  options: { visibleScreenKeys?: ReadonlySet<string>; positions?: Readonly<Record<string, { x: number; y: number }>>; nodeWidth?: number } = {},
+  options: { visibleScreenKeys?: ReadonlySet<string>; positions?: Readonly<Record<string, { x: number; y: number }>>; nodeWidth?: number; nodeHeight?: number } = {},
 ): FlowGraph {
   /* 전부 `path + id` 로 가른다. 같은 모듈 id 를 쓰는 두 문서에서 화면 id 가 글자 그대로
      같아지므로, 바깥 id 로 묶으면 한 문서의 화면이 다른 문서의 것을 덮어쓴다. 경로의 끝점도
      자기 문서 안의 화면을 가리키므로 같은 규칙으로 푼다. */
   const mockupByKey = new Map(mockups.map((mockup) => [mockup.key, mockup]))
   const visibleScreens = options.visibleScreenKeys === undefined ? collected.screens : collected.screens.filter((screen) => options.visibleScreenKeys!.has(screen.key))
+  // Source order gives cyclic flows a stable visual starting point without inventing
+  // an entry-screen semantic. The compiler's alphabetical IDs are not layout order.
+  const orderedScreens = [...visibleScreens].sort((a, b) => a.path.localeCompare(b.path) || (a.layoutSpan?.start ?? a.span?.start ?? 0) - (b.layoutSpan?.start ?? b.span?.start ?? 0))
   const screenByKey = new Map(visibleScreens.map((screen) => [screen.key, screen]))
   const allScreenKeys = new Set(collected.screens.map((screen) => screen.key))
   const sourceKeyOf = (path: BoardPath) => refKey(path.path, path.sourceScreenId)
@@ -96,39 +97,69 @@ export function buildFlowGraph(
 
   const depth = new Map<string, number>()
   const queue: string[] = []
-  for (const screen of visibleScreens) {
+  for (const screen of orderedScreens) {
     if (!incoming.has(screen.key)) {
       depth.set(screen.key, 0)
       queue.push(screen.key)
     }
   }
-  while (queue.length > 0) {
-    const current = queue.shift()!
-    const currentDepth = depth.get(current) ?? 0
-    for (const next of outgoing.get(current) ?? []) {
-      if (depth.has(next)) continue
-      depth.set(next, currentDepth + 1)
-      queue.push(next)
+  const traversal: string[] = []
+  const traverse = () => {
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      traversal.push(current)
+      const currentDepth = depth.get(current) ?? 0
+      for (const next of outgoing.get(current) ?? []) {
+        if (depth.has(next)) continue
+        depth.set(next, currentDepth + 1)
+        queue.push(next)
+      }
     }
   }
-  /* 순환 안에만 있는 화면은 위 탐색이 닿지 못한다. 선언 순서대로 0층에 세운다. */
-  for (const screen of visibleScreens) {
-    if (!depth.has(screen.key)) depth.set(screen.key, 0)
+  traverse()
+  // Cyclic components still have a visible left-to-right spanning flow. Back edges
+  // remain real edges; they must not collapse the entire component into one column.
+  for (const screen of orderedScreens) {
+    if (depth.has(screen.key)) continue
+    depth.set(screen.key, 0)
+    queue.push(screen.key)
+    traverse()
   }
 
-  const rowInColumn = new Map<number, number>()
+  const adjacent = new Map<string, Set<string>>()
+  for (const path of livePaths) {
+    const source = sourceKeyOf(path)
+    const target = targetKeyOf(path)
+    adjacent.set(source, new Set([...(adjacent.get(source) ?? []), target]))
+    adjacent.set(target, new Set([...(adjacent.get(target) ?? []), source]))
+  }
+  const automaticPositions = new Map<string, { x: number; y: number }>()
+  let componentTop = 0
+  for (const screen of orderedScreens) {
+    if (automaticPositions.has(screen.key)) continue
+    const component = new Set<string>()
+    const pending = [screen.key]
+    while (pending.length > 0) {
+      const key = pending.pop()!
+      if (component.has(key)) continue
+      component.add(key)
+      pending.push(...(adjacent.get(key) ?? []))
+    }
+    const nextY = new Map<number, number>()
+    for (const key of traversal.filter((key) => component.has(key))) {
+      const column = depth.get(key) ?? 0
+      const y = nextY.get(column) ?? componentTop
+      automaticPositions.set(key, { x: column * ((options.nodeWidth ?? NODE_WIDTH[viewport]) + COLUMN_GAP), y })
+      nextY.set(column, y + (options.nodeHeight ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport].height + 48) + ROW_GAP)
+    }
+    componentTop = Math.max(...nextY.values()) + ROW_GAP
+  }
   const nodes: FlowNode[] = visibleScreens.map((screen) => {
-    const column = depth.get(screen.key) ?? 0
-    const row = rowInColumn.get(column) ?? 0
-    rowInColumn.set(column, row + 1)
     return {
       id: screen.key,
       screen,
       mockup: mockupByKey.get(screen.key) ?? null,
-      position: options.positions?.[screen.key] ?? {
-        x: column * ((options.nodeWidth ?? NODE_WIDTH[viewport]) + COLUMN_GAP),
-        y: row * (ROW_HEIGHT + ROW_GAP),
-      },
+      position: options.positions?.[screen.key] ?? automaticPositions.get(screen.key)!,
     }
   })
 
@@ -136,9 +167,19 @@ export function buildFlowGraph(
     id: path.key,
     source: sourceKeyOf(path),
     target: targetKeyOf(path),
-    label: path.label ?? path.sourceElementId,
+    label: path.label ?? elementName(mockupByKey.get(sourceKeyOf(path))?.elements ?? [], path.sourceElementId) ?? path.sourceElementId,
     path,
   }))
 
   return { nodes, edges, danglingPaths }
+}
+
+function elementName(elements: MockupElement[], id: string): string | undefined {
+  for (const element of elements) {
+    if (element.id === id && element.kind === 'button') return element.name
+    const nested = element.kind === 'header' || element.kind === 'section' ? element.children : element.kind === 'form' ? element.inputs : []
+    const name = elementName(nested, id)
+    if (name !== undefined) return name
+  }
+  return undefined
 }

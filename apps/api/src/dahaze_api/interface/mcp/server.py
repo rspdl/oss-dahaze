@@ -475,18 +475,6 @@ class McpTools:
             )
             return dict(result)
 
-    async def get_project_handoff(
-        self, headers: Mapping[str, str] | None, *, project_id: str, snapshot_version: int
-    ) -> dict[str, Any]:
-        """저장된 전체 프로젝트 버전을 재컴파일 없이 그대로 읽는다."""
-        async with self._acting(headers) as actor:
-            snapshot = await actor.planning.handoff(
-                actor_id=actor.user.id,
-                project_id=_uuid(project_id, field="project_id"),
-                revision=snapshot_version,
-            )
-            return dict(snapshot)
-
     async def create_planning_ai_job(
         self,
         headers: Mapping[str, str] | None,
@@ -985,21 +973,6 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
             expected_source_hash=expected_source_hash,
             edit=edit,
             summary=summary,
-        )
-
-    @mcp.tool(
-        name="get_project_handoff",
-        description=(
-            "프로젝트의 immutable 전체 스냅샷을 snapshot_version 에 고정해 읽는다. "
-            "저장 당시 원문·기획 메타데이터·컴파일러 버전·결과를 그대로 돌려주며 "
-            "현재 컴파일러로 조용히 재검증하지 않는다."
-        ),
-    )
-    async def get_project_handoff(
-        project_id: str, snapshot_version: int, ctx: Context
-    ) -> dict[str, Any]:
-        return await tools.get_project_handoff(
-            ctx.headers, project_id=project_id, snapshot_version=snapshot_version
         )
 
     return mcp

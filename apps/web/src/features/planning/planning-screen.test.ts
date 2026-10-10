@@ -3,7 +3,6 @@ import type { PlanningDraftResponse, PlanningDraftSummaryResponse, PlanningState
 
 vi.mock('../auth/require-session', () => ({ RequireSession: () => null }))
 vi.mock('../../shared/ui/app-shell', () => ({ AppShell: () => null, Crumb: () => null }))
-vi.mock('./handoff-inspector', () => ({ HandoffInspector: () => null }))
 vi.mock('./metadata-editor', () => ({ MetadataEditor: () => null }))
 vi.mock('./planning-workspace', () => ({ PlanningWorkspace: () => null }))
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { applyFlowNodeSelection, fitSelectedFlowNode } from './flow-board'
+import { applyFlowNodeSelection, flowBoardEdges, mergeFlowNodes } from './flow-board'
+import type { FlowGraph } from './flow-graph'
 
 type FlowNodes = Parameters<typeof applyFlowNodeSelection>[0]
 
@@ -12,19 +13,38 @@ function nodes(): FlowNodes {
     data: {
       node: {
         id,
-        screen: { id, key: id, name: id, path: 'test.rspdl', span: null },
+        screen: { id, key: id, name: id, path: 'test.rspdl', span: null, categoryId: null, categorySpan: null, categoryOrder: null, hasLayout: false, layoutSpan: null },
         mockup: null,
         position: { x: index * 100, y: 0 },
       },
       viewport: 'desktop',
       selected: false,
-      detailed: false,
+      related: true,
+      zoom: 1,
+      onSelect: vi.fn(),
       prototype: {},
     },
   })) as FlowNodes
 }
 
 describe('FlowBoard selection lifecycle', () => {
+  it('merges parallel paths and shows only the selected screen\'s connections', () => {
+    const graph: FlowGraph = { nodes: [], danglingPaths: [], edges: [
+      { id: 'success', source: 'checkout', target: 'done', label: '완료', path: {} as never },
+      { id: 'again', source: 'checkout', target: 'done', label: '다시 완료', path: {} as never },
+      { id: 'failure', source: 'checkout', target: 'retry', label: '재시도', path: {} as never },
+      { id: 'back', source: 'cart', target: 'checkout', label: '결제', path: {} as never },
+      { id: 'unrelated', source: 'settings', target: 'home', label: '저장', path: {} as never },
+    ] }
+    const overview = flowBoardEdges(graph, null)
+    expect(overview).toHaveLength(4)
+    expect(overview.every((edge) => edge.sourceHandle === 'out' && edge.targetHandle === 'in')).toBe(true)
+    expect(overview.every((edge) => edge.hidden === false && edge.label === undefined)).toBe(true)
+
+    const focused = flowBoardEdges(graph, 'checkout')
+    expect(focused.filter((edge) => !edge.hidden).map((edge) => edge.label)).toEqual(['완료 · 다시 완료', '재시도', '결제'])
+    expect(focused.find((edge) => edge.source === 'settings')?.hidden).toBe(true)
+  })
   it('selection changes only replace the selected node object', () => {
     const base = nodes()
     const selectedA = applyFlowNodeSelection(base, 'a')
@@ -39,36 +59,13 @@ describe('FlowBoard selection lifecycle', () => {
     expect(selectedB.map((node) => node.position)).toEqual(base.map((node) => node.position))
   })
 
-  it('fits the selected node through the existing flow instance', () => {
-    const fitBounds = vi.fn(async () => true)
-    const getInternalNode = vi.fn(() => ({
-      measured: { width: 1444, height: 950 },
-      internals: { positionAbsolute: { x: 3200, y: 1800 } },
-    }))
-
-    expect(fitSelectedFlowNode({ fitBounds, getInternalNode } as never, 'b', { width: 1440, height: 900 })).toBe(true)
-    expect(fitSelectedFlowNode({ fitBounds, getInternalNode } as never, null, { width: 1440, height: 900 })).toBe(false)
-
-    expect(fitBounds).toHaveBeenCalledOnce()
-    expect(fitBounds).toHaveBeenCalledWith({
-      x: 3200,
-      y: 1800,
-      width: 1444,
-      height: 950,
-    }, {
-      padding: 0.18,
-      duration: 200,
-    })
-  })
-
-  it('does not fit a selected node until its detailed dimensions are measured', () => {
-    const fitBounds = vi.fn(async () => true)
-    const getInternalNode = vi.fn(() => ({
-      measured: { width: 288, height: 112 },
-      internals: { positionAbsolute: { x: 3200, y: 1800 } },
-    }))
-
-    expect(fitSelectedFlowNode({ fitBounds, getInternalNode } as never, 'b', { width: 1440, height: 900 })).toBe(false)
-    expect(fitBounds).not.toHaveBeenCalled()
+  it('keeps React Flow measurements and the dragged position when the board recomputes nodes', () => {
+    const [a, b] = nodes()
+    const current = [{ ...a!, measured: { width: 360, height: 288 }, position: { x: 40, y: 50 }, dragging: true }, { ...b!, measured: { width: 360, height: 288 } }]
+    const next = nodes().map((node) => ({ ...node, position: { x: 999, y: 999 } }))
+    const merged = mergeFlowNodes(current, next)
+    expect(merged[0]).toMatchObject({ measured: { width: 360, height: 288 }, position: { x: 40, y: 50 }, dragging: true })
+    expect(merged[1]).toMatchObject({ measured: { width: 360, height: 288 }, position: { x: 999, y: 999 } })
+    expect(merged[2]?.measured).toBeUndefined()
   })
 })

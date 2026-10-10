@@ -54,7 +54,8 @@ describe('buildFlowGraph', () => {
     expect(labels).toContain('등록 성공')
     expect(labels).toContain('목록에서 하나 고름')
     // `시설 상세 → 예약 신청` 경로에는 설명이 없다. 빈 칸 대신 출발 요소가 보인다.
-    expect(labels).toContain('apply')
+    expect(labels).toContain('예약 신청')
+    expect(buildFlowGraph(collected, [], 'desktop').edges.map((edge) => edge.label)).toContain('apply')
   })
 
   it('경로를 따라 층을 쌓는다', () => {
@@ -134,6 +135,18 @@ describe('buildFlowGraph', () => {
     const built = buildFlowGraph(cyclic, mockups.screens, 'desktop')
     expect(built.nodes).toHaveLength(5)
     expect(built.edges).toHaveLength(2)
+    const list = built.nodes.find((node) => shortId(node.id) === 'reservation.facility_list')!
+    const detail = built.nodes.find((node) => shortId(node.id) === 'reservation.facility_detail')!
+    expect(list.position.x).not.toBe(detail.position.x)
+  })
+
+  it('reserves space for each full card while preserving manual positions', () => {
+    const built = buildFlowGraph({ ...collected, paths: [] }, mockups.screens, 'desktop', { nodeWidth: 360, nodeHeight: 308 })
+    const ys = built.nodes.map((node) => node.position.y).sort((a, b) => a - b)
+    for (let index = 1; index < ys.length; index++) expect(ys[index]! - ys[index - 1]!).toBeGreaterThanOrEqual(308)
+    const key = built.nodes[0]!.id
+    const moved = buildFlowGraph(collected, mockups.screens, 'desktop', { positions: { [key]: { x: 42, y: 99 } } })
+    expect(moved.nodes.find((node) => node.id === key)?.position).toEqual({ x: 42, y: 99 })
   })
 
   it('화면이 없으면 빈 그래프다', () => {

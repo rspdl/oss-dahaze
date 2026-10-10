@@ -38,16 +38,6 @@ export interface ElementSelection extends DesignBinding {
   fieldIds?: string[]
 }
 
-export interface ElementDesign {
-  width?: number
-  height?: number
-}
-
-export interface DesignChange {
-  binding: DesignBinding
-  patch: ElementDesign
-}
-
 export function designBindingKey(binding: DesignBinding): string {
   if (binding.elementId !== undefined) return `${binding.screenKey}:stable:${binding.elementId}`
   return `${binding.screenKey}:${binding.sourceHash ?? 'unversioned'}:${binding.elementPath ?? 'unresolved'}`

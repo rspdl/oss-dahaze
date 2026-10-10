@@ -1,258 +1,187 @@
 'use client'
 
+import * as React from 'react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Background,
-  Controls,
-  Handle,
-  MarkerType,
-  MiniMap,
-  Position,
-  ReactFlow,
-  type Edge,
-  type Node,
-  type NodeProps,
-  type ReactFlowInstance,
+  applyNodeChanges, Background, Controls, Handle, MarkerType, Position, ReactFlow,
+  type Edge, type Node, type NodeChange, type NodeProps, type ReactFlowInstance,
 } from '@xyflow/react'
 import { cn } from '@dahaze/ui'
 
 import { DEFAULT_VIEWPORT_DIMENSIONS, ScreenMockupFrame, type MockupViewport, type ScreenMockupFrameProps } from '../mockup/screen-mockup'
 import type { FlowGraph, FlowNode } from './flow-graph'
 
-/**
- * 화면 흐름을 그린다. **노드가 목업 그 자체다.**
- *
- * 레이아웃을 선언하지 않은 화면은 빈 상자로 선다. 조작 선언에서 모양을 유추하지 않는다 —
- * 유추한 화면은 기획자가 쓰지 않은 것을 쓴 것처럼 보이게 한다. 대신 다음 슬라이스가
- * 레이아웃 초안을 **문서에 넣을 텍스트**로 제안한다 (RFC-0001).
- *
- * 이 슬라이스에서 보드는 거울이다. 아무것도 쓰지 않는다.
- */
+export const FLOW_CARD_WIDTH = 360
+export const FLOW_CARD_HEIGHT = 288
+const PREVIEW_HEIGHT = 260
 
 interface FlowNodeData extends Record<string, unknown> {
   node: FlowNode
   viewport: MockupViewport
   selected: boolean
+  related: boolean
   prototype: Omit<ScreenMockupFrameProps, 'screen' | 'viewport'>
-  detailed: boolean
+  onSelect: (id: string) => void
 }
 
 type ScreenFlowNode = Node<FlowNodeData, 'screen'>
 
 const ScreenNodeCard = memo(function ScreenNodeCard({ data }: NodeProps<ScreenFlowNode>) {
-  const { node, viewport, selected, prototype, detailed } = data
+  const { node, viewport, selected, related, prototype, onSelect } = data
+  const dimensions = prototype.dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
+  const experience = prototype.mode === 'experience'
+  const scale = Math.min((FLOW_CARD_WIDTH - 24) / (dimensions.width + 2), (PREVIEW_HEIGHT - 20) / (dimensions.height + 2))
+  const frame = node.mockup === null
+    ? <div className="flex items-center justify-center rounded border border-dashed bg-surface text-sm text-text-subtle" style={dimensions}>선언된 레이아웃이 없습니다</div>
+    : <ScreenMockupFrame screen={node.mockup} viewport={viewport} {...prototype} showCaption={experience} />
+  if (experience) return frame
 
-  return (
-    <div
-      className={cn(
-        'rounded-xl border-2 transition-[border-color] duration-200 ease-out-expo',
-        selected ? 'border-accent' : 'border-transparent',
-      )}
-    >
-      <Handle type="target" position={Position.Left} className="!size-2.5 !border-0 !bg-accent" />
-      {!detailed ? <div className="flex h-28 w-72 flex-col justify-center rounded-lg border bg-surface px-4"><p className="truncate text-sm font-semibold text-text">{node.screen.name}</p><p className="mt-1 truncate font-mono text-[11px] text-text-subtle">{node.screen.id}</p><p className="mt-2 text-[11px] text-text-muted">{node.mockup === null ? '레이아웃 없음' : `요소 ${node.mockup.elements.length}개`}</p></div> : node.mockup === null ? (
-        <EmptyScreenBox name={node.screen.name} id={node.screen.id} viewport={viewport} dimensions={prototype.dimensions} />
-      ) : (
-        <ScreenMockupFrame screen={node.mockup} viewport={viewport} {...prototype} />
-      )}
-      <Handle type="source" position={Position.Right} className="!size-2.5 !border-0 !bg-accent" />
+  return <article aria-label={`화면: ${node.screen.name}`} className={cn('screen-drag-handle cursor-grab active:cursor-grabbing', !related && !selected && 'opacity-40')} style={{ width: FLOW_CARD_WIDTH }}>
+    <Handle id="in" type="target" position={Position.Left} style={{ top: 2 + PREVIEW_HEIGHT / 2 }} className="!size-1 !border-0 !bg-transparent" />
+    <div className={cn('relative overflow-hidden rounded-xl border-2 bg-canvas shadow-sm transition-[border-color]', selected ? 'border-text shadow-lg' : related ? 'border-border-strong' : 'border-border')} style={{ height: PREVIEW_HEIGHT + 4 }}>
+      <div className="absolute top-2.5" style={{ left: (FLOW_CARD_WIDTH - 4 - (dimensions.width + 2) * scale) / 2, width: dimensions.width + 2, transform: `scale(${scale})`, transformOrigin: 'top left' }}>{frame}</div>
     </div>
-  )
+    <div className="flex h-6 items-center px-1">
+      <button type="button" className="nodrag max-w-full truncate text-left text-[11px] font-normal text-text-subtle" onClick={(event) => { event.stopPropagation(); onSelect(node.id) }}>{node.screen.name}</button>
+    </div>
+    <Handle id="out" type="source" position={Position.Right} style={{ top: 2 + PREVIEW_HEIGHT / 2 }} className="!size-1 !border-0 !bg-transparent" />
+  </article>
 })
-
-/** 레이아웃을 선언하지 않은 화면. 이름만 있고 안은 비어 있다. */
-function EmptyScreenBox({
-  name,
-  id,
-  viewport,
-  dimensions,
-}: {
-  name: string
-  id: string
-  viewport: MockupViewport
-  dimensions?: { width: number; height: number }
-}) {
-  const viewportDimensions = dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
-  return (
-    <figure
-      className="flex shrink-0 flex-col overflow-hidden rounded-lg border border-dashed border-border bg-canvas"
-      style={{ width: viewportDimensions.width + 2 }}
-    >
-      <figcaption className="border-b border-border bg-surface px-4 py-2">
-        <span className="text-xs font-semibold text-text">{name}</span>
-      </figcaption>
-      <div data-mockup-viewport className="flex shrink-0 flex-col items-center justify-center gap-1 overflow-hidden px-4 py-14" style={viewportDimensions}>
-        <p className="text-sm text-text-muted">레이아웃이 선언되지 않았습니다</p>
-        <p className="font-mono text-[11px] text-text-subtle">{id}</p>
-      </div>
-    </figure>
-  )
-}
 
 const nodeTypes = { screen: ScreenNodeCard }
 
-/** 선택만 바뀌면 나머지 노드 객체를 그대로 보존해 ReactFlow의 node update 범위를 제한한다. */
-export function applyFlowNodeSelection(
-  nodes: ScreenFlowNode[],
-  selectedId: string | null,
-): ScreenFlowNode[] {
+/** 보드가 새로 계산한 노드에 React Flow 가 잰 크기와 끄는 중인 위치를 옮긴다. */
+export function mergeFlowNodes(current: ScreenFlowNode[], next: ScreenFlowNode[]): ScreenFlowNode[] {
+  const previous = new Map(current.map((node) => [node.id, node]))
+  return next.map((node) => {
+    const kept = previous.get(node.id)
+    if (kept === undefined) return node
+    return { ...node, measured: kept.measured, ...(kept.dragging === true ? { position: kept.position, dragging: true } : {}) }
+  })
+}
+
+export function applyFlowNodeSelection(nodes: ScreenFlowNode[], selectedId: string | null): ScreenFlowNode[] {
   return nodes.map((node) => {
     const selected = node.id === selectedId
-    const detailed = node.data.detailed || selected
-    if (node.data.selected === selected && node.data.detailed === detailed) return node
-    return { ...node, data: { ...node.data, selected, detailed } }
+    return node.data.selected === selected ? node : { ...node, data: { ...node.data, selected } }
   })
 }
 
-export function fitSelectedFlowNode(
-  instance: Pick<ReactFlowInstance<ScreenFlowNode, Edge>, 'fitBounds' | 'getInternalNode'>,
-  selectedId: string | null,
-  minimumDimensions: { width: number; height: number },
-): boolean {
-  if (selectedId === null) return false
-  const selectedNode = instance.getInternalNode(selectedId)
-  const width = selectedNode?.measured.width
-  const height = selectedNode?.measured.height
-  if (selectedNode === undefined || width === undefined || height === undefined
-    || width < minimumDimensions.width || height < minimumDimensions.height) return false
-
-  void instance.fitBounds({
-    x: selectedNode.internals.positionAbsolute.x,
-    y: selectedNode.internals.positionAbsolute.y,
-    width,
-    height,
-  }, {
-    padding: 0.18,
-    duration: 200,
+/**
+ * 같은 두 화면 사이의 경로는 선 하나로 합친다. 아무것도 고르지 않으면 모든 연결을 옅은 선으로,
+ * 화면을 고르면 그 화면에 닿는 연결만 이름과 함께 그리고 나머지는 숨긴다.
+ */
+export function flowBoardEdges(graph: FlowGraph, selectedId: string | null): Edge[] {
+  const merged = new Map<string, { source: string; target: string; labels: string[] }>()
+  for (const edge of graph.edges) {
+    const key = `${edge.source}->${edge.target}`
+    const entry = merged.get(key) ?? { source: edge.source, target: edge.target, labels: [] }
+    if (!entry.labels.includes(edge.label)) entry.labels.push(edge.label)
+    merged.set(key, entry)
+  }
+  const nameOf = (id: string) => graph.nodes.find((node) => node.id === id)?.screen.name ?? id
+  return [...merged.entries()].map(([id, { source, target, labels }]) => {
+    const outgoing = selectedId !== null && source === selectedId
+    const incoming = selectedId !== null && target === selectedId
+    const color = outgoing ? 'var(--color-text)' : incoming ? 'var(--color-text-subtle)' : 'var(--color-border-strong)'
+    return {
+      id, source, target,
+      sourceHandle: 'out', targetHandle: 'in', type: 'default',
+      hidden: selectedId !== null && !outgoing && !incoming,
+      label: outgoing || incoming ? labels.join(' · ') : undefined,
+      labelStyle: { fill: 'var(--color-text)', fontSize: 11, fontWeight: 500 },
+      labelBgStyle: { fill: 'var(--color-surface)', fillOpacity: 0.98 },
+      labelBgPadding: [6, 4] as [number, number],
+      markerEnd: { type: MarkerType.ArrowClosed, color },
+      style: { stroke: color, strokeWidth: outgoing || incoming ? 1.5 : 1 },
+      ariaLabel: `${nameOf(source)} → ${nameOf(target)}: ${labels.join(', ')}`,
+    }
   })
-  return true
 }
 
-export function FlowBoard({
-  graph,
-  viewport,
-  selectedId,
-  onSelect,
-  prototype = {},
-  prototypeForNode,
-  editable = false,
-  onPositionChange,
-}: {
+export function FlowBoard({ graph, viewport, selectedId, onSelect, prototype = {}, prototypeForNode, editable = false, onPositionChange, onOpen }: {
   graph: FlowGraph
   viewport: MockupViewport
   selectedId: string | null
-  onSelect: (id: string) => void
+  onSelect: (id: string | null) => void
   prototype?: Omit<ScreenMockupFrameProps, 'screen' | 'viewport'>
   prototypeForNode?: (node: FlowNode) => Omit<ScreenMockupFrameProps, 'screen' | 'viewport'>
   editable?: boolean
   onPositionChange?: (screenKey: string, position: { x: number; y: number }) => void
+  /** 화면 카드를 더블클릭했을 때. 없으면 그 화면으로 확대한다. */
+  onOpen?: (screenKey: string) => void
 }) {
-  const [zoom, setZoom] = useState(1)
   const instanceRef = useRef<ReactFlowInstance<ScreenFlowNode, Edge> | null>(null)
-  const fitFrameRef = useRef<number | null>(null)
-  const experienceSelectedId = prototype.mode === 'experience' ? selectedId : null
-  const { baseNodes, edges } = useMemo(() => {
-    const visibleNodes = experienceSelectedId === null ? graph.nodes : graph.nodes.filter((node) => node.id === experienceSelectedId)
-    const baseNodes: ScreenFlowNode[] = visibleNodes.map((node) => ({
-      id: node.id,
-      type: 'screen',
-      position: prototype.mode === 'experience' ? { x: 0, y: 0 } : node.position,
-      data: { node, viewport, selected: false, detailed: prototype.mode === 'experience' || zoom >= 0.35, prototype: prototypeForNode?.(node) ?? prototype },
-    }))
-    const visibleIds = new Set(baseNodes.map((node) => node.id))
-    const edges: Edge[] = graph.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)).map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: 'smoothstep',
-      label: edge.label,
-      labelStyle: { fill: 'var(--color-text-muted)', fontSize: 12, fontWeight: 600 },
-      labelBgStyle: { fill: 'var(--color-surface)', fillOpacity: 0.92 },
-      labelBgPadding: [5, 3] as [number, number],
-      markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-accent)' },
-      style: { stroke: 'var(--color-accent)', strokeWidth: 1.5 },
-      ariaLabel: `${edge.path.sourceElementId}에서 출발: ${edge.label}`,
-    }))
-    return { baseNodes, edges }
-  }, [experienceSelectedId, graph, prototype, prototypeForNode, viewport, zoom])
-  const nodes = useMemo(
-    () => applyFlowNodeSelection(baseNodes, selectedId),
-    [baseNodes, selectedId],
-  )
-  const selectedGraphNode = graph.nodes.find((node) => node.id === selectedId)
-  const selectedPrototype = selectedGraphNode === undefined
-    ? prototype
-    : prototypeForNode?.(selectedGraphNode) ?? prototype
-  const selectedDimensions = selectedPrototype.dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
-  const fitSelection = useCallback((instance: ReactFlowInstance<ScreenFlowNode, Edge>) => {
-    if (fitFrameRef.current !== null) cancelAnimationFrame(fitFrameRef.current)
-    if (selectedId === null || selectedGraphNode === undefined) return
-
-    const position = prototype.mode === 'experience' ? { x: 0, y: 0 } : selectedGraphNode.position
-    const minimumDimensions = { width: selectedDimensions.width, height: selectedDimensions.height }
-
-    // 가상화된 먼 노드는 아직 내부 노드나 측정값이 없다. 알려진 레이아웃 사각형을 먼저
-    // 맞춰 mount시킨 뒤, 상세 카드의 새 크기가 측정되었을 때만 실제 경계로 보정한다.
-    // fitView는 측정되지 않은 단일 노드를 전체 그래프로 fallback하므로 이 경로에서 쓰지 않는다.
-    void instance.fitBounds({
-      x: position.x,
-      y: position.y,
-      width: selectedDimensions.width + 2,
-      height: selectedDimensions.height + 48,
-    }, { padding: 0.18, duration: 0 })
-
-    let remainingFrames = 12
-    const refineMeasuredBounds = () => {
-      if (fitSelectedFlowNode(instance, selectedId, minimumDimensions) || remainingFrames === 0) {
-        fitFrameRef.current = null
-        return
+  const selectNode = onSelect
+  const experience = prototype.mode === 'experience'
+  const experienceId = experience ? selectedId ?? graph.nodes[0]?.id ?? null : null
+  const focusNode = useCallback((id: string) => {
+    const node = graph.nodes.find((entry) => entry.id === id)
+    if (node === undefined) return
+    selectNode(id)
+    const height = FLOW_CARD_HEIGHT
+    void instanceRef.current?.fitBounds({ ...node.position, width: FLOW_CARD_WIDTH, height }, { padding: 0.3, duration: 300 })
+  }, [graph, selectNode])
+  const { nodes, edges } = useMemo(() => {
+    const neighbors = new Set([selectedId, ...graph.edges.filter((edge) => edge.source === selectedId || edge.target === selectedId).flatMap((edge) => [edge.source, edge.target])])
+    const visible = experience ? graph.nodes.filter((node) => node.id === experienceId) : graph.nodes
+    const baseNodes: ScreenFlowNode[] = visible.map((node) => {
+      const config = prototypeForNode?.(node) ?? prototype
+      const dimensions = config.dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
+      return {
+        id: node.id, type: 'screen', dragHandle: '.screen-drag-handle',
+        position: experience ? { x: 0, y: 0 } : node.position,
+        initialWidth: experience ? dimensions.width + 2 : FLOW_CARD_WIDTH,
+        initialHeight: experience ? dimensions.height + 48 : FLOW_CARD_HEIGHT,
+        ariaLabel: node.screen.name,
+        data: { node, viewport, selected: false, related: selectedId === null || neighbors.has(node.id), prototype: config, onSelect: selectNode },
       }
-      remainingFrames -= 1
-      fitFrameRef.current = requestAnimationFrame(refineMeasuredBounds)
-    }
-    fitFrameRef.current = requestAnimationFrame(refineMeasuredBounds)
-  }, [prototype.mode, selectedDimensions.height, selectedDimensions.width, selectedGraphNode, selectedId])
-  useEffect(() => {
-    if (instanceRef.current !== null) fitSelection(instanceRef.current)
-    return () => {
-      if (fitFrameRef.current !== null) cancelAnimationFrame(fitFrameRef.current)
-    }
-  }, [fitSelection])
+    })
+    return { nodes: applyFlowNodeSelection(baseNodes, selectedId), edges: experience ? [] : flowBoardEdges(graph, selectedId) }
+  }, [graph, viewport, experience, experienceId, selectedId, prototype, prototypeForNode, selectNode])
 
-  return (
-    <section
-      aria-label="화면 흐름"
-      className="relative min-h-0 flex-1 overflow-hidden rounded-lg border bg-surface-raised/30"
+  /*
+   * React Flow 는 노드 크기를 재고 끄는 위치를 onNodesChange 로 돌려준다. 그 변경을 받지 않으면
+   * 노드가 끝내 "초기화되지 않은" 상태로 남고, 노드가 다시 만들어질 때마다 측정과 갱신을 되풀이한다.
+   * 그래서 보드가 계산한 노드를 기준으로 하되, 측정값과 끄는 중인 위치는 React Flow 가 준 것을 지킨다.
+   */
+  const [flowNodes, setFlowNodes] = useState<ScreenFlowNode[]>(nodes)
+  const [syncedNodes, setSyncedNodes] = useState(nodes)
+  if (syncedNodes !== nodes) {
+    setSyncedNodes(nodes)
+    setFlowNodes(mergeFlowNodes(flowNodes, nodes))
+  }
+  const onNodesChange = useCallback((changes: NodeChange<ScreenFlowNode>[]) => setFlowNodes((current) => applyNodeChanges(changes, current)), [])
+
+  const nodeSetKey = graph.nodes.map((node) => node.id).join('|')
+  const dimensions = prototype.dimensions ?? DEFAULT_VIEWPORT_DIMENSIONS[viewport]
+  // Only a new environment or a prototype navigation reframes the board. Selecting,
+  // editing and saving must leave the user's camera alone.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (experience) void instanceRef.current?.fitBounds({ x: 0, y: 0, width: dimensions.width + 2, height: dimensions.height + 48 }, { padding: 0.15, duration: 200 })
+      else void instanceRef.current?.fitView({ padding: 0.15, maxZoom: 1, duration: 200 })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [experience, experienceId, nodeSetKey, dimensions.width, dimensions.height])
+
+  return <section aria-label="화면 흐름 보드" className="relative min-h-0 flex-1 overflow-hidden rounded-xl border bg-canvas">
+    <ReactFlow<ScreenFlowNode, Edge>
+      nodes={flowNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange}
+      fitView fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+      onInit={(instance) => { instanceRef.current = instance }}
+      minZoom={0.08} maxZoom={4} nodesConnectable={false} nodesDraggable={editable}
+      onNodeDragStop={(_, node) => onPositionChange?.(node.id, node.position)}
+      onNodeClick={(_, node) => { if (!experience) selectNode(node.id) }}
+      onNodeDoubleClick={(_, node) => { if (experience) return; if (onOpen !== undefined && node.data.node.mockup !== null) onOpen(node.id); else focusNode(node.id) }}
+      onPaneClick={() => { if (!experience) selectNode(null) }}
+      onEdgeClick={(_, edge) => selectNode(edge.source)}
+      onEdgeDoubleClick={(_, edge) => focusNode(edge.target)}
+      zoomOnDoubleClick={false} onlyRenderVisibleElements
+      proOptions={{ hideAttribution: true }}
     >
-      <ReactFlow<ScreenFlowNode, Edge>
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.15, maxZoom: 0.9 }}
-        onInit={(instance) => { instanceRef.current = instance; fitSelection(instance) }}
-        minZoom={0.05}
-        maxZoom={1.4}
-        nodesConnectable={false}
-        nodesDraggable={editable}
-        onNodeDragStop={(_, node) => onPositionChange?.(node.id, node.position)}
-        onMove={(_, viewportState) => setZoom(viewportState.zoom)}
-        onlyRenderVisibleElements
-        onNodeClick={(_, node) => { if (prototype.mode !== 'experience') onSelect(node.id) }}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background gap={20} size={1} color="var(--color-border)" />
-        {prototype.mode === 'experience' ? null : <MiniMap
-          pannable
-          zoomable
-          nodeColor="var(--color-accent)"
-          className="!border !border-border !bg-surface"
-        />}
-        <Controls
-          showInteractive={false}
-          className="!border-border !bg-surface [&>button]:!border-border [&>button]:!bg-surface"
-        />
-      </ReactFlow>
-    </section>
-  )
+      <Background gap={24} size={1} color="var(--color-border-strong)" />
+      <Controls showInteractive={false} className="!border-border !bg-surface [&>button]:!border-border [&>button]:!bg-surface" />
+    </ReactFlow>
+  </section>
 }

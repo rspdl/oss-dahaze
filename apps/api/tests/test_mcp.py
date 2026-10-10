@@ -782,7 +782,6 @@ async def test_tools_are_advertised_over_http(
         "list_planning_ai_jobs",
         "cancel_planning_ai_job",
         "retry_planning_ai_job",
-        "get_project_handoff",
     }
     # 설명이 LLM 에게는 유일한 인터페이스다. 비어 있으면 도구가 없는 것과 같다.
     assert all(tool["description"] for tool in advertised)
