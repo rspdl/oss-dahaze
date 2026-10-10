@@ -150,6 +150,31 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         ),
     ),
     ToolSpec(
+        name="wireframe",
+        description=(
+            "와이어프레임 배치 파일(<문서>.wireframe.json)에서 화면 하나의 항목만 바꾼다. 다른 "
+            "화면의 항목과 모르는 키는 그대로 둔다. 파일이 없으면 만든다. 배치 파일은 edit 대신 "
+            '이 도구로 고친다. layout 은 그 화면의 루트 노드 전체({"type": "group", "id": '
+            '"root", ...}), theme 은 문서 전체의 UI 스타일이다. 바꾸지 않을 것은 빼고 보낸다.'
+        ),
+        parameters=_object(
+            {
+                "path": _string("배치 파일 경로. 예: /주문/카페.wireframe.json"),
+                "screen_id": _string("화면 id 전체. 예: cafe_order.menu_screen"),
+                "layout": {
+                    "type": "object",
+                    "description": "그 화면의 배치 트리 루트. 바꾸지 않으면 뺀다",
+                },
+                "theme": {
+                    "type": "string",
+                    "enum": ["wireframe", "shadcn", "material", "bootstrap"],
+                    "description": "문서의 UI 스타일. 바꾸지 않으면 뺀다",
+                },
+            },
+            ["path", "screen_id"],
+        ),
+    ),
+    ToolSpec(
         name="mv",
         description="파일이나 폴더를 target 전체 경로로 옮긴다. 파일 이력이 이어진다.",
         parameters=_object(
@@ -434,6 +459,42 @@ class AgentToolbox:
             ok=True,
             output={"path": path},
             changes=(FileChange(path, path, before.text, content),),
+        )
+
+    async def _wireframe(self, args: Mapping[str, Any], _: bool) -> ToolOutcome:
+        path = _arg(args, "path")
+        screen_id = _arg(args, "screen_id")
+        layout = args.get("layout")
+        theme = args.get("theme")
+        if layout is not None and not isinstance(layout, dict):
+            raise InvalidArguments("layout 은 루트 노드 객체여야 한다")
+        if theme is not None and not isinstance(theme, str):
+            raise InvalidArguments("theme 은 문자열이어야 한다")
+        if layout is not None and path.endswith(".wireframe.json"):
+            problems = await self._inspector.check_wireframe_layout(
+                actor_id=self._actor_id,
+                project_id=self._project_id,
+                document_path=path.removesuffix(".wireframe.json") + ".rspdl",
+                screen_id=screen_id,
+                layout=layout,
+            )
+            if problems:
+                raise InvalidArguments(
+                    "저장하지 않았다. 배치의 문서 요소 자리가 맞지 않는다: " + " / ".join(problems)
+                )
+        before, file = await self._tree.set_wireframe_screen(
+            actor_id=self._actor_id,
+            project_id=self._project_id,
+            path=path,
+            screen_id=screen_id,
+            layout=layout,
+            theme=theme,
+            holder=self._holder,
+        )
+        return ToolOutcome(
+            ok=True,
+            output={"path": path, "screen_id": screen_id, "created": before is None},
+            changes=(FileChange(None if before is None else path, path, before, file.text),),
         )
 
     async def _mv(self, args: Mapping[str, Any], _: bool) -> ToolOutcome:

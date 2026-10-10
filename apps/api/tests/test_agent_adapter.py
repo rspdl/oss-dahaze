@@ -72,6 +72,10 @@ def test_viewing_context_is_appended_for_the_model_only() -> None:
         "screen_name": "메뉴 목록 화면",
         "wireframe_path": "/주문/카페.wireframe.json",
         "wireframe_exists": False,
+        "elements": [
+            {"id": "menu_section", "kind": "section", "label": "영역"},
+            {"id": "menu_list", "kind": "list", "label": "메뉴", "owner": "menu_section"},
+        ],
     }
     converted = to_input([item(ItemKind.USER_MESSAGE, text="히어로 넣어 줘", context=context)])
 
@@ -80,6 +84,8 @@ def test_viewing_context_is_appended_for_the_model_only() -> None:
     assert "- 뷰: 와이어프레임" in content
     assert "- 화면: 메뉴 목록 화면 (cafe_order.menu_screen)" in content
     assert "- 배치 파일: /주문/카페.wireframe.json (아직 없음 — 만들려면 add)" in content
+    assert "  - menu_section (section) 영역" in content
+    assert "    - menu_list (list) 메뉴" in content
 
 
 def test_tool_specs_are_function_tools() -> None:
@@ -94,6 +100,7 @@ def test_tool_specs_are_function_tools() -> None:
         "mkdir",
         "add",
         "edit",
+        "wireframe",
         "mv",
         "delete",
         "commit",

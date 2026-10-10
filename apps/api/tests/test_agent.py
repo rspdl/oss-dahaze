@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -566,3 +567,47 @@ async def test_given_title_is_kept(
     )
     kept = await service.get_session(actor_id=user.id, session_id=session.id)
     assert kept.title == "배송"
+
+
+# ---------------------------------------------------------------------- 와이어프레임 배치
+
+
+async def test_wireframe_tool_changes_one_screen_and_edit_cannot_drop_others(
+    scope: AgentScope, service: AgentService, user: User, project: Project, clock: FakeClock
+) -> None:
+    """AI 가 배치 파일 전문을 다시 쓰다 다른 화면의 배치를 지운 일이 있었다."""
+    await scope.tree.add(
+        actor_id=user.id, project_id=project.id, parent="/", name="a.rspdl", content="x"
+    )
+    root = {"type": "group", "id": "root", "children": []}
+    turn = await start(service, user, project, "카드로 바꿔 줘")
+    llm = FakeLlm(
+        [
+            AgentStep(
+                text="",
+                tool_calls=(
+                    call("wireframe", path="/a.wireframe.json", screen_id="m.one", layout=root),
+                    call(
+                        "wireframe",
+                        path="/a.wireframe.json",
+                        screen_id="m.two",
+                        layout=root,
+                        theme="shadcn",
+                    ),
+                    call("edit", path="/a.wireframe.json", content='{"screens": {"m.two": {}}}'),
+                ),
+            ),
+            AgentStep(text="바꿨어요"),
+        ]
+    )
+    finished = await run(scope, llm, clock)
+
+    assert finished is not None and finished.stop_reason is StopReason.DONE
+    saved = await scope.tree.read(actor_id=user.id, project_id=project.id, path="/a.wireframe.json")
+    data = json.loads(saved.text)
+    assert data["theme"] == "shadcn"
+    assert set(data["screens"]) == {"m.one", "m.two"}
+    items = await scope.agents.list_items(turn.session_id)
+    results = [i.payload for i in items if i.kind is ItemKind.TOOL_RESULT]
+    assert [r["ok"] for r in results] == [True, True, False]
+    assert "m.one" in results[2]["output"]["error"]

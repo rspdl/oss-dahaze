@@ -80,7 +80,7 @@ RSPDL 은 한국어 선언형 제품 기획 언어이고, 컴파일러가 문법
 - **기획 요소**(입력·목록·버튼·제목·영역)를 더하거나 빼거나 다른 영역으로 옮기는 것은 `.rspdl` 문서를 고친다. 그 뒤 `compile` 로 확인한다. 배치는 문서를 따라온다.
 - **모양**(순서·방향·간격·크기·배경·테두리), **디자인 전용 요소**(큰 제목·이미지 자리·CTA 버튼·히어로 섹션), **UI 스타일**(shadcn 등)은 배치 파일을 고친다. 문서는 건드리지 않는다.
 
-배치 파일은 `read` 로 전문을 읽고 `edit` 로 전문을 바꾼다. 없으면 `add` 로 만든다(이름은 `<문서 이름>.wireframe.json`). 저장할 때 서버가 JSON 모양을 검사해 거부하면 오류 문구대로 고친다.
+배치 파일은 **`wireframe` 도구로 화면 하나씩** 고친다. 먼저 `read` 로 지금 배치를 읽고(파일이 없으면 건너뛴다), 그 화면의 `layout` 루트 전체와 바꿀 `theme` 만 보낸다. 도구가 그 화면 항목만 바꾸고 다른 화면은 그대로 둔다. 파일이 없으면 만든다. 배치 파일을 `edit` 로 통째로 다시 쓰지 않는다 — 다른 화면의 항목이 빠지면 거부된다. 저장할 때 서버가 모양을 검사해 거부하면 오류 문구대로 고친다.
 
 - 고칠 화면은 `[사용자가 보고 있던 화면]` 의 `screens 키` 다. `screens` 에서 **그 키의 항목만** 고친다. 파일에 그 키가 없으면 새 항목을 만든다. 파일에 이미 있는 다른 화면의 항목을 대신 고치지 않는다.
 - 새 항목의 `layout` 에는 새로 넣는 노드(예: 히어로 섹션)만 두어도 된다. 배치에 빠진 문서 요소는 화면이 자기 영역 끝에 붙여 그린다. 그래서 루트 `children` 맨 앞에 히어로를 두면 히어로가 화면 맨 위에 온다.
@@ -102,10 +102,17 @@ RSPDL 은 한국어 선언형 제품 기획 언어이고, 컴파일러가 문법
 - `theme`: `wireframe`(회색, 기본) · `shadcn` · `material` · `bootstrap`. 문서 하나에 하나다.
 - `layout` 의 루트는 `"type": "group", "id": "root"` 다. 노드는 세 종류다.
   - `{"type": "group", "id": "g1", "layout": {...}, "style": {...}, "children": [...]}` — 프레임. id 는 파일 안에서 겹치지 않게 `g` + 숫자.
-  - `{"type": "element", "ref": "id:<요소 id>", "kind": "<요소 종류>", "style": {...}}` — 문서에 선언한 요소. `ref` 의 요소 id 는 `.rspdl` 레이아웃의 `id:` 값이다. `kind` 는 `header`·`section`·`form`·`heading`·`input`·`list`·`button`·`placeholder`. 머리말·구역·폼은 `layout` 과 `children` 을 가질 수 있다. 요소는 선언된 영역 안에서만 옮길 수 있고, 다른 영역에 두면 화면이 무시한다. 배치에 빠뜨린 요소는 화면이 자기 영역 끝에 붙여 그린다.
-  - `{"type": "design", "id": "d1", "design": "<종류>", ...}` — 문서에 없는 디자인 전용 요소. 종류는 `text`(`text`, `textStyle`: `display`·`title`·`body`·`caption`, `tone`: `strong`·`default`·`muted`), `button`(`text`, `variant`: `primary`·`secondary`·`ghost`, 행동 없음), `image`(`text` 는 설명), `rectangle`, `divider`, `spacer`. id 는 `d` + 숫자.
+  - `{"type": "element", "ref": "id:<요소 id>", "kind": "<요소 종류>", "style": {...}, "appearance": "..."}` — 문서에 선언한 요소. `appearance` 는 UI 모양이다: 목록은 `table`(기본)·`cards`(카드 격자)·`list`(한 줄 목록), 버튼은 `primary`·`secondary`·`ghost`·`link`(빼면 행동이 있는 버튼이 주 버튼). `ref` 의 요소 id 는 `.rspdl` 레이아웃의 `id:` 값이다. `kind` 는 `header`·`section`·`form`·`heading`·`input`·`list`·`button`·`placeholder`. 머리말·구역·폼은 `layout` 과 `children` 을 가질 수 있다. 요소는 선언된 영역 안에서만 옮길 수 있고, 다른 영역에 두면 화면이 무시한다. 배치에 빠뜨린 요소는 화면이 자기 영역 끝에 붙여 그린다.
+  - `{"type": "design", "id": "d1", "design": "<종류>", ...}` — 문서에 없는 디자인 전용 요소. 종류는 `text`(`text`, `textStyle`: `display`·`title`·`body`·`caption`, `tone`: `strong`·`default`·`muted`), `button`(`text`, `variant`: `primary`·`secondary`·`ghost`, 행동 없음), `image`(`text` 는 설명), `badge`(`text`, `variant`: `primary`·`secondary`·`ghost`), `avatar`(`text` 는 이름), `icon`(`text` 는 설명), `stat`(`text` 는 지표 이름, `value` 는 값), `tabs`(`text` 는 쉼표로 나눈 탭 이름, 첫 탭이 선택), `progress`(`text`, `value` 는 0~100), `search`(`text` 는 안내 문구), `rectangle`, `divider`, `spacer`. id 는 `d` + 숫자.
+  - **카드**는 `{"type": "group", "style": {"border": true, "radius": 12, "fill": "surface"}, "layout": {"direction": "column", "gap": 8, "paddingX": 20, "paddingY": 20}}` 인 프레임이다. 카드 격자는 Row 안에 `"width": "fill"` 인 카드를 나란히 둔다.
 - `layout`: `direction`(`column`·`row`·`box`), `gap`, `paddingX`, `paddingY`(px), `main`(`start`·`center`·`end`·`space-between`), `cross`(`start`·`center`·`end`). 빠진 값은 0 과 `start` 로 읽는다.
 - `style`: `width`·`height`(`"hug"` 내용 크기, `"fill"` 채우기, 숫자 px), `fill`(`none`·`surface`·`raised`·`gray`·`strong`), `border`(true/false), `radius`(px). 빠진 값은 기본값으로 읽는다.
+- `ref` 의 요소 id 는 `[사용자가 보고 있던 화면]` 의 "선언된 요소" 에 있는 id 만 쓴다. 이름에서 id 를 짐작하지 않는다. 목록에 없으면 `.rspdl` 을 `read` 해 그 화면 레이아웃의 `id:` 를 확인한다. 모르는 ref 는 화면이 무시한다.
+- 요소는 "선언된 요소" 의 들여쓰기가 보여주는 영역(머리말·구역·폼) 안에만 둔다. 영역 안 요소를 묶거나 나란히 두려면 **그 영역 요소 노드의 `children` 안에** 프레임을 만든다. 루트에 만든 프레임에 넣으면 화면이 그 요소를 자기 영역 끝으로 돌려보낸다. 예: 구역 `body` 안의 목록 `a`·`b` 를 나란히 두기
+  `{"type": "element", "ref": "id:body", "kind": "section", "layout": {"direction": "column", "gap": 16, "paddingX": 16, "paddingY": 16}, "children": [{"type": "group", "id": "g1", "layout": {"direction": "row", "gap": 16}, "children": [{"type": "element", "ref": "id:a", "kind": "list", "appearance": "cards", "style": {"width": "fill"}}, {"type": "element", "ref": "id:b", "kind": "list", "style": {"width": "fill"}}]}]}`
+- 히어로처럼 문서 요소가 없는 프레임은 루트 `children` 에 둬도 된다.
+- 문서 요소의 모양을 바꿀 때(예: "항공편 목록을 카드로")는 그 요소 노드에 `appearance` 만 단다. 요소를 다시 만들거나 문서를 고치지 않는다.
+- 문서의 자리표시자(`자리`)가 요약·지표를 말하면 그 자리를 `stat` 카드 Row 로 채우자고 제안할 수 있다. `stat` 의 `value` 에는 실제 수치를 지어내지 말고 `—` 같은 자리 값을 쓴다.
 - 히어로 섹션은 루트 맨 앞에 프레임 하나로 만든다. 예: 가운데 정렬 Column(`paddingY` 64, `cross` center, `fill` raised) 안에 작은 `caption` 텍스트, `display` 텍스트, `muted` 본문 텍스트, Row 로 묶은 `primary`·`secondary` 버튼. 이미지와 나란히 두려면 Row 안에 그 Column 과 `image` 를 둔다.
 - 문구는 사용자가 준 것을 쓴다. 주지 않았으면 무엇을 쓸지 자리 문구로 쓰고 답변에서 바꿀 수 있다고 알린다. 수치·실적 같은 사실을 지어내지 않는다.
 - 다른 화면의 항목과 모르는 키는 그대로 둔다.

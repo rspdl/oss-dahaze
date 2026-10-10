@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -165,6 +165,15 @@ class RspdlReference:
 
 
 @dataclass(frozen=True, slots=True)
+class ScreenElement:
+    """화면 레이아웃에 선언된 요소 하나. `owner_id` 는 담긴 영역(머리말·구역·폼)의 요소 id 다."""
+
+    id: str
+    kind: str
+    owner_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class RspdlIndex:
     """컴파일 결과에서 읽어 낸 심볼·진단·참조."""
 
@@ -174,3 +183,7 @@ class RspdlIndex:
     references: tuple[RspdlReference, ...] = ()
     # 컴파일러가 참조 목록을 주는가. 주지 않는 버전에서는 "참조 없음" 과 구분해야 한다.
     references_supported: bool = False
+    # (파일 경로, 화면 id) → 그 화면에 선언된 요소. id 가 없는 요소는 싣지 않는다.
+    screen_elements: Mapping[tuple[str, str], tuple[ScreenElement, ...]] = field(
+        default_factory=dict
+    )

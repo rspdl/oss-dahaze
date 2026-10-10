@@ -57,6 +57,18 @@ def user_content(payload: Mapping[str, Any]) -> str:
             lines.append(f"- screens 키: {context['screen_id']}")
     if context.get("ui_theme"):
         lines.append(f"- UI 스타일: {context['ui_theme']}")
+    elements = context.get("elements")
+    if isinstance(elements, list) and elements:
+        lines.append("- 선언된 요소 (배치 ref 는 `id:<요소 id>`, 들여쓰기는 담긴 영역):")
+        depth: dict[str, int] = {}
+        for element in elements:
+            if not isinstance(element, dict):
+                continue
+            owner = element.get("owner")
+            level = depth.get(str(owner), 0) + 1 if owner else 1
+            depth[str(element.get("id"))] = level
+            label = f" {element['label']}" if element.get("label") else ""
+            lines.append(f"{'  ' * level}- {element.get('id')} ({element.get('kind')}){label}")
     return f"{text}\n\n[사용자가 보고 있던 화면]\n" + "\n".join(lines)
 
 

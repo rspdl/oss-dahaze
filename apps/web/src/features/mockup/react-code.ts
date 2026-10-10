@@ -1,4 +1,4 @@
-import { declaredElements, isContainer, type ContainerLayout, type DeclaredElement, type DesignNode, type LayoutNode, type NodeStyle } from './layout-tree'
+import { declaredElements, isContainer, type ContainerLayout, type DeclaredElement, type DesignNode, type ElementAppearance, type LayoutNode, type NodeStyle } from './layout-tree'
 import type { MockupElement, MockupField, ScreenMockup } from './screen-layouts'
 
 /**
@@ -26,13 +26,17 @@ export function reactCode(screen: ScreenMockup, root: LayoutNode): string {
 }
 
 const IMPORTS: [string, string][] = [
+  ['Avatar', "import { Avatar, AvatarFallback } from '@/components/ui/avatar'"],
+  ['Badge', "import { Badge } from '@/components/ui/badge'"],
   ['Button', "import { Button } from '@/components/ui/button'"],
-  ['Card', "import { Card, CardContent } from '@/components/ui/card'"],
+  ['Card', "import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'"],
   ['Input', "import { Input } from '@/components/ui/input'"],
   ['Label', "import { Label } from '@/components/ui/label'"],
+  ['Progress', "import { Progress } from '@/components/ui/progress'"],
   ['Select', "import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'"],
   ['Switch', "import { Switch } from '@/components/ui/switch'"],
   ['Table', "import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'"],
+  ['Tabs', "import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'"],
 ]
 
 function componentName(screen: ScreenMockup): string {
@@ -107,7 +111,7 @@ function emit(node: LayoutNode, parent: ContainerLayout | null, depth: number, d
     return
   }
   if (entry === undefined) return
-  for (const line of leaf(entry.element, sizeClasses(node.style, parent), used)) lines.push(`${pad}${line}`)
+  for (const line of leaf(entry.element, sizeClasses(node.style, parent), used, node.appearance)) lines.push(`${pad}${line}`)
 }
 
 const INPUT_TYPE = { text: 'text', number: 'number', date: 'date', time: 'time', datetime: 'datetime-local', select: 'text', checkbox: 'checkbox' } as const
@@ -137,17 +141,53 @@ function field(input: MockupField, id: string, classes: string[], used: Set<stri
   return [`<div${cls(['grid', 'gap-2', ...classes])}>`, `  ${label}`, `  <Input id=${attr(id)} type=${attr(INPUT_TYPE[input.control])}${input.required ? ' required' : ''} />`, '</div>']
 }
 
-function leaf(element: MockupElement, classes: string[], used: Set<string>): string[] {
+const BUTTON_VARIANT = { primary: '', secondary: ' variant="outline"', ghost: ' variant="ghost"', link: ' variant="link"' } as const
+
+function leaf(element: MockupElement, classes: string[], used: Set<string>, appearance?: ElementAppearance): string[] {
   switch (element.kind) {
     case 'heading':
       return [`<h2${cls(['text-xl', 'font-semibold', 'tracking-tight', ...classes])}>${text(element.text)}</h2>`]
     case 'button':
       used.add('Button')
       // 행동을 선언한 버튼이 주 버튼이다. 동작은 지어내지 않는다.
-      return [`<Button${element.actionId === null ? ' variant="outline"' : ''}${cls(classes)}>${text(element.name)}</Button>${element.actionId === null ? '' : ` {/* ${element.actionId} */}`}`]
+      return [`<Button${BUTTON_VARIANT[appearance === 'primary' || appearance === 'secondary' || appearance === 'ghost' || appearance === 'link' ? appearance : element.actionId === null ? 'secondary' : 'primary']}${cls(classes)}>${text(element.name)}</Button>${element.actionId === null ? '' : ` {/* ${element.actionId} */}`}`]
     case 'input':
       return field(element.field, element.id ?? element.field.id.split('.').at(-1) ?? 'field', classes, used)
-    case 'list':
+    case 'list': {
+      const rows = element.modelId.split('.').at(-1) ?? 'rows'
+      const prop = (entry: MockupField) => `row.${entry.id.split('.').at(-1)}`
+      const title = element.fields.find((entry) => entry.control === 'text') ?? element.fields[0]
+      const rest = element.fields.filter((entry) => entry !== title)
+      if (appearance === 'cards' && title !== undefined) {
+        used.add('Card')
+        return [
+          `{/* ${element.modelName} 목록 · 카드 */}`,
+          `<div${cls(['grid', 'gap-4', 'sm:grid-cols-2', 'lg:grid-cols-3', ...classes])}>`,
+          `  {${rows}.map((row) => (`,
+          '    <Card key={row.id}>',
+          '      <CardHeader>',
+          `        <CardTitle>{${prop(title)}}</CardTitle>`,
+          '      </CardHeader>',
+          '      <CardContent className="grid gap-1 text-sm">',
+          ...rest.map((entry) => `        <div className="flex justify-between gap-4"><span className="text-muted-foreground">${text(entry.name)}</span><span>{${prop(entry)}}</span></div>`),
+          '      </CardContent>',
+          '    </Card>',
+          '  ))}',
+          '</div>',
+        ]
+      }
+      if (appearance === 'list' && title !== undefined) {
+        return [
+          `{/* ${element.modelName} 목록 */}`,
+          `<ul${cls(['divide-y', 'rounded-lg', 'border', ...classes])}>`,
+          `  {${rows}.map((row) => (`,
+          '    <li key={row.id} className="flex items-center gap-3 px-4 py-3">',
+          `      <div className="flex-1"><p className="text-sm font-medium">{${prop(title)}}</p>${rest.length === 0 ? '' : `<p className="text-sm text-muted-foreground">${rest.map((entry) => `{${prop(entry)}}`).join(' · ')}</p>`}</div>`,
+          '    </li>',
+          '  ))}',
+          '</ul>',
+        ]
+      }
       used.add('Table')
       return [
         `{/* ${element.modelName} 목록 */}`,
@@ -166,6 +206,7 @@ function leaf(element: MockupElement, classes: string[], used: Set<string>): str
         '  </TableBody>',
         '</Table>',
       ]
+    }
     case 'placeholder':
       return [`<div${cls(['flex', 'min-h-20', 'items-center', 'justify-center', 'rounded-lg', 'border', 'border-dashed', 'text-sm', 'text-muted-foreground', ...classes])}>${text(element.text)}</div>`]
     case 'unrecognized':
@@ -201,5 +242,40 @@ function design(node: DesignNode, classes: string[], used: Set<string>): string[
       return [`<hr${cls(['border-border', ...classes])} />${MARK}`]
     case 'spacer':
       return [`<div${cls(classes)} aria-hidden />${MARK}`]
+    case 'badge':
+      used.add('Badge')
+      return [`<Badge${node.variant === 'primary' ? '' : node.variant === 'ghost' ? ' variant="outline"' : ' variant="secondary"'}${cls(classes)}>${text(node.text ?? '')}</Badge>${MARK}`]
+    case 'avatar':
+      used.add('Avatar')
+      return [`<Avatar${cls(classes)}><AvatarFallback>${text((node.text ?? '').slice(0, 2))}</AvatarFallback></Avatar>${MARK}`]
+    case 'icon':
+      return [`<div${cls(['rounded-md', 'bg-muted', ...classes])} aria-label=${attr(node.text ?? '아이콘')} />${MARK}`]
+    case 'stat':
+      used.add('Card')
+      return [
+        `<Card${cls(classes.filter((value) => value !== 'border' && value !== 'shadow-sm'))}>${MARK}`,
+        '  <CardHeader>',
+        `    <CardDescription>${text(node.text ?? '')}</CardDescription>`,
+        `    <CardTitle className="text-2xl">${text(node.value ?? '')}</CardTitle>`,
+        '  </CardHeader>',
+        '</Card>',
+      ]
+    case 'tabs': {
+      used.add('Tabs')
+      const tabs = (node.text ?? '').split(',').map((tab) => tab.trim()).filter(Boolean)
+      return [
+        `<Tabs defaultValue=${attr(tabs[0] ?? 'tab')}${cls(classes)}>${MARK}`,
+        '  <TabsList>',
+        ...tabs.map((tab) => `    <TabsTrigger value=${attr(tab)}>${text(tab)}</TabsTrigger>`),
+        '  </TabsList>',
+        '</Tabs>',
+      ]
+    }
+    case 'progress':
+      used.add('Progress')
+      return [`<Progress value={${Number(node.value) || 0}}${cls(classes)} aria-label=${attr(node.text ?? '')} />${MARK}`]
+    case 'search':
+      used.add('Input')
+      return [`<Input type="search" placeholder=${attr(node.text ?? '')}${cls(classes)} />${MARK}`]
   }
 }

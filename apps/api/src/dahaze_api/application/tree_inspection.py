@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from typing import Any
@@ -261,6 +262,61 @@ class TreeInspector:
             references_supported=index.references_supported,
             unparsed=index.unparsed,
         )
+
+    async def check_wireframe_layout(
+        self,
+        *,
+        actor_id: UUID,
+        project_id: UUID,
+        document_path: str,
+        screen_id: str,
+        layout: Mapping[str, Any],
+    ) -> list[str]:
+        """배치 트리의 문서 요소가 그 화면에 선언된 자리에 있는지. 문제를 사람이 읽을 문장으로.
+
+        화면은 모르는 요소와 영역 밖 요소를 무시하거나 제자리로 돌려보낸다. 저장 전에 알려야
+        AI 가 고칠 수 있다. 문서를 읽지 못하면(구문 오류 등) 검사하지 않는다.
+        """
+        if '"type": "element"' not in json.dumps(layout):
+            return []  # 디자인 전용 노드만 있으면 문서와 맞출 것이 없다.
+        files = await self._tree.files(actor_id=actor_id, project_id=project_id)
+        index, _ = await self._index(files)
+        if index is None or any(entry.path == document_path for entry in index.unparsed):
+            return []
+        declared = index.screen_elements.get((document_path, screen_id))
+        if declared is None:
+            return [f"{document_path} 에 레이아웃이 선언된 화면 {screen_id} 가 없다"]
+        by_id = {element.id: element for element in declared}
+        problems: list[str] = []
+
+        def walk(node: Any, owner: str | None) -> None:
+            if not isinstance(node, Mapping):
+                return
+            next_owner = owner
+            if node.get("type") == "element":
+                ref = node.get("ref")
+                element_id = ref[3:] if isinstance(ref, str) and ref.startswith("id:") else None
+                found = None if element_id is None else by_id.get(element_id)
+                if found is None:
+                    problems.append(f"모르는 요소 ref {ref!r}")
+                else:
+                    if found.owner_id != owner:
+                        where = (
+                            f"`id:{found.owner_id}` 노드의 children" if found.owner_id else "루트"
+                        )
+                        problems.append(f"`{ref}` 는 {where} 안(그 아래 프레임 포함)에 둬야 한다")
+                    next_owner = found.id
+            for child in node.get("children") or []:
+                walk(child, next_owner)
+
+        walk(layout, None)
+        if problems:
+            tree = ", ".join(
+                f"{e.id}({e.kind}{'' if e.owner_id is None else ' ⊂ ' + e.owner_id})"
+                for e in declared
+            )
+            problems.append(f"이 화면에 선언된 요소: {tree}")
+        return problems
 
     async def grep(
         self,

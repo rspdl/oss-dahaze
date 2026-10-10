@@ -25,6 +25,7 @@ from starlette.routing import Route
 
 from dahaze_api.application.agent_tools import fetch_output
 from dahaze_api.application.analysis import AnalyzeWorkspace
+from dahaze_api.application.errors import Conflict
 from dahaze_api.application.projects import ProjectService
 from dahaze_api.application.tree import TreeService
 from dahaze_api.application.tree_inspection import TreeInspector
@@ -444,6 +445,41 @@ class McpTools:
             )
             return file_out(file).model_dump(mode="json")
 
+    async def tree_wireframe(
+        self,
+        headers: Mapping[str, str] | None,
+        *,
+        project_id: str,
+        path: str,
+        screen_id: str,
+        layout: dict[str, Any] | None = None,
+        theme: str | None = None,
+    ) -> dict[str, Any]:
+        async with self._acting(headers) as actor:
+            if layout is not None and path.endswith(".wireframe.json"):
+                problems = await actor.inspector.check_wireframe_layout(
+                    actor_id=actor.user.id,
+                    project_id=_uuid(project_id, field="project_id"),
+                    document_path=path.removesuffix(".wireframe.json") + ".rspdl",
+                    screen_id=screen_id,
+                    layout=layout,
+                )
+                if problems:
+                    raise Conflict(
+                        "저장하지 않았다. 배치의 문서 요소 자리가 맞지 않는다: "
+                        + " / ".join(problems)
+                    )
+            _, file = await actor.tree.set_wireframe_screen(
+                actor_id=actor.user.id,
+                project_id=_uuid(project_id, field="project_id"),
+                path=path,
+                screen_id=screen_id,
+                layout=layout,
+                theme=theme,
+                holder=actor.lock_holder,
+            )
+            return file_out(file).model_dump(mode="json")
+
     async def tree_mv(
         self, headers: Mapping[str, str] | None, *, project_id: str, source: str, target: str
     ) -> list[dict[str, Any]]:
@@ -824,6 +860,31 @@ def create_mcp_server(tools: McpTools) -> MCPServer[Any]:
     )
     async def edit(project_id: str, path: str, content: str, ctx: Context) -> dict[str, Any]:
         return await tools.tree_edit(ctx.headers, project_id=project_id, path=path, content=content)
+
+    @mcp.tool(
+        name="wireframe",
+        description=(
+            "와이어프레임 배치 파일(`<문서>.wireframe.json`)에서 화면 하나의 항목만 바꾼다. 다른 "
+            "화면의 항목과 모르는 키는 그대로 둔다. 파일이 없으면 만든다. `layout` 은 그 화면의 "
+            "루트 노드 전체, `theme` 은 문서의 UI 스타일(wireframe·shadcn·material·bootstrap)이다."
+        ),
+    )
+    async def wireframe(
+        project_id: str,
+        path: str,
+        screen_id: str,
+        ctx: Context,
+        layout: dict[str, Any] | None = None,
+        theme: str | None = None,
+    ) -> dict[str, Any]:
+        return await tools.tree_wireframe(
+            ctx.headers,
+            project_id=project_id,
+            path=path,
+            screen_id=screen_id,
+            layout=layout,
+            theme=theme,
+        )
 
     @mcp.tool(
         name="mv",

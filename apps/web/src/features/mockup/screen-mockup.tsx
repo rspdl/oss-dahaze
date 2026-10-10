@@ -17,7 +17,7 @@ import type {
   PrototypeMode,
   SampleVariant,
 } from './prototype-contract'
-import { declaredElements, isContainer, nodeKey, resolveLayout, type ContainerLayout, type DeclaredElement, type DesignNode, type LayoutNode } from './layout-tree'
+import { declaredElements, isContainer, nodeKey, resolveLayout, type ContainerLayout, type DeclaredElement, type DesignNode, type ElementAppearance, type LayoutNode, type ListAppearance } from './layout-tree'
 import { childStyle, containerStyle } from './layout-style'
 import type { AppShellModel } from './app-shell'
 import { AppShellFrame } from './app-shell-frame'
@@ -25,7 +25,8 @@ import { themeVariables, type UiTheme } from './ui-theme'
 
 /** 테마 변수(`ui-theme.ts`)를 읽는 입력칸·버튼 모양. */
 const INPUT_STYLE: React.CSSProperties = { background: 'var(--wf-input-bg)', borderColor: 'var(--wf-input-border)', borderRadius: 'var(--wf-input-radius)' }
-function buttonStyle(variant: 'primary' | 'secondary' | 'ghost'): React.CSSProperties {
+function buttonStyle(variant: 'primary' | 'secondary' | 'ghost' | 'link'): React.CSSProperties {
+  if (variant === 'link') return { background: 'transparent', color: 'var(--wf-primary-link, var(--wf-fg))', borderColor: 'transparent', textDecoration: 'underline', textUnderlineOffset: 3, paddingInline: 0 }
   if (variant === 'primary') return { background: 'var(--wf-primary)', color: 'var(--wf-primary-fg)', borderColor: 'var(--wf-primary-border)', borderRadius: 'var(--wf-button-radius)' }
   if (variant === 'secondary') return { background: 'var(--wf-secondary)', color: 'var(--wf-secondary-fg)', borderColor: 'var(--wf-border-strong)', borderRadius: 'var(--wf-button-radius)' }
   return { background: 'transparent', color: 'var(--wf-fg)', borderColor: 'transparent', borderRadius: 'var(--wf-button-radius)' }
@@ -235,6 +236,7 @@ function ListElement({
   isExample,
   selectedId,
   onSelect,
+  appearance = 'table',
 }: {
   modelId: string
   modelName: string
@@ -243,7 +245,11 @@ function ListElement({
   isExample: boolean
   selectedId?: string
   onSelect?: (modelId: string, recordId: string) => void
+  appearance?: ListAppearance
 }) {
+  if (appearance !== 'table' && records !== null && records.length > 0 && fields.length > 0) {
+    return <ListAsItems appearance={appearance} modelId={modelId} modelName={modelName} fields={fields} records={records} isExample={isExample} selectedId={selectedId} onSelect={onSelect} />
+  }
   return (
     <div className="overflow-hidden border border-border bg-surface" style={{ borderRadius: 'var(--wf-radius)', boxShadow: 'var(--wf-card-shadow)' }}>
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
@@ -281,6 +287,84 @@ function ListElement({
       )}
     </div>
   )
+}
+
+/**
+ * 목록을 카드 격자나 한 줄 목록으로. 표와 같은 필드를 보여준다 — 첫 글자 필드가 제목, 선택 필드는
+ * 배지, 나머지는 이름: 값 줄이다. 어떤 필드를 고를지 지어내지 않고 선언된 순서를 따른다.
+ */
+function ListAsItems({ appearance, modelId, modelName, fields, records, isExample, selectedId, onSelect }: {
+  appearance: 'cards' | 'list'
+  modelId: string
+  modelName: string
+  fields: MockupField[]
+  records: NonNullable<ModelSampleSet['variants'][SampleVariant]>
+  isExample: boolean
+  selectedId?: string
+  onSelect?: (modelId: string, recordId: string) => void
+}) {
+  const titleField = fields.find((field) => field.control === 'text') ?? fields[0]!
+  const badgeFields = fields.filter((field) => field !== titleField && (field.control === 'select' || field.control === 'checkbox'))
+  const rest = fields.filter((field) => field !== titleField && !badgeFields.includes(field))
+  const value = (record: (typeof records)[number], field: MockupField) => String(record.values[field.id] ?? '')
+  const header = (
+    <div className="flex items-baseline gap-2 pb-2">
+      <span className="text-xs font-semibold text-text">{modelName}</span>
+      <span className="text-[10px] text-text-subtle">{records.length}건{isExample ? ' · 형식 예시' : ''}</span>
+    </div>
+  )
+  const card = { borderRadius: 'var(--wf-radius)', boxShadow: 'var(--wf-card-shadow)' }
+  if (appearance === 'list') {
+    return (
+      <div>
+        {header}
+        <ul className="divide-y divide-border overflow-hidden border border-border bg-surface" style={card}>
+          {records.map((record) => (
+            <li key={record.id} aria-current={record.id === selectedId ? true : undefined} className={cn('flex items-center gap-3 px-3 py-2.5', record.id === selectedId && 'bg-surface-raised')} onClick={() => onSelect?.(modelId, record.id)}>
+              <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-raised text-[11px] font-semibold text-text-muted">{value(record, titleField).slice(0, 1)}</span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-xs font-medium text-text">{value(record, titleField)}</span>
+                {rest.length === 0 ? null : <span className="truncate text-[11px] text-text-muted">{rest.map((field) => value(record, field)).join(' · ')}</span>}
+              </span>
+              {badgeFields.map((field) => <Badge key={field.id} variant="secondary">{value(record, field)}</Badge>)}
+              <span aria-hidden className="text-text-subtle">›</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+  return (
+    <div>
+      {header}
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+        {records.map((record) => (
+          <div key={record.id} aria-selected={record.id === selectedId} className={cn('flex flex-col gap-2 border border-border bg-surface p-4', record.id === selectedId && 'outline-2 outline-text')} style={card} onClick={() => onSelect?.(modelId, record.id)}>
+            <div className="flex items-start gap-2">
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text">{value(record, titleField)}</span>
+              {badgeFields.map((field) => <Badge key={field.id} variant="secondary">{value(record, field)}</Badge>)}
+            </div>
+            <dl className="grid gap-1">
+              {rest.map((field) => (
+                <div key={field.id} className="flex items-baseline justify-between gap-3 text-[11px]">
+                  <dt className="shrink-0 text-text-subtle">{field.name}</dt>
+                  <dd className={cn('min-w-0 truncate text-text-muted', field.control !== 'text' && 'font-mono text-[10px]')}>{value(record, field)}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function Badge({ variant, children }: { variant: 'primary' | 'secondary' | 'ghost'; children: React.ReactNode }) {
+  const style = variant === 'primary'
+    ? { background: 'var(--wf-primary)', color: 'var(--wf-primary-fg)', borderColor: 'transparent' }
+    : variant === 'ghost' ? { background: 'transparent', color: 'var(--wf-fg)', borderColor: 'var(--wf-border-strong)' }
+      : { background: 'var(--wf-muted)', color: 'var(--wf-fg)', borderColor: 'transparent' }
+  return <span className="inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap" style={style}>{children}</span>
 }
 
 /**
@@ -355,7 +439,7 @@ function LayoutNodeView({ node, parent, parentKey, context }: { node: LayoutNode
   const entry = context.declared.get(node.ref)
   if (entry === undefined) return null
   return <div {...editing} style={style}>
-    <LeafContent element={entry.element} context={context} stretch={{ width: node.style.width !== 'hug', height: node.style.height !== 'hug' }} />
+    <LeafContent element={entry.element} context={context} appearance={node.appearance} stretch={{ width: node.style.width !== 'hug', height: node.style.height !== 'hug' }} />
   </div>
 }
 
@@ -366,6 +450,11 @@ function EmptyFrame() {
 
 const TEXT_CLASS = { display: 'text-[34px] leading-tight font-bold tracking-tight', title: 'text-base font-semibold tracking-tight', body: 'text-sm', caption: 'text-[11px]' } as const
 const TONE_CLASS = { strong: 'text-text', default: 'text-text-muted', muted: 'text-text-subtle' } as const
+
+/** 아이콘·아바타는 내용 크기가 없다. 크기를 정하지 않았으면 기본 크기로 그린다. */
+function fixedWhenHug(node: DesignNode, size: number): React.CSSProperties {
+  return { ...(node.style.width === 'hug' ? { width: size } : {}), ...(node.style.height === 'hug' ? { height: size } : {}) }
+}
 
 /** 디자인 전용 노드. 문서에 없는 것이라 회색으로만 그린다. */
 function DesignContent({ node, parent, editing }: { node: DesignNode; parent: ContainerLayout | null; editing: boolean }) {
@@ -389,10 +478,52 @@ function DesignContent({ node, parent, editing }: { node: DesignNode; parent: Co
       )
     case 'button':
       return <span className={BUTTON_CLASS} style={{ ...buttonStyle(node.variant ?? 'primary'), width: node.style.width === 'hug' ? undefined : '100%' }}>{node.text === undefined || node.text === '' ? '버튼' : node.text}</span>
+    case 'badge':
+      return <Badge variant={node.variant ?? 'secondary'}>{node.text || '배지'}</Badge>
+    case 'avatar': {
+      const initials = (node.text ?? '').trim().slice(0, 2) || '?'
+      return <span aria-label={node.text} className="flex size-full min-h-8 min-w-8 items-center justify-center rounded-full text-[11px] font-semibold" style={{ background: 'var(--wf-muted)', color: 'var(--wf-muted-fg)', ...fixedWhenHug(node, 40) }}>{initials}</span>
+    }
+    case 'icon':
+      return <span aria-label={node.text} className="flex size-full min-h-5 min-w-5 items-center justify-center" style={{ background: 'var(--wf-muted)', borderRadius: 'var(--wf-input-radius)', ...fixedWhenHug(node, 28) }}><svg aria-hidden viewBox="0 0 16 16" className="size-3/5 text-text-subtle" fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M2.5 8h11M8 2.5v11" /></svg></span>
+    case 'stat':
+      return (
+        // 통계는 늘 카드다. 테두리를 따로 주지 않아도 테마의 카드 모양으로 그린다.
+        <div className="flex size-full flex-col gap-1 border border-border bg-surface p-4" style={{ borderRadius: 'var(--wf-radius)', boxShadow: 'var(--wf-card-shadow)' }}>
+          <span className="text-[11px] text-text-muted">{node.text || '지표'}</span>
+          <span className="text-2xl font-semibold tracking-tight text-text">{node.value || '—'}</span>
+        </div>
+      )
+    case 'tabs': {
+      const tabs = (node.text ?? '').split(',').map((tab) => tab.trim()).filter(Boolean)
+      return (
+        <div role="tablist" className="flex w-full gap-1 border-b border-border">
+          {(tabs.length === 0 ? ['탭'] : tabs).map((tab, index) => (
+            <span key={`${index}:${tab}`} role="tab" aria-selected={index === 0} className={cn('-mb-px border-b-2 px-3 py-2 text-xs', index === 0 ? 'font-semibold text-text' : 'border-transparent text-text-muted')} style={index === 0 ? { borderColor: 'var(--wf-primary-border)' } : undefined}>{tab}</span>
+          ))}
+        </div>
+      )
+    }
+    case 'progress': {
+      const percent = Math.min(100, Math.max(0, Number(node.value) || 0))
+      return (
+        <div className="flex w-full flex-col gap-1">
+          <span className="flex justify-between text-[11px] text-text-muted"><span>{node.text}</span><span className="font-mono">{percent}%</span></span>
+          <span className="h-2 w-full overflow-hidden rounded-full" style={{ background: 'var(--wf-muted)' }}><span className="block h-full rounded-full" style={{ width: `${percent}%`, background: 'var(--wf-primary-border)' }} /></span>
+        </div>
+      )
+    }
+    case 'search':
+      return (
+        <span className="flex h-9 w-full items-center gap-2 border px-3" style={INPUT_STYLE}>
+          <svg aria-hidden viewBox="0 0 16 16" className="size-3.5 shrink-0 text-text-subtle" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg>
+          <span className="truncate text-[11px] text-text-subtle">{node.text || '검색'}</span>
+        </span>
+      )
   }
 }
 
-function LeafContent({ element, context, stretch }: { element: MockupElement; context: ElementContext; stretch: { width: boolean; height: boolean } }) {
+function LeafContent({ element, context, stretch, appearance }: { element: MockupElement; context: ElementContext; stretch: { width: boolean; height: boolean }; appearance?: ElementAppearance }) {
   const size = { width: stretch.width ? '100%' : undefined, height: stretch.height ? '100%' : undefined }
   switch (element.kind) {
     case 'heading':
@@ -406,12 +537,13 @@ function LeafContent({ element, context, stretch }: { element: MockupElement; co
       const variant = context.sampleVariant ?? 'normal'
       const count = variant === 'empty' ? 0 : variant === 'many' ? 12 : 3
       const fallback = Array.from({ length: count }, (_, index) => ({ id: `${element.modelId}:example:${index + 1}`, values: Object.fromEntries(element.fields.map((field) => [field.id, exampleValue(field, index, variant === 'long')])) }))
-      return <ListElement modelId={element.modelId} modelName={element.modelName} fields={element.fields} records={supplied?.variants[variant] ?? fallback} isExample={supplied === undefined} selectedId={context.selectedSampleIdByModel?.[element.modelId]} onSelect={context.onSampleSelect} />
+      return <ListElement appearance={appearance === 'cards' || appearance === 'list' ? appearance : 'table'} modelId={element.modelId} modelName={element.modelName} fields={element.fields} records={supplied?.variants[variant] ?? fallback} isExample={supplied === undefined} selectedId={context.selectedSampleIdByModel?.[element.modelId]} onSelect={context.onSampleSelect} />
     }
     case 'button': {
       // 행동을 선언한 버튼이 주 버튼이다. 행동이 없는 버튼(돌아가기 등)은 보조 버튼으로 그린다.
       const className = BUTTON_CLASS
-      const look = { ...size, ...buttonStyle(element.actionId === null ? 'secondary' : 'primary') }
+      const chosen = appearance === 'primary' || appearance === 'secondary' || appearance === 'ghost' || appearance === 'link' ? appearance : element.actionId === null ? 'secondary' : 'primary'
+      const look = { ...size, ...buttonStyle(chosen) }
       if (context.mode !== 'experience') return <span style={look} className={className}>{element.name}</span>
       if (element.id === null) return <button type="button" disabled title="안정적 요소 ID가 없어 체험할 수 없습니다" style={look} className={cn(className, 'opacity-50')}>{element.name}</button>
       const elementId = element.id

@@ -16,7 +16,7 @@ import { Button, EmptyState, ErrorState, Skeleton, cn } from '@dahaze/ui'
 import { buildAppShell } from '@/features/mockup/app-shell'
 import { collectScreenMockups } from '@/features/mockup/screen-layouts'
 import { DEFAULT_VIEWPORT_DIMENSIONS, type MockupViewport } from '@/features/mockup/screen-mockup'
-import type { GroupNode, LayoutNode } from '@/features/mockup/layout-tree'
+import { declaredElements, elementLabel, type GroupNode, type LayoutNode } from '@/features/mockup/layout-tree'
 import type { PrototypeAction, PrototypeMode } from '@/features/mockup/prototype-contract'
 import { useTreeCompilation } from '@/features/workspace/use-tree-compilation'
 import { useWorkspaceStore } from '@/features/workspace/workspace-store'
@@ -309,11 +309,22 @@ function Wireframes({
   const focusWireframe = focusPath === undefined ? undefined : wireframePathFor(focusPath)
   const focusExists = focusWireframe !== undefined && wireframeFiles.some((file) => file.path === focusWireframe)
   const focusTheme = focusPath === undefined ? undefined : themes?.[focusPath] ?? 'wireframe'
+  const focusElements = useMemo(() => {
+    const mockup = focusNode?.mockup
+    if (mockup === null || mockup === undefined) return undefined
+    /* id 가 있는 요소만 싣는다. 배치 파일은 `id:<요소 id>` 로만 가리킬 수 있다. */
+    return [...declaredElements(mockup).values()].flatMap((entry) => entry.element.id === null ? [] : [{
+      id: entry.element.id,
+      kind: entry.element.kind,
+      label: elementLabel(entry.element),
+      ...(entry.owner?.startsWith('id:') ? { owner: entry.owner.slice(3) } : {}),
+    }])
+  }, [focusNode])
   useEffect(() => {
     setFocus(focusNode === undefined || focusNode === null
       ? { view: 'wireframe' }
-      : { view: 'wireframe', documentPath: focusNode.screen.path, screenId: focusNode.screen.id, screenName: focusNode.screen.name, wireframePath: focusWireframe, wireframeExists: focusExists, uiTheme: focusTheme })
-  }, [focusExists, focusNode, focusTheme, focusWireframe, setFocus])
+      : { view: 'wireframe', documentPath: focusNode.screen.path, screenId: focusNode.screen.id, screenName: focusNode.screen.name, wireframePath: focusWireframe, wireframeExists: focusExists, uiTheme: focusTheme, elements: focusElements })
+  }, [focusElements, focusExists, focusNode, focusTheme, focusWireframe, setFocus])
   useEffect(() => () => setFocus(null), [setFocus])
   const saveLabel = editor.status === 'saving' ? '저장 중' : editor.status === 'conflict' ? '충돌' : editor.status === 'error' ? '저장 실패' : isDirty(editor) ? '저장 대기' : '저장됨'
   const isPreset = (candidate: MockupViewport) =>

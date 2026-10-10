@@ -68,6 +68,17 @@ class AgentTurnResponse(BaseModel):
     created_at: datetime
 
 
+class AgentContextElement(BaseModel):
+    """화면에 선언된 요소 하나. 배치 파일의 `ref` 를 지어내지 않게 실어 보낸다."""
+
+    id: str = Field(max_length=200, description="요소 id. 배치 파일 ref 는 `id:<이 값>`")
+    kind: str = Field(
+        max_length=40, description="header·section·form·heading·input·list·button·placeholder"
+    )
+    label: str = Field(default="", max_length=200, description="사람이 읽는 이름")
+    owner: str | None = Field(default=None, max_length=200, description="담긴 영역의 요소 id")
+
+
 class AgentMessageContext(BaseModel):
     """메시지를 보낼 때 사용자가 보고 있던 것. AI 가 "이 화면" 같은 말을 풀 때 쓴다."""
 
@@ -82,6 +93,9 @@ class AgentMessageContext(BaseModel):
         default=None, description="배치 파일이 작업 트리에 이미 있는지"
     )
     ui_theme: str | None = Field(default=None, max_length=40, description="지금 목업의 UI 스타일")
+    elements: list[AgentContextElement] | None = Field(
+        default=None, max_length=200, description="화면에 선언된 요소"
+    )
 
 
 class SendAgentMessageRequest(BaseModel):

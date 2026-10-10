@@ -35,6 +35,7 @@ from dahaze_api.domain.ports import (
 from dahaze_api.domain.tree import (
     LOCK_TTL,
     ROOT,
+    WIREFRAME_SUFFIX,
     ChangeKind,
     Commit,
     FileLock,
@@ -46,9 +47,11 @@ from dahaze_api.domain.tree import (
     is_folder_path,
     is_under,
     join_path,
+    merge_wireframe_screen,
     parent_of,
     rebase,
     wireframe_problem,
+    wireframe_screen_ids,
 )
 
 Clock = Callable[[], datetime]
@@ -216,10 +219,63 @@ class TreeService:
         file = self._file(snap, path)
         if (problem := wireframe_problem(path, content)) is not None:
             raise Conflict(f"배치 파일을 저장하지 않았다: {problem}")
+        if holder is not None and path.endswith(WIREFRAME_SUFFIX):
+            # AI·MCP 가 전문을 다시 쓰다 다른 화면의 배치를 빠뜨린 일이 있었다. 사람의 편집기는
+            # 화면 단위로 고쳐 쓰므로 이 검사를 받지 않는다.
+            dropped = sorted(wireframe_screen_ids(file.text) - wireframe_screen_ids(content))
+            if dropped:
+                raise Conflict(
+                    f"이 edit 은 다른 화면의 배치를 지운다: {', '.join(dropped)}. "
+                    "배치 파일은 wireframe 도구로 화면 하나씩 고친다."
+                )
         await self._claim(snap, [file], actor_id=actor_id, holder=holder)
         updated = await self._tree.update_file(file.id, actor_id=actor_id, text=content)
         await self._tree_changed(project_id, [path], actor_id=actor_id, holder=holder)
         return updated
+
+    async def set_wireframe_screen(
+        self,
+        *,
+        actor_id: UUID,
+        project_id: UUID,
+        path: str,
+        screen_id: str,
+        layout: dict[str, object] | None = None,
+        theme: str | None = None,
+        holder: str | None = None,
+    ) -> tuple[str | None, TreeFile]:
+        """배치 파일에서 화면 하나의 항목만 바꾼다. 파일이 없으면 만든다.
+
+        바꾸기 전 원문(없었으면 `None`)과 저장한 파일을 돌려준다.
+        """
+        if not path.endswith(WIREFRAME_SUFFIX) or not is_file_path(path):
+            raise Conflict(f"배치 파일 경로가 아니다: {path!r} (.wireframe.json 으로 끝나야 한다)")
+        if layout is None and theme is None:
+            raise Conflict("layout 이나 theme 중 하나는 있어야 한다")
+        snap = await self._begin_write(actor_id, project_id)
+        existing = snap.live.get(path)
+        before = None if existing is None else existing.text
+        try:
+            content = merge_wireframe_screen(before or "", screen_id, layout=layout, theme=theme)
+        except ValueError as exc:
+            raise Conflict(
+                f"{path} 를 읽지 못했다: {exc}. read 로 확인하고 edit 로 고친다"
+            ) from exc
+        if existing is None:
+            parent = parent_of(path)
+            created = await self.add(
+                actor_id=actor_id,
+                project_id=project_id,
+                parent=parent,
+                name=path[len(parent) :].lstrip("/"),
+                content=content,
+                holder=holder,
+            )
+            return None, created
+        updated = await self.edit(
+            actor_id=actor_id, project_id=project_id, path=path, content=content, holder=holder
+        )
+        return before, updated
 
     async def move(
         self,

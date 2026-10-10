@@ -1,4 +1,4 @@
-import { declaredElements, isContainer, type ContainerLayout, type DeclaredElement, type DesignNode, type LayoutNode, type NodeStyle } from './layout-tree'
+import { declaredElements, isContainer, type ContainerLayout, type DeclaredElement, type DesignNode, type ElementAppearance, type LayoutNode, type NodeStyle } from './layout-tree'
 import type { MockupElement, ScreenMockup } from './screen-layouts'
 
 /**
@@ -101,16 +101,19 @@ function emit(node: LayoutNode, parent: ContainerLayout | null, depth: number, d
     return
   }
   if (entry === undefined) return
-  for (const line of leaf(entry.element, modifier(node.style, parent))) lines.push(`${pad}${line}`)
+  for (const line of leaf(entry.element, modifier(node.style, parent), node.appearance)) lines.push(`${pad}${line}`)
 }
 
-function leaf(element: MockupElement, mod: string): string[] {
+function leaf(element: MockupElement, mod: string, appearance?: ElementAppearance): string[] {
   const withModifier = mod === 'Modifier' ? '' : `, modifier = ${mod}`
   switch (element.kind) {
     case 'heading':
       return [`Text(${quote(element.text)}, style = MaterialTheme.typography.titleMedium${withModifier})`]
-    case 'button':
-      return [`Button(onClick = { /* ${element.actionId ?? '행동 미선언'} */ }${withModifier}) {`, `    Text(${quote(element.name)})`, '}']
+    case 'button': {
+      const variant = appearance === 'primary' || appearance === 'secondary' || appearance === 'ghost' || appearance === 'link' ? appearance : element.actionId === null ? 'secondary' : 'primary'
+      const name = variant === 'secondary' ? 'OutlinedButton' : variant === 'primary' ? 'Button' : 'TextButton'
+      return [`${name}(onClick = { /* ${element.actionId ?? '행동 미선언'} */ }${withModifier}) {`, `    Text(${quote(element.name)})`, '}']
+    }
     case 'input': {
       const field = element.field
       const label = `${field.name}${field.required ? ' *' : ''}`
@@ -120,6 +123,28 @@ function leaf(element: MockupElement, mod: string): string[] {
       return lines
     }
     case 'list':
+      if (appearance === 'cards') {
+        return [
+          `// ${element.modelName} 목록 · 카드`,
+          `LazyVerticalGrid(columns = GridCells.Adaptive(200.dp)${withModifier}) {`,
+          `    items(${element.modelId.split('.').at(-1) ?? 'items'}) { item ->`,
+          '        Card { Column(Modifier.padding(16.dp)) {',
+          ...element.fields.map((field, index) => `            Text(item.${field.id.split('.').at(-1)}.toString()${index === 0 ? ', style = MaterialTheme.typography.titleMedium' : ''}) // ${field.name}`),
+          '        } }',
+          '    }',
+          '}',
+        ]
+      }
+      if (appearance === 'list') {
+        return [
+          `// ${element.modelName} 목록`,
+          `LazyColumn(${mod === 'Modifier' ? '' : `modifier = ${mod}`}) {`,
+          `    items(${element.modelId.split('.').at(-1) ?? 'items'}) { item ->`,
+          `        ListItem(headlineContent = { Text(item.${element.fields[0]?.id.split('.').at(-1) ?? 'id'}.toString()) }${element.fields.length > 1 ? `, supportingContent = { Text(item.${element.fields[1]!.id.split('.').at(-1)}.toString()) }` : ''})`,
+          '    }',
+          '}',
+        ]
+      }
       return [
         `// ${element.modelName} 목록`,
         `LazyColumn(${mod === 'Modifier' ? '' : `modifier = ${mod}`}) {`,
@@ -160,5 +185,21 @@ function design(node: DesignNode, mod: string, parent: ContainerLayout | null): 
       const name = node.variant === 'secondary' ? 'OutlinedButton' : node.variant === 'ghost' ? 'TextButton' : 'Button'
       return [`${name}(onClick = {}${withModifier}) { Text(${quote(node.text ?? '')}) }${mark}`]
     }
+    case 'badge':
+      return [`SuggestionChip(onClick = {}, label = { Text(${quote(node.text ?? '')}) }${withModifier})${mark}`]
+    case 'avatar':
+      return [`Box(modifier = ${mod === 'Modifier' ? 'Modifier.size(40.dp)' : mod}.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Text(${quote((node.text ?? '').slice(0, 2))}) }${mark}`]
+    case 'icon':
+      return [`Icon(Icons.Outlined.Image, contentDescription = ${quote(node.text ?? '')}${withModifier})${mark}`]
+    case 'stat':
+      return [`Card(${mod === 'Modifier' ? '' : `modifier = ${mod}`}) {${mark}`, '    Column(Modifier.padding(16.dp)) {', `        Text(${quote(node.text ?? '')}, style = MaterialTheme.typography.labelMedium)`, `        Text(${quote(node.value ?? '')}, style = MaterialTheme.typography.headlineSmall)`, '    }', '}']
+    case 'tabs': {
+      const tabs = (node.text ?? '').split(',').map((tab) => tab.trim()).filter(Boolean)
+      return [`TabRow(selectedTabIndex = 0${withModifier}) {${mark}`, ...tabs.map((tab, index) => `    Tab(selected = ${index === 0}, onClick = {}, text = { Text(${quote(tab)}) })`), '}']
+    }
+    case 'progress':
+      return [`LinearProgressIndicator(progress = { ${(Number(node.value) || 0) / 100}f }${withModifier})${mark}`]
+    case 'search':
+      return [`OutlinedTextField(value = "", onValueChange = {}, placeholder = { Text(${quote(node.text ?? '')}) }, leadingIcon = { Icon(Icons.Default.Search, null) }${withModifier})${mark}`]
   }
 }

@@ -17,6 +17,7 @@ from dahaze_api.domain.rspdl import (
     RspdlIndex,
     RspdlReference,
     RspdlSymbol,
+    ScreenElement,
     SymbolLocator,
     UnparsedFile,
 )
@@ -28,6 +29,7 @@ class LocalRspdlIndexer:
     def index(self, result: Mapping[str, Any]) -> RspdlIndex:
         """`result` 는 `AnalysisOutcome.result` 다."""
         symbols: list[RspdlSymbol] = []
+        screen_elements: dict[tuple[str, str], tuple[ScreenElement, ...]] = {}
         unparsed: list[UnparsedFile] = []
         diagnostics: list[FileDiagnostic] = []
         for file in _files(result):
@@ -40,6 +42,10 @@ class LocalRspdlIndexer:
                 unparsed.append(UnparsedFile(path=path, error_count=errors))
                 continue
             symbols.extend(_symbols(module, kind=MODULE_KIND, path=path))
+            for layout in module.get("screen_layouts") or []:
+                if isinstance(layout, Mapping) and isinstance(layout.get("screen_id"), str):
+                    elements = tuple(_screen_elements(layout.get("elements"), owner=None))
+                    screen_elements[(path, layout["screen_id"])] = elements
         raw_references = result.get("references")
         return RspdlIndex(
             symbols=tuple(symbols),
@@ -47,7 +53,22 @@ class LocalRspdlIndexer:
             diagnostics=tuple(diagnostics),
             references=tuple(_references(raw_references)),
             references_supported=isinstance(raw_references, list),
+            screen_elements=screen_elements,
         )
+
+
+def _screen_elements(raw: Any, *, owner: str | None) -> Iterator[ScreenElement]:
+    """레이아웃 요소 트리를 펼친다. 머리말·구역은 `children`, 폼은 `inputs` 에 자식을 둔다."""
+    for element in raw if isinstance(raw, list) else []:
+        if not isinstance(element, Mapping):
+            continue
+        element_id = element.get("id")
+        kind = element.get("kind")
+        if isinstance(element_id, str) and isinstance(kind, str):
+            yield ScreenElement(id=element_id, kind=kind, owner_id=owner)
+        child_owner = element_id if isinstance(element_id, str) else owner
+        yield from _screen_elements(element.get("children"), owner=child_owner)
+        yield from _screen_elements(element.get("inputs"), owner=child_owner)
 
 
 def _files(result: Mapping[str, Any]) -> Iterator[Mapping[str, Any]]:

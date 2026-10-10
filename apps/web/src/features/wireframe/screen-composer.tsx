@@ -9,9 +9,9 @@ import { composeCode } from '@/features/mockup/compose-code'
 import { reactCode } from '@/features/mockup/react-code'
 import { UI_THEMES, UI_THEME_LABEL, type UiTheme } from '@/features/mockup/ui-theme'
 import {
-  canMove, changeDirection, createDesignNode, createSection, idFactory, SECTION_LABEL, isDesignOnly, createGroup, declaredElements, defaultLayout, deleteNode, DESIGN_LABEL, DIRECTION_LABEL, elementLabel, findNode, findParent, insertNode, isContainer, KIND_LABEL,
+  canMove, changeDirection, createCard, createDesignNode, createSection, setAppearance, idFactory, SECTION_LABEL, isDesignOnly, createGroup, declaredElements, defaultLayout, deleteNode, DESIGN_LABEL, DIRECTION_LABEL, elementLabel, findNode, findParent, insertNode, isContainer, KIND_LABEL,
   moveNode, newNodeId, nodeKey, resolveLayout, shiftNode, unwrapGroup, updateDesign, updateNode, wrapNode,
-  type Align, type Arrangement, type ContainerLayout, type DesignKind, type DesignNode, type Direction, type Fill, type GroupNode, type LayoutNode, type ButtonVariant, type SectionTemplate, type NodeStyle, type Size, type TextStyle, type TextTone,
+  type Align, type Arrangement, type ContainerLayout, type DesignKind, type DesignNode, type Direction, type Fill, type GroupNode, type LayoutNode, type ButtonVariant, type SectionTemplate, type ListAppearance, type ButtonAppearance, type NodeStyle, type Size, type TextStyle, type TextTone,
 } from '@/features/mockup/layout-tree'
 import { FILL_BACKGROUND } from '@/features/mockup/layout-style'
 import type { MockupDimensions } from '@/features/mockup/prototype-contract'
@@ -233,7 +233,13 @@ export function ScreenComposer(props: ScreenComposerProps) {
       {tab === 'design' ? <div role="toolbar" aria-label="넣기" className="flex items-center gap-0.5 rounded-lg border bg-surface p-0.5 text-xs">
         {([['column', '↓ Column', 'F'], ['row', '→ Row', null], ['box', '▣ Box', null]] as const).map(([direction, label, key]) => <button key={direction} type="button" title={`${DIRECTION_LABEL[direction]} 프레임 넣기${key === null ? '' : ` (${key})`}`} className="rounded-md px-2 py-1 text-text-muted hover:bg-surface-raised hover:text-text" onClick={() => insertFrame(direction)}>{label}</button>)}
         <span aria-hidden className="mx-1 h-4 w-px bg-border" />
-        {([['text', 'T 텍스트', 'T'], ['button', '▭ 버튼', null], ['image', '▨ 이미지', null], ['rectangle', '□ 사각형', 'R'], ['divider', '— 구분선', null], ['spacer', '↕ 여백', null]] as const).map(([design, label, key]) => <button key={design} type="button" title={`${DESIGN_LABEL[design]} 넣기 · 디자인 전용${key === null ? '' : ` (${key})`}`} className="rounded-md px-2 py-1 text-text-muted hover:bg-surface-raised hover:text-text" onClick={() => insertDesign(design)}>{label}</button>)}
+        <button type="button" title="카드 프레임 넣기 · 테두리·모서리·여백이 있는 Column" className="rounded-md px-2 py-1 text-text-muted hover:bg-surface-raised hover:text-text" onClick={() => insert(createCard(newNodeId(root, 'g')))}>▢ 카드</button>
+        <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+        {([['text', 'T 텍스트', 'T'], ['button', '▭ 버튼', null], ['image', '▨ 이미지', null]] as const).map(([design, label, key]) => <button key={design} type="button" title={`${DESIGN_LABEL[design]} 넣기 · 디자인 전용${key === null ? '' : ` (${key})`}`} className="rounded-md px-2 py-1 text-text-muted hover:bg-surface-raised hover:text-text" onClick={() => insertDesign(design)}>{label}</button>)}
+        <select aria-label="컴포넌트 넣기" value="" className="rounded-md bg-transparent px-1 py-1 text-text-muted hover:text-text" onChange={(event) => { if (event.target.value !== '') insertDesign(event.target.value as DesignKind) }}>
+          <option value="">＋ 컴포넌트</option>
+          {(['badge', 'avatar', 'icon', 'stat', 'tabs', 'progress', 'search', 'rectangle', 'divider', 'spacer'] as const).map((design) => <option key={design} value={design}>{DESIGN_LABEL[design]}</option>)}
+        </select>
         <span aria-hidden className="mx-1 h-4 w-px bg-border" />
         <select aria-label="섹션 넣기" value="" className="rounded-md bg-transparent px-1 py-1 text-text-muted hover:text-text" onChange={(event) => { if (event.target.value !== '') insertSection(event.target.value as SectionTemplate) }}>
           <option value="">＋ 섹션</option>
@@ -319,11 +325,11 @@ function dropAt(canvas: HTMLElement, container: HTMLElement, parentKey: string, 
 
 const DIRECTION_GLYPH: Record<Direction, string> = { column: '↓', row: '→', box: '▣' }
 const KIND_GLYPH: Record<string, string> = { heading: 'H', button: '▭', input: '⌶', list: '≡', placeholder: '◌', unrecognized: '?' }
-const DESIGN_GLYPH: Record<DesignKind, string> = { text: 'T', rectangle: '□', divider: '—', spacer: '↕', image: '▨', button: '▭' }
+const DESIGN_GLYPH: Record<DesignKind, string> = { text: 'T', rectangle: '□', divider: '—', spacer: '↕', image: '▨', button: '▭', badge: '◖', avatar: '●', icon: '◇', stat: '#', tabs: '⊟', progress: '▬', search: '⌕' }
 
 function nodeTitle(node: LayoutNode, declared: ReturnType<typeof declaredElements>): { glyph: string; title: string; detail: string | null } {
   if (node.type === 'group') return { glyph: DIRECTION_GLYPH[node.layout.direction], title: node.id === 'root' ? '화면' : DIRECTION_LABEL[node.layout.direction], detail: node.id === 'root' ? DIRECTION_LABEL[node.layout.direction] : '프레임' }
-  if (node.type === 'design') return { glyph: DESIGN_GLYPH[node.design], title: (node.design === 'text' || node.design === 'button' || node.design === 'image') && node.text !== undefined && node.text.trim() !== '' ? node.text : DESIGN_LABEL[node.design], detail: '디자인' }
+  if (node.type === 'design') return { glyph: DESIGN_GLYPH[node.design], title: node.text !== undefined && node.text.trim() !== '' ? node.text : DESIGN_LABEL[node.design], detail: DESIGN_LABEL[node.design] }
   const entry = declared.get(node.ref)
   const label = entry === undefined ? node.ref : elementLabel(entry.element)
   if (isContainer(node)) return { glyph: DIRECTION_GLYPH[node.layout.direction], title: label, detail: DIRECTION_LABEL[node.layout.direction] }
@@ -451,6 +457,13 @@ function PropertiesPanel({ root, declared, selected, canvasRef, apply, wrap, onS
 
     {node.type === 'design' && node.design === 'text' ? <TextSection node={node} onChange={(patch) => apply(updateDesign(root, key, patch))} /> : null}
     {node.type === 'design' && node.design === 'button' ? <ButtonSection node={node} onChange={(patch) => apply(updateDesign(root, key, patch))} /> : null}
+    {node.type === 'design' && ['badge', 'avatar', 'icon', 'stat', 'tabs', 'progress', 'search'].includes(node.design) ? <ComponentSection node={node} onChange={(patch) => apply(updateDesign(root, key, patch))} /> : null}
+    {node.type === 'element' && (node.kind === 'list' || node.kind === 'button') ? <Section title="UI 모양">
+      {node.kind === 'list'
+        ? <Segmented<ListAppearance> label="목록 모양" value={node.appearance === 'cards' || node.appearance === 'list' ? node.appearance : 'table'} options={[['table', '표'], ['cards', '카드'], ['list', '목록']]} onChange={(appearance) => apply(setAppearance(root, key, appearance === 'table' ? undefined : appearance))} />
+        : <Segmented<ButtonAppearance | 'auto'> label="버튼 모양" value={node.appearance === 'primary' || node.appearance === 'secondary' || node.appearance === 'ghost' || node.appearance === 'link' ? node.appearance : 'auto'} options={[['auto', '자동'], ['primary', '주'], ['secondary', '보조'], ['ghost', '텍스트'], ['link', '링크']]} onChange={(appearance) => apply(setAppearance(root, key, appearance === 'auto' ? undefined : appearance))} />}
+      <p className="text-text-subtle">{node.kind === 'list' ? '같은 필드를 표·카드·한 줄 목록 중 어떤 UI로 보일지 고릅니다.' : '자동은 행동이 있는 버튼을 주 버튼으로 그립니다.'}</p>
+    </Section> : null}
     {node.type === 'design' && node.design === 'image' ? <Section title="이미지"><label className="flex flex-col gap-1 text-text-muted">설명<input aria-label="이미지 설명" value={node.text ?? ''} className="rounded border bg-surface px-2 py-1 text-text" onChange={(event) => apply(updateDesign(root, key, { text: event.target.value }))} /></label><p className="text-text-subtle">디자인 전용 · 실제 이미지가 아니라 자리만 잡습니다.</p></Section> : null}
 
     {isRoot ? null : <Section title="크기">
@@ -508,6 +521,26 @@ function TextSection({ node, onChange }: { node: DesignNode; onChange: (patch: P
     <Segmented<TextStyle> label="글자 크기" value={node.textStyle ?? 'body'} options={[['display', '큰 제목'], ['title', '제목'], ['body', '본문'], ['caption', '캡션']]} onChange={(textStyle) => onChange({ textStyle })} />
     <Segmented<TextTone> label="글자 색" value={node.tone ?? 'default'} options={[['strong', '진하게'], ['default', '보통'], ['muted', '흐리게']]} onChange={(tone) => onChange({ tone })} />
     <p className="text-text-subtle">디자인 전용 · 기획 문서에는 없는 문구입니다.</p>
+  </Section>
+}
+
+const COMPONENT_FIELDS: Partial<Record<DesignKind, { text: string; value?: string; hint?: string }>> = {
+  badge: { text: '이름' },
+  avatar: { text: '이름', hint: '앞 두 글자를 보입니다.' },
+  icon: { text: '설명' },
+  stat: { text: '지표 이름', value: '값', hint: '값은 자리 값입니다. 실제 수치를 지어내지 마세요.' },
+  tabs: { text: '탭 이름', hint: '쉼표로 나눕니다. 첫 탭이 선택된 탭입니다.' },
+  progress: { text: '이름', value: '퍼센트 (0~100)' },
+  search: { text: '안내 문구' },
+}
+
+function ComponentSection({ node, onChange }: { node: DesignNode; onChange: (patch: Partial<Pick<DesignNode, 'text' | 'value' | 'variant'>>) => void }) {
+  const fields = COMPONENT_FIELDS[node.design] ?? { text: '내용' }
+  return <Section title={DESIGN_LABEL[node.design]}>
+    <label className="flex flex-col gap-1 text-text-muted">{fields.text}<input aria-label={fields.text} value={node.text ?? ''} className="rounded border bg-surface px-2 py-1 text-text" onChange={(event) => onChange({ text: event.target.value })} /></label>
+    {fields.value === undefined ? null : <label className="flex flex-col gap-1 text-text-muted">{fields.value}<input aria-label={fields.value} value={node.value ?? ''} className="rounded border bg-surface px-2 py-1 text-text" onChange={(event) => onChange({ value: event.target.value })} /></label>}
+    {node.design === 'badge' ? <Segmented<ButtonVariant> label="배지 모양" value={node.variant ?? 'secondary'} options={[['primary', '강조'], ['secondary', '기본'], ['ghost', '테두리']]} onChange={(variant) => onChange({ variant })} /> : null}
+    <p className="text-text-subtle">디자인 전용{fields.hint === undefined ? '' : ` · ${fields.hint}`}</p>
   </Section>
 }
 

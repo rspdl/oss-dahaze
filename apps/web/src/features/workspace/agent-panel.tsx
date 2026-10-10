@@ -591,6 +591,7 @@ function messageContext(focus: ViewFocus | null): AgentMessageContext | undefine
     wireframe_path: focus.wireframePath,
     wireframe_exists: focus.wireframeExists,
     ui_theme: focus.uiTheme,
+    elements: focus.elements,
   }
 }
 

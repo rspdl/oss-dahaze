@@ -92,6 +92,53 @@ def wireframe_problem(path: str, text: str) -> str | None:
     return None
 
 
+def wireframe_screen_ids(text: str) -> set[str]:
+    """배치 파일에 항목이 있는 화면 id. 읽을 수 없으면 빈 집합."""
+    try:
+        value = json.loads(text) if text.strip() else {}
+    except json.JSONDecodeError:
+        return set()
+    screens = value.get("screens") if isinstance(value, dict) else None
+    return set(screens) if isinstance(screens, dict) else set()
+
+
+def merge_wireframe_screen(
+    text: str,
+    screen_id: str,
+    *,
+    layout: dict[str, object] | None = None,
+    position: dict[str, object] | None = None,
+    theme: str | None = None,
+) -> str:
+    """배치 파일에서 화면 하나의 항목만 바꾼 전문. 다른 화면과 모르는 키는 그대로 둔다.
+
+    AI 가 파일 전문을 다시 쓰다 다른 화면의 배치를 빠뜨리는 일을 막으려고, 화면 단위로 고치는
+    도구가 이 함수를 쓴다. 저장 전 모양 검사는 `wireframe_problem` 이 따로 한다.
+    """
+    value = json.loads(text) if text.strip() else {}
+    if not isinstance(value, dict):
+        raise ValueError("배치 파일의 최상위가 JSON 객체가 아니다")
+    value.setdefault("version", 1)
+    if theme is not None:
+        if theme == "wireframe":
+            value.pop("theme", None)
+        else:
+            value["theme"] = theme
+    if layout is not None or position is not None:
+        screens = value.get("screens")
+        if not isinstance(screens, dict):
+            screens = {}
+        entry = screens.get(screen_id)
+        entry = dict(entry) if isinstance(entry, dict) else {}
+        if layout is not None:
+            entry["layout"] = layout
+        if position is not None:
+            entry["position"] = position
+        screens[screen_id] = entry
+        value["screens"] = screens
+    return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
+
+
 def file_kind(path: str) -> str:
     """옮기기 전후로 종류가 같은지 볼 때 쓴다."""
     return "wireframe" if path.endswith(WIREFRAME_SUFFIX) else "rspdl"

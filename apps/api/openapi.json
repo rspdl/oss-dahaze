@@ -21,6 +21,49 @@
         "title": "AddMemberRequest",
         "type": "object"
       },
+      "AgentContextElement": {
+        "description": "화면에 선언된 요소 하나. 배치 파일의 `ref` 를 지어내지 않게 실어 보낸다.",
+        "properties": {
+          "id": {
+            "description": "요소 id. 배치 파일 ref 는 `id:<이 값>`",
+            "maxLength": 200,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "header·section·form·heading·input·list·button·placeholder",
+            "maxLength": 40,
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "description": "사람이 읽는 이름",
+            "maxLength": 200,
+            "title": "Label",
+            "type": "string"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "담긴 영역의 요소 id",
+            "title": "Owner"
+          }
+        },
+        "required": [
+          "id",
+          "kind"
+        ],
+        "title": "AgentContextElement",
+        "type": "object"
+      },
       "AgentItemResponse": {
         "properties": {
           "created_at": {
@@ -99,6 +142,22 @@
             ],
             "description": "문서 경로",
             "title": "Document Path"
+          },
+          "elements": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AgentContextElement"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "화면에 선언된 요소",
+            "title": "Elements"
           },
           "screen_id": {
             "anyOf": [

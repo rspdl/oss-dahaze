@@ -44,12 +44,22 @@ export interface NodeStyle {
 
 export type ElementKind = MockupElement['kind']
 
+/**
+ * 문서 요소를 어떤 UI 로 보일지. 의미(무엇이 있는가)는 문서가 정하고 모양만 고른다.
+ * - 목록: `table` 표(기본) · `cards` 카드 격자 · `list` 한 줄 목록
+ * - 버튼: `primary` · `secondary` · `ghost` · `link`. 없으면 행동이 있는 버튼이 주 버튼이다.
+ */
+export type ListAppearance = 'table' | 'cards' | 'list'
+export type ButtonAppearance = 'primary' | 'secondary' | 'ghost' | 'link'
+export type ElementAppearance = ListAppearance | ButtonAppearance
+
 export interface ElementNode {
   type: 'element'
   /** `id:<요소 id>` 또는 id 가 없을 때 `path:<요소 경로>`. */
   ref: string
   kind: ElementKind
   style: NodeStyle
+  appearance?: ElementAppearance
   /** 머리글·영역·입력 그룹처럼 자식을 가진 요소만 둔다. */
   layout?: ContainerLayout
   children?: LayoutNode[]
@@ -63,7 +73,9 @@ export interface GroupNode {
   children: LayoutNode[]
 }
 
-export type DesignKind = 'text' | 'rectangle' | 'divider' | 'spacer' | 'image' | 'button'
+export type DesignKind =
+  | 'text' | 'rectangle' | 'divider' | 'spacer' | 'image' | 'button'
+  | 'badge' | 'avatar' | 'icon' | 'stat' | 'tabs' | 'progress' | 'search'
 /** `display` 는 히어로 제목처럼 큰 글자. */
 export type TextStyle = 'display' | 'title' | 'body' | 'caption'
 export type TextTone = 'strong' | 'default' | 'muted'
@@ -78,8 +90,13 @@ export interface DesignNode {
   id: string
   design: DesignKind
   style: NodeStyle
-  /** 텍스트의 내용, 버튼의 이름, 이미지 자리의 설명. */
+  /**
+   * 텍스트의 내용, 버튼·배지의 이름, 이미지 자리의 설명, 아바타의 이름, 통계의 이름, 검색칸의 안내 문구.
+   * 탭은 쉼표로 나눈 탭 이름이고 첫 탭이 선택된 탭이다.
+   */
   text?: string
+  /** 통계 카드의 값, 진행 막대의 퍼센트(0~100). 문서에 없는 자리 값이다. */
+  value?: string
   textStyle?: TextStyle
   tone?: TextTone
   variant?: ButtonVariant
@@ -163,11 +180,19 @@ export function resolveLayout(screen: ScreenMockup, saved: LayoutNode | undefine
   if (saved === undefined || saved.type !== 'group' || saved.id !== ROOT_ID) return defaultLayout(screen)
   const declared = declaredElements(screen)
   const placed = new Set<string>()
+  /*
+    자기 영역 밖에 놓인 요소. 자리는 지킬 수 없지만 고른 모양(표·카드·크기)까지 버리면 사람이나 AI 가
+    고친 것이 소리 없이 사라진다. 모양을 기억했다가 자기 영역 끝에 붙일 때 입힌다.
+  */
+  const stray = new Map<string, Pick<ElementNode, 'style' | 'appearance'>>()
   const prune = (nodes: LayoutNode[], owner: string | null): LayoutNode[] => nodes.flatMap((node): LayoutNode[] => {
     if (node.type === 'design') return [node]
     // 빈 그룹도 남긴다. 사용자가 만든 프레임이고, 지우는 것도 사용자가 한다.
     if (node.type === 'group') return [{ ...node, children: prune(node.children, owner) }]
     const entry = declared.get(node.ref)
+    if (entry !== undefined && entry.element.kind === node.kind && entry.owner !== owner && !placed.has(node.ref)) {
+      stray.set(node.ref, { style: node.style, ...(node.appearance === undefined ? {} : { appearance: node.appearance }) })
+    }
     if (entry === undefined || entry.element.kind !== node.kind || entry.owner !== owner || placed.has(node.ref)) return []
     placed.add(node.ref)
     const fallback = defaultElementNode(entry.element, entry.path)
@@ -181,9 +206,14 @@ export function resolveLayout(screen: ScreenMockup, saved: LayoutNode | undefine
     if (placed.has(entry.ref)) continue
     const parent = containers.get(entry.owner)
     if (parent === undefined) continue
-    const node = defaultElementNode(entry.element, entry.path)
+    const restore = (child: ElementNode): ElementNode => ({
+      ...child,
+      ...stray.get(child.ref),
+      ...(child.children === undefined ? {} : { children: child.children.map((grand) => grand.type === 'element' ? restore(grand) : grand) }),
+    })
+    // 새로 붙인 영역의 자식은 기본 배치에 이미 들어 있다. 밖에 놓였던 모양을 거기에 입힌다.
+    const node = restore(defaultElementNode(entry.element, entry.path))
     parent.children.push(node)
-    // 새로 붙인 영역의 자식은 기본 배치에 이미 들어 있다.
     walkLayout(node, (child) => {
       if (child.type !== 'element') return
       placed.add(child.ref)
@@ -389,24 +419,60 @@ export function createDesignNode(design: DesignKind, id: string): DesignNode {
     case 'spacer': return { type: 'design', id, design, style: style({ width: 16, height: 16 }) }
     case 'image': return { type: 'design', id, design, text: '이미지', style: style({ width: 'fill', height: 220, radius: 8 }) }
     case 'button': return { type: 'design', id, design, text: '버튼', variant: 'primary', style: style({}) }
+    case 'badge': return { type: 'design', id, design, text: '배지', variant: 'secondary', style: style({}) }
+    case 'avatar': return { type: 'design', id, design, text: '사용자', style: style({ width: 40, height: 40 }) }
+    case 'icon': return { type: 'design', id, design, text: '아이콘', style: style({ width: 24, height: 24 }) }
+    case 'stat': return { type: 'design', id, design, text: '지표 이름', value: '—', style: style({ width: 'fill' }) }
+    case 'tabs': return { type: 'design', id, design, text: '전체, 진행 중, 완료', style: style({ width: 'fill' }) }
+    case 'progress': return { type: 'design', id, design, text: '진행률', value: '60', style: style({ width: 'fill' }) }
+    case 'search': return { type: 'design', id, design, text: '검색', style: style({ width: 'fill' }) }
   }
 }
 
-export function updateDesign(root: GroupNode, key: string, patch: Partial<Pick<DesignNode, 'text' | 'textStyle' | 'tone' | 'variant'>>): GroupNode {
+/** 카드 프레임. 테두리·모서리·안쪽 여백이 있는 Column 이다. 테마가 카드 그림자를 정한다. */
+export function createCard(id: string): GroupNode {
+  return {
+    type: 'group', id,
+    style: { width: 'fill', height: 'hug', fill: 'surface', border: true, radius: 12 },
+    layout: { direction: 'column', gap: 8, paddingX: 20, paddingY: 20, main: 'start', cross: 'start' },
+    children: [],
+  }
+}
+
+export function updateDesign(root: GroupNode, key: string, patch: Partial<Pick<DesignNode, 'text' | 'textStyle' | 'tone' | 'variant' | 'value'>>): GroupNode {
   return mapNode(root, (node) => nodeKey(node) === key && node.type === 'design' ? { ...node, ...patch } : node) as GroupNode
 }
 
-export const DESIGN_LABEL: Record<DesignKind, string> = { text: '텍스트', rectangle: '사각형', divider: '구분선', spacer: '여백', image: '이미지', button: '버튼' }
+export const DESIGN_LABEL: Record<DesignKind, string> = {
+  text: '텍스트', rectangle: '사각형', divider: '구분선', spacer: '여백', image: '이미지', button: '버튼',
+  badge: '배지', avatar: '아바타', icon: '아이콘', stat: '통계', tabs: '탭', progress: '진행 막대', search: '검색칸',
+}
+
+/** 요소 노드의 모양을 바꾼다. 목록은 표·카드·목록, 버튼은 주·보조·텍스트·링크. */
+export function setAppearance(root: GroupNode, key: string, appearance: ElementAppearance | undefined): GroupNode {
+  return mapNode(root, (node) => {
+    if (nodeKey(node) !== key || node.type !== 'element') return node
+    const next = { ...node }
+    if (appearance === undefined) delete next.appearance
+    else next.appearance = appearance
+    return next
+  }) as GroupNode
+}
 
 /* ---------- 섹션 템플릿 ---------- */
 
-export type SectionTemplate = 'hero-center' | 'hero-split' | 'feature-grid' | 'cta-banner'
+export type SectionTemplate = 'hero-center' | 'hero-split' | 'feature-grid' | 'cta-banner' | 'card-grid' | 'stats-row' | 'profile-card' | 'pricing' | 'tabs-panel'
 
 export const SECTION_LABEL: Record<SectionTemplate, string> = {
   'hero-center': '히어로 · 가운데',
   'hero-split': '히어로 · 이미지 나란히',
   'feature-grid': '기능 소개 3칸',
   'cta-banner': '행동 유도 띠',
+  'card-grid': '카드 격자 (이미지·제목·버튼)',
+  'stats-row': '통계 카드 4칸',
+  'profile-card': '프로필 카드',
+  'pricing': '가격표 3단',
+  'tabs-panel': '탭 + 검색 막대',
 }
 
 /** 트리에서 아직 쓰지 않은 id 를 차례로 낸다. 노드 여러 개를 한 번에 만들 때 겹치지 않게. */
@@ -435,6 +501,11 @@ export function createSection(template: SectionTemplate, nextId: (prefix: 'g' | 
   const text = (value: string, textStyle: TextStyle, tone: TextTone = 'default', style: Partial<NodeStyle> = {}): DesignNode => ({ type: 'design', id: nextId('d'), design: 'text', text: value, textStyle, tone, style: { width: 'hug', height: 'hug', fill: 'none', border: false, radius: 0, ...style } })
   const button = (value: string, variant: ButtonVariant): DesignNode => ({ type: 'design', id: nextId('d'), design: 'button', text: value, variant, style: { width: 'hug', height: 'hug', fill: 'none', border: false, radius: 0 } })
   const image = (value: string, height: number): DesignNode => ({ type: 'design', id: nextId('d'), design: 'image', text: value, style: { width: 'fill', height, fill: 'none', border: false, radius: 12 } })
+  const design = (kind: DesignKind, value: string, extra: { variant?: ButtonVariant; value?: string; style?: Partial<NodeStyle> } = {}): DesignNode => {
+    const node = createDesignNode(kind, nextId('d'))
+    const withText = kind === 'rectangle' || kind === 'divider' || kind === 'spacer' ? {} : { text: value }
+    return { ...node, ...withText, ...(extra.variant === undefined ? {} : { variant: extra.variant }), ...(extra.value === undefined ? {} : { value: extra.value }), style: { ...node.style, ...extra.style } }
+  }
   const actions = () => group('row', { gap: 8, cross: 'center' }, { width: 'hug' }, [button('시작하기', 'primary'), button('더 알아보기', 'secondary')])
   switch (template) {
     case 'hero-center':
@@ -464,6 +535,44 @@ export function createSection(template: SectionTemplate, nextId: (prefix: 'g' | 
         group('row', { gap: 16 }, {}, [card('기능 하나'), card('기능 둘'), card('기능 셋')]),
       ])
     }
+    case 'card-grid': {
+      const card = (title: string) => group('column', { gap: 10, paddingX: 0, paddingY: 0 }, { border: true, radius: 12, fill: 'surface' }, [
+        image('카드 이미지', 140),
+        group('column', { gap: 6, paddingX: 16, paddingY: 12 }, {}, [
+          design('badge', '분류', { variant: 'secondary' }),
+          text(title, 'title', 'strong'),
+          text('카드에 들어갈 짧은 설명입니다.', 'body', 'muted'),
+          button('자세히', 'secondary'),
+        ]),
+      ])
+      return group('row', { gap: 16, paddingX: 24, paddingY: 24 }, {}, [card('카드 제목 하나'), card('카드 제목 둘'), card('카드 제목 셋')])
+    }
+    case 'stats-row': {
+      const stat = (label: string) => design('stat', label, { value: '—', style: { width: 'fill' } })
+      return group('row', { gap: 12, paddingX: 24, paddingY: 16 }, {}, [stat('지표 하나'), stat('지표 둘'), stat('지표 셋'), stat('지표 넷')])
+    }
+    case 'profile-card':
+      return group('row', { gap: 16, paddingX: 20, paddingY: 20, cross: 'center' }, { border: true, radius: 12, fill: 'surface' }, [
+        design('avatar', '이름', { style: { width: 56, height: 56 } }),
+        group('column', { gap: 4 }, {}, [text('이름', 'title', 'strong'), text('역할이나 소개 한 줄', 'body', 'muted')]),
+        design('badge', '상태', { variant: 'primary' }),
+      ])
+    case 'pricing': {
+      const tier = (name: string, featured: boolean) => group('column', { gap: 12, paddingX: 24, paddingY: 24 }, { border: true, radius: 12, fill: featured ? 'raised' : 'surface' }, [
+        text(name, 'title', 'strong'),
+        text('가격', 'display', 'strong'),
+        design('divider', ''),
+        text('포함 항목 하나', 'body', 'muted'),
+        text('포함 항목 둘', 'body', 'muted'),
+        button('선택하기', featured ? 'primary' : 'secondary'),
+      ])
+      return group('row', { gap: 16, paddingX: 24, paddingY: 32 }, {}, [tier('기본', false), tier('추천', true), tier('전문가', false)])
+    }
+    case 'tabs-panel':
+      return group('column', { gap: 12, paddingX: 24, paddingY: 16 }, {}, [
+        design('tabs', '전체, 진행 중, 완료'),
+        design('search', '검색어를 입력하세요'),
+      ])
     case 'cta-banner':
       return group('row', { gap: 16, paddingX: 32, paddingY: 28, main: 'space-between', cross: 'center' }, { fill: 'strong', radius: 12 }, [
         group('column', { gap: 4 }, { width: 'hug' }, [text('지금 바로 시작하세요', 'title', 'strong'), text('설치 없이 바로 써 볼 수 있습니다.', 'body', 'default')]),
@@ -509,7 +618,8 @@ const DIRECTIONS = new Set<string>(['column', 'row', 'box'])
 const ARRANGEMENTS = new Set<string>(['start', 'center', 'end', 'space-between'])
 const ALIGNS = new Set<string>(['start', 'center', 'end'])
 const FILLS = new Set<string>(['none', 'surface', 'raised', 'gray', 'strong'])
-const DESIGNS = new Set<string>(['text', 'rectangle', 'divider', 'spacer', 'image', 'button'])
+const DESIGNS = new Set<string>(['text', 'rectangle', 'divider', 'spacer', 'image', 'button', 'badge', 'avatar', 'icon', 'stat', 'tabs', 'progress', 'search'])
+const APPEARANCES = new Set<string>(['table', 'cards', 'list', 'primary', 'secondary', 'ghost', 'link'])
 const KINDS = new Set<string>(Object.keys(KIND_LABEL))
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -569,9 +679,11 @@ export function parseLayoutNode(value: unknown, depth = 0): LayoutNode | null {
   }
   if (value.type === 'design' && typeof value.id === 'string' && typeof value.design === 'string' && DESIGNS.has(value.design)) {
     const node: DesignNode = { type: 'design', id: value.id, design: value.design as DesignKind, style }
-    if (node.design === 'text' || node.design === 'button' || node.design === 'image') {
+    if (!['rectangle', 'divider', 'spacer'].includes(node.design)) {
       node.text = typeof value.text === 'string' ? value.text.slice(0, 2000) : node.design === 'text' ? '' : DESIGN_LABEL[node.design]
     }
+    if ((node.design === 'stat' || node.design === 'progress') && (typeof value.value === 'string' || typeof value.value === 'number')) node.value = String(value.value).slice(0, 200)
+    if (node.design === 'badge') node.variant = value.variant === 'primary' || value.variant === 'ghost' ? value.variant : 'secondary'
     if (node.design === 'text') {
       node.textStyle = value.textStyle === 'display' || value.textStyle === 'title' || value.textStyle === 'caption' ? value.textStyle : 'body'
       node.tone = value.tone === 'strong' || value.tone === 'muted' ? value.tone : 'default'
@@ -581,7 +693,8 @@ export function parseLayoutNode(value: unknown, depth = 0): LayoutNode | null {
   }
   if (value.type === 'element' && typeof value.ref === 'string' && typeof value.kind === 'string' && KINDS.has(value.kind)) {
     const layout = value.layout === undefined ? undefined : parseContainer(value.layout) ?? undefined
-    return { type: 'element', ref: value.ref, kind: value.kind as ElementKind, style, ...(layout === undefined ? {} : { layout, children: children ?? [] }) }
+    const appearance = typeof value.appearance === 'string' && APPEARANCES.has(value.appearance) ? { appearance: value.appearance as ElementAppearance } : {}
+    return { type: 'element', ref: value.ref, kind: value.kind as ElementKind, style, ...appearance, ...(layout === undefined ? {} : { layout, children: children ?? [] }) }
   }
   return null
 }

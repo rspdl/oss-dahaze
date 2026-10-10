@@ -530,6 +530,7 @@ async def test_tools_are_advertised_over_http(
         "mkdir",
         "add",
         "edit",
+        "wireframe",
         "mv",
         "delete",
         "commit",

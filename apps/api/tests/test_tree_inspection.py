@@ -392,3 +392,81 @@ async def test_fetch_owner_filters_local_ids(
         actor_id=user.id, project_id=project.id, symbol_id="pay", owner_id="mobile"
     )
     assert [r.id for r in one.referenced_by] == ["inventory.mobile"]
+
+
+# ---------------------------------------------------------------------- 와이어프레임 배치
+
+SCREEN_DOC = """---
+모듈: 카페(cafe)
+
+화면:
+  메뉴 화면:
+    유형: page
+    역할: [손님]
+    레이아웃:
+      - 구역:
+          id: body
+          자식:
+            - 목록: { id: menus, 모델: 메뉴, 필드: [이름] }
+---
+
+메뉴(menu)는 다음 필드들로 구성되어 있다.
+    이름(name): 필수 문자열
+
+손님(guest)은 역할이다.
+
+메뉴 화면(menu_screen)에서는 메뉴를 생성할 수 있다.
+메뉴 화면(menu_screen)에서는 메뉴의 이름을 입력할 수 있다.
+메뉴 화면(menu_screen)에서는 메뉴의 이름을 조회할 수 있다.
+"""
+
+
+async def test_wireframe_layout_check_points_to_the_declared_area(
+    inspector: TreeInspector, tree: TreeService, user: User, project: Project
+) -> None:
+    await tree.add(
+        actor_id=user.id, project_id=project.id, parent="/", name="cafe.rspdl", content=SCREEN_DOC
+    )
+    list_node = {"type": "element", "ref": "id:menus", "kind": "list", "appearance": "cards"}
+
+    async def check(layout: Any) -> list[str]:
+        return await inspector.check_wireframe_layout(
+            actor_id=user.id,
+            project_id=project.id,
+            document_path="/cafe.rspdl",
+            screen_id="cafe.menu_screen",
+            layout=layout,
+        )
+
+    # 구역 안 목록을 루트 프레임에 넣으면 어디에 둬야 하는지 알려준다.
+    misplaced = await check(
+        {
+            "type": "group",
+            "id": "root",
+            "children": [{"type": "group", "id": "g1", "children": [list_node]}],
+        }
+    )
+    assert any("`id:body` 노드의 children" in problem for problem in misplaced)
+    assert any("menus(list ⊂ body)" in problem for problem in misplaced)
+
+    nested = {
+        "type": "group",
+        "id": "root",
+        "children": [
+            {
+                "type": "element",
+                "ref": "id:body",
+                "kind": "section",
+                "children": [{"type": "group", "id": "g1", "children": [list_node]}],
+            }
+        ],
+    }
+    assert await check(nested) == []
+    unknown = await check(
+        {
+            "type": "group",
+            "id": "root",
+            "children": [{"type": "element", "ref": "id:nope", "kind": "list"}],
+        }
+    )
+    assert any("모르는 요소" in problem for problem in unknown)
