@@ -64,7 +64,10 @@ def get_session_tokens() -> SessionTokens:
 
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
-DbSession = Annotated[AsyncSession, Depends(get_session)]
+# `scope="function"`: 응답을 보내기 **전에** commit 한다. 기본값(request)은 응답을 보낸 뒤에
+# commit 해서, 201 을 받은 클라이언트가 곧바로 그 자원을 조회하면 아직 없는 것으로 보인다
+# (세션을 만들고 바로 메시지를 보내면 가끔 404 가 났다).
+DbSession = Annotated[AsyncSession, Depends(get_session, scope="function")]
 Compiler = Annotated[RspdlCompilerPort, Depends(get_compiler)]
 Tokens = Annotated[SessionTokens, Depends(get_session_tokens)]
 
