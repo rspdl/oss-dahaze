@@ -1,0 +1,646 @@
+{
+  "files": [
+    {
+      "path": "screen-structure.rspdl",
+      "module": {
+        "id": "reservation",
+        "name": "시설 예약",
+        "span": {
+          "start": 12,
+          "end": 38
+        },
+        "enums": [],
+        "models": [
+          {
+            "id": "reservation.facility",
+            "name": "시설",
+            "fields": [
+              {
+                "id": "reservation.facility.name",
+                "local_id": "name",
+                "name": "이름",
+                "required": true,
+                "value_type": {
+                  "kind": "string"
+                },
+                "span": {
+                  "start": 1994,
+                  "end": 2024
+                }
+              },
+              {
+                "id": "reservation.facility.capacity",
+                "local_id": "capacity",
+                "name": "수용 인원",
+                "required": true,
+                "value_type": {
+                  "kind": "integer"
+                },
+                "span": {
+                  "start": 2029,
+                  "end": 2067
+                }
+              }
+            ],
+            "span": {
+              "start": 1929,
+              "end": 2067
+            }
+          },
+          {
+            "id": "reservation.reservation",
+            "name": "예약",
+            "fields": [
+              {
+                "id": "reservation.reservation.applicant",
+                "local_id": "applicant",
+                "name": "예약자",
+                "required": true,
+                "value_type": {
+                  "kind": "string"
+                },
+                "span": {
+                  "start": 2137,
+                  "end": 2175
+                }
+              },
+              {
+                "id": "reservation.reservation.headcount",
+                "local_id": "headcount",
+                "name": "인원",
+                "required": true,
+                "value_type": {
+                  "kind": "integer"
+                },
+                "span": {
+                  "start": 2180,
+                  "end": 2212
+                }
+              }
+            ],
+            "span": {
+              "start": 2069,
+              "end": 2212
+            }
+          }
+        ],
+        "screens": [
+          {
+            "id": "reservation.create_facility",
+            "name": "시설 등록 화면",
+            "operations": [
+              {
+                "kind": "create",
+                "model_id": "reservation.facility",
+                "span": {
+                  "start": 2214,
+                  "end": 2292
+                }
+              },
+              {
+                "kind": "input",
+                "model_id": "reservation.facility",
+                "field_ids": [
+                  "reservation.facility.capacity",
+                  "reservation.facility.name"
+                ],
+                "span": {
+                  "start": 2293,
+                  "end": 2396
+                }
+              }
+            ],
+            "span": {
+              "start": 2214,
+              "end": 2292
+            }
+          },
+          {
+            "id": "reservation.create_reservation",
+            "name": "예약 신청 화면",
+            "operations": [
+              {
+                "kind": "create",
+                "model_id": "reservation.reservation",
+                "span": {
+                  "start": 2603,
+                  "end": 2684
+                }
+              },
+              {
+                "kind": "input",
+                "model_id": "reservation.reservation",
+                "field_ids": [
+                  "reservation.reservation.applicant",
+                  "reservation.reservation.headcount"
+                ],
+                "span": {
+                  "start": 2685,
+                  "end": 2787
+                }
+              }
+            ],
+            "span": {
+              "start": 2603,
+              "end": 2684
+            }
+          },
+          {
+            "id": "reservation.facility_detail",
+            "name": "시설 상세 화면",
+            "operations": [
+              {
+                "kind": "read",
+                "model_id": "reservation.facility",
+                "field_ids": [
+                  "reservation.facility.capacity",
+                  "reservation.facility.name"
+                ],
+                "span": {
+                  "start": 2499,
+                  "end": 2602
+                }
+              }
+            ],
+            "span": {
+              "start": 2499,
+              "end": 2602
+            }
+          },
+          {
+            "id": "reservation.facility_list",
+            "name": "시설 목록 화면",
+            "operations": [
+              {
+                "kind": "read",
+                "model_id": "reservation.facility",
+                "field_ids": [
+                  "reservation.facility.capacity",
+                  "reservation.facility.name"
+                ],
+                "span": {
+                  "start": 2397,
+                  "end": 2498
+                }
+              }
+            ],
+            "span": {
+              "start": 2397,
+              "end": 2498
+            }
+          },
+          {
+            "id": "reservation.reservation_done",
+            "name": "예약 완료 화면",
+            "operations": [
+              {
+                "kind": "read",
+                "model_id": "reservation.reservation",
+                "field_ids": [
+                  "reservation.reservation.applicant",
+                  "reservation.reservation.headcount"
+                ],
+                "span": {
+                  "start": 2788,
+                  "end": 2888
+                }
+              }
+            ],
+            "span": {
+              "start": 2788,
+              "end": 2888
+            }
+          }
+        ],
+        "information_architecture": [
+          {
+            "id": "reservation.admin",
+            "name": "관리",
+            "span": {
+              "start": 56,
+              "end": 69
+            }
+          },
+          {
+            "id": "reservation.register",
+            "name": "등록",
+            "parent_id": "reservation.admin",
+            "span": {
+              "start": 75,
+              "end": 91
+            }
+          },
+          {
+            "id": "reservation.browse",
+            "name": "둘러보기",
+            "span": {
+              "start": 118,
+              "end": 138
+            }
+          },
+          {
+            "id": "reservation.search",
+            "name": "시설 찾기",
+            "parent_id": "reservation.browse",
+            "span": {
+              "start": 144,
+              "end": 165
+            }
+          },
+          {
+            "id": "reservation.book",
+            "name": "예약하기",
+            "span": {
+              "start": 214,
+              "end": 232
+            }
+          },
+          {
+            "id": "reservation.apply",
+            "name": "신청",
+            "parent_id": "reservation.book",
+            "span": {
+              "start": 238,
+              "end": 251
+            }
+          },
+          {
+            "id": "reservation.confirm",
+            "name": "확인",
+            "parent_id": "reservation.book",
+            "span": {
+              "start": 280,
+              "end": 295
+            }
+          }
+        ],
+        "screen_categories": [
+          {
+            "screen_id": "reservation.create_facility",
+            "category_id": "reservation.register",
+            "span": {
+              "start": 94,
+              "end": 114
+            }
+          },
+          {
+            "screen_id": "reservation.facility_list",
+            "category_id": "reservation.search",
+            "span": {
+              "start": 168,
+              "end": 188
+            }
+          },
+          {
+            "screen_id": "reservation.facility_detail",
+            "category_id": "reservation.search",
+            "span": {
+              "start": 190,
+              "end": 210
+            }
+          },
+          {
+            "screen_id": "reservation.create_reservation",
+            "category_id": "reservation.apply",
+            "span": {
+              "start": 254,
+              "end": 274
+            }
+          },
+          {
+            "screen_id": "reservation.reservation_done",
+            "category_id": "reservation.confirm",
+            "span": {
+              "start": 298,
+              "end": 318
+            }
+          }
+        ],
+        "screen_layouts": [
+          {
+            "screen_id": "reservation.create_facility",
+            "kind": "page",
+            "elements": [
+              {
+                "kind": "section",
+                "children": [
+                  {
+                    "kind": "form",
+                    "inputs": [
+                      {
+                        "kind": "input",
+                        "field_id": "reservation.facility.name",
+                        "span": {
+                          "start": 437,
+                          "end": 443
+                        }
+                      },
+                      {
+                        "kind": "input",
+                        "field_id": "reservation.facility.capacity",
+                        "span": {
+                          "start": 468,
+                          "end": 474
+                        }
+                      }
+                    ],
+                    "span": {
+                      "start": 416,
+                      "end": 419
+                    }
+                  },
+                  {
+                    "kind": "button",
+                    "id": "save",
+                    "name": "등록",
+                    "span": {
+                      "start": 502,
+                      "end": 508
+                    }
+                  }
+                ],
+                "span": {
+                  "start": 396,
+                  "end": 402
+                }
+              }
+            ],
+            "span": {
+              "start": 331,
+              "end": 351
+            }
+          },
+          {
+            "screen_id": "reservation.facility_list",
+            "kind": "page",
+            "elements": [
+              {
+                "kind": "header",
+                "children": [
+                  {
+                    "kind": "heading",
+                    "text": "시설 찾기",
+                    "span": {
+                      "start": 631,
+                      "end": 637
+                    }
+                  }
+                ],
+                "span": {
+                  "start": 608,
+                  "end": 617
+                }
+              },
+              {
+                "kind": "section",
+                "children": [
+                  {
+                    "kind": "list",
+                    "model_id": "reservation.facility",
+                    "field_ids": [
+                      "reservation.facility.name",
+                      "reservation.facility.capacity"
+                    ],
+                    "span": {
+                      "start": 683,
+                      "end": 689
+                    }
+                  },
+                  {
+                    "kind": "button",
+                    "id": "open",
+                    "name": "상세 보기",
+                    "span": {
+                      "start": 755,
+                      "end": 761
+                    }
+                  }
+                ],
+                "span": {
+                  "start": 663,
+                  "end": 669
+                }
+              }
+            ],
+            "span": {
+              "start": 543,
+              "end": 563
+            }
+          },
+          {
+            "screen_id": "reservation.facility_detail",
+            "kind": "page",
+            "elements": [
+              {
+                "kind": "header",
+                "children": [
+                  {
+                    "kind": "heading",
+                    "text": "시설 상세",
+                    "span": {
+                      "start": 891,
+                      "end": 897
+                    }
+                  }
+                ],
+                "span": {
+                  "start": 868,
+                  "end": 877
+                }
+              },
+              {
+                "kind": "section",
+                "children": [
+                  {
+                    "kind": "list",
+                    "model_id": "reservation.facility",
+                    "field_ids": [
+                      "reservation.facility.name",
+                      "reservation.facility.capacity"
+                    ],
+                    "span": {
+                      "start": 943,
+                      "end": 949
+                    }
+                  },
+                  {
+                    "kind": "placeholder",
+                    "text": "시설 위치 지도",
+                    "span": {
+                      "start": 1015,
+                      "end": 1021
+                    }
+                  },
+                  {
+                    "kind": "button",
+                    "id": "apply",
+                    "name": "예약 신청",
+                    "span": {
+                      "start": 1058,
+                      "end": 1064
+                    }
+                  }
+                ],
+                "span": {
+                  "start": 923,
+                  "end": 929
+                }
+              }
+            ],
+            "span": {
+              "start": 803,
+              "end": 823
+            }
+          },
+          {
+            "screen_id": "reservation.create_reservation",
+            "kind": "page",
+            "elements": [
+              {
+                "kind": "section",
+                "children": [
+                  {
+                    "kind": "form",
+                    "inputs": [
+                      {
+                        "kind": "input",
+                        "field_id": "reservation.reservation.applicant",
+                        "span": {
+                          "start": 1213,
+                          "end": 1219
+                        }
+                      },
+                      {
+                        "kind": "input",
+                        "field_id": "reservation.reservation.headcount",
+                        "span": {
+                          "start": 1247,
+                          "end": 1253
+                        }
+                      }
+                    ],
+                    "span": {
+                      "start": 1192,
+                      "end": 1195
+                    }
+                  },
+                  {
+                    "kind": "button",
+                    "id": "submit",
+                    "name": "신청",
+                    "span": {
+                      "start": 1274,
+                      "end": 1280
+                    }
+                  }
+                ],
+                "span": {
+                  "start": 1172,
+                  "end": 1178
+                }
+              }
+            ],
+            "span": {
+              "start": 1107,
+              "end": 1127
+            }
+          },
+          {
+            "screen_id": "reservation.reservation_done",
+            "kind": "page",
+            "elements": [
+              {
+                "kind": "header",
+                "children": [
+                  {
+                    "kind": "heading",
+                    "text": "신청이 접수되었습니다",
+                    "span": {
+                      "start": 1405,
+                      "end": 1411
+                    }
+                  }
+                ],
+                "span": {
+                  "start": 1382,
+                  "end": 1391
+                }
+              },
+              {
+                "kind": "section",
+                "children": [
+                  {
+                    "kind": "list",
+                    "model_id": "reservation.reservation",
+                    "field_ids": [
+                      "reservation.reservation.applicant",
+                      "reservation.reservation.headcount"
+                    ],
+                    "span": {
+                      "start": 1475,
+                      "end": 1481
+                    }
+                  }
+                ],
+                "span": {
+                  "start": 1455,
+                  "end": 1461
+                }
+              }
+            ],
+            "span": {
+              "start": 1317,
+              "end": 1337
+            }
+          }
+        ],
+        "screen_paths": [
+          {
+            "source_screen_id": "reservation.create_facility",
+            "source_element_id": "save",
+            "target_screen_id": "reservation.facility_list",
+            "label": "등록 성공",
+            "span": {
+              "start": 1544,
+              "end": 1638
+            }
+          },
+          {
+            "source_screen_id": "reservation.facility_list",
+            "source_element_id": "open",
+            "target_screen_id": "reservation.facility_detail",
+            "label": "목록에서 하나 고름",
+            "span": {
+              "start": 1643,
+              "end": 1750
+            }
+          },
+          {
+            "source_screen_id": "reservation.facility_detail",
+            "source_element_id": "apply",
+            "target_screen_id": "reservation.create_reservation",
+            "span": {
+              "start": 1755,
+              "end": 1822
+            }
+          },
+          {
+            "source_screen_id": "reservation.create_reservation",
+            "source_element_id": "submit",
+            "target_screen_id": "reservation.reservation_done",
+            "label": "신청 성공",
+            "span": {
+              "start": 1827,
+              "end": 1923
+            }
+          }
+        ],
+        "constraints": [],
+        "roles": [],
+        "actions": [],
+        "policies": []
+      },
+      "diagnostics": []
+    }
+  ]
+}

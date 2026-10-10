@@ -73,7 +73,8 @@ class AgentItem:
 
     `payload` 모양은 종류마다 다르다.
 
-    - user_message / assistant_message: `{"text": str}`
+    - user_message / assistant_message: `{"text": str}`. user_message 는 보내는 순간 보고 있던
+      화면을 `context` 로 함께 가질 수 있다(뷰·문서·화면·배치 파일).
     - tool_call: `{"call_id": str, "name": str, "arguments": dict}`
     - tool_result: `{"call_id": str, "name": str, "ok": bool, "output": Any,
       "changes": [{"path_before", "path_after", "text_before", "text_after"}]}`

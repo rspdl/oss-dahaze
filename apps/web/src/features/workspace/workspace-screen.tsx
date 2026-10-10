@@ -16,6 +16,7 @@ import {
 } from '@dahaze/ui'
 
 import { RequireSession } from '@/features/auth/require-session'
+import { WireframeView } from '@/features/wireframe/wireframe-view'
 import {
   DEFAULT_PROJECT_VIEW,
   PROJECT_VIEWS,
@@ -24,7 +25,7 @@ import {
   type ProjectViewId,
 } from '@/features/navigation/views'
 import { AppShell, Crumb } from '@/shared/ui/app-shell'
-import { FileTextIcon, HierarchyIcon } from '@/shared/ui/icons'
+import { FileTextIcon, FlowIcon, HierarchyIcon } from '@/shared/ui/icons'
 import { useSidebarStore } from '@/shared/ui/sidebar-store'
 import { AgentPanel } from './agent-panel'
 import { CallView, CommitView } from './change-views'
@@ -41,7 +42,8 @@ import { useWorkspaceStore } from './workspace-store'
  *
  * 파일 트리는 화면 안의 패널이 아니라 앱 기둥에 들어간다(`AppShell` 의 `sidebar`). 가운데 위쪽의
  * 선택 바가 같은 작업 트리를 어떤 뷰로 볼지 고른다 — "문서"는 사용자가 고른 파일·commit diff·
- * 도구 호출 diff 를, "IA"는 컴파일 결과의 정보구조와 화면 흐름을 보여준다. 뷰는 주소에 있다.
+ * 도구 호출 diff 를, "IA"는 컴파일 결과의 정보구조와 화면 흐름을, "와이어프레임"은 화면 목업과
+ * 그 사이 경로를 보여준다. 뷰는 주소에 있다.
  *
  * AI 가 파일을 바꿔도 가운데는 저절로 바뀌지 않는다 (docs/plans/agent-workspace.md "화면").
  * 변경은 프로젝트 이벤트 스트림으로 들어온다. MCP 클라이언트가 바꾼 파일도 같은 길로 반영된다.
@@ -101,6 +103,7 @@ function WorkspaceSidebar({ projectId }: { projectId: string }) {
 const VIEW_ICONS: Record<ProjectViewId, ReactNode> = {
   documents: <FileTextIcon />,
   ia: <HierarchyIcon />,
+  wireframe: <FlowIcon />,
 }
 
 function Workspace({ projectId, view }: { projectId: string; view: ProjectViewId }) {
@@ -153,6 +156,9 @@ function Workspace({ projectId, view }: { projectId: string; view: ProjectViewId
           </TabsContent>
           <TabsContent value="ia" className="flex min-h-0 flex-col">
             <IaView projectId={projectId} onOpen={openInDocuments} />
+          </TabsContent>
+          <TabsContent value="wireframe" className="flex min-h-0 flex-col">
+            <WireframeView projectId={projectId} onOpen={(location) => openFile(location.path, location.line)} />
           </TabsContent>
         </Tabs>
       </ResizablePanel>

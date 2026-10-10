@@ -1,0 +1,306 @@
+{
+  "files": [
+    {
+      "path": "a.rspdl",
+      "module": {
+        "id": "t",
+        "name": "시험",
+        "span": {
+          "start": 12,
+          "end": 21
+        },
+        "enums": [],
+        "models": [
+          {
+            "id": "t.rec",
+            "name": "기록",
+            "fields": [
+              {
+                "id": "t.rec.name",
+                "local_id": "name",
+                "name": "이름",
+                "required": true,
+                "value_type": {
+                  "kind": "string"
+                },
+                "span": {
+                  "start": 230,
+                  "end": 260
+                }
+              }
+            ],
+            "span": {
+              "start": 170,
+              "end": 260
+            }
+          }
+        ],
+        "screens": [
+          {
+            "id": "t.shared",
+            "name": "공통 화면",
+            "operations": [
+              {
+                "kind": "create",
+                "model_id": "t.rec",
+                "span": {
+                  "start": 262,
+                  "end": 324
+                }
+              },
+              {
+                "kind": "input",
+                "model_id": "t.rec",
+                "field_ids": [
+                  "t.rec.name"
+                ],
+                "span": {
+                  "start": 325,
+                  "end": 397
+                }
+              }
+            ],
+            "span": {
+              "start": 262,
+              "end": 324
+            }
+          }
+        ],
+        "information_architecture": [
+          {
+            "id": "t.common",
+            "name": "공통",
+            "span": {
+              "start": 39,
+              "end": 53
+            }
+          }
+        ],
+        "screen_categories": [
+          {
+            "screen_id": "t.shared",
+            "category_id": "t.common",
+            "span": {
+              "start": 56,
+              "end": 69
+            }
+          }
+        ],
+        "screen_layouts": [
+          {
+            "screen_id": "t.shared",
+            "elements": [
+              {
+                "kind": "button",
+                "id": "go_a",
+                "name": "가에서",
+                "span": {
+                  "start": 123,
+                  "end": 129
+                }
+              }
+            ],
+            "span": {
+              "start": 82,
+              "end": 95
+            }
+          }
+        ],
+        "constraints": [],
+        "roles": [],
+        "actions": [],
+        "policies": []
+      },
+      "diagnostics": [
+        {
+          "rule_id": "RSPDL-LINK-001",
+          "severity": "error",
+          "message_key": "compiler.module.duplicate_id",
+          "arguments": {
+            "module_id": "t"
+          },
+          "span": {
+            "start": 12,
+            "end": 21
+          }
+        },
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "t.rec.name"
+          },
+          "span": {
+            "start": 325,
+            "end": 397
+          }
+        },
+        {
+          "rule_id": "RSPDL-LAYOUT-W001",
+          "severity": "warning",
+          "message_key": "semantic.layout.required_input_without_slot",
+          "arguments": {
+            "field_id": "t.rec.name",
+            "screen_id": "t.shared"
+          },
+          "span": {
+            "start": 325,
+            "end": 397
+          }
+        }
+      ]
+    },
+    {
+      "path": "b.rspdl",
+      "module": {
+        "id": "t",
+        "name": "시험",
+        "span": {
+          "start": 12,
+          "end": 21
+        },
+        "enums": [],
+        "models": [
+          {
+            "id": "t.rec",
+            "name": "기록",
+            "fields": [
+              {
+                "id": "t.rec.name",
+                "local_id": "name",
+                "name": "이름",
+                "required": true,
+                "value_type": {
+                  "kind": "string"
+                },
+                "span": {
+                  "start": 230,
+                  "end": 260
+                }
+              }
+            ],
+            "span": {
+              "start": 170,
+              "end": 260
+            }
+          }
+        ],
+        "screens": [
+          {
+            "id": "t.shared",
+            "name": "공통 화면",
+            "operations": [
+              {
+                "kind": "create",
+                "model_id": "t.rec",
+                "span": {
+                  "start": 262,
+                  "end": 324
+                }
+              },
+              {
+                "kind": "input",
+                "model_id": "t.rec",
+                "field_ids": [
+                  "t.rec.name"
+                ],
+                "span": {
+                  "start": 325,
+                  "end": 397
+                }
+              }
+            ],
+            "span": {
+              "start": 262,
+              "end": 324
+            }
+          }
+        ],
+        "information_architecture": [
+          {
+            "id": "t.common",
+            "name": "공통",
+            "span": {
+              "start": 39,
+              "end": 53
+            }
+          }
+        ],
+        "screen_categories": [
+          {
+            "screen_id": "t.shared",
+            "category_id": "t.common",
+            "span": {
+              "start": 56,
+              "end": 69
+            }
+          }
+        ],
+        "screen_layouts": [
+          {
+            "screen_id": "t.shared",
+            "elements": [
+              {
+                "kind": "button",
+                "id": "go_b",
+                "name": "나에서",
+                "span": {
+                  "start": 123,
+                  "end": 129
+                }
+              }
+            ],
+            "span": {
+              "start": 82,
+              "end": 95
+            }
+          }
+        ],
+        "constraints": [],
+        "roles": [],
+        "actions": [],
+        "policies": []
+      },
+      "diagnostics": [
+        {
+          "rule_id": "RSPDL-LINK-001",
+          "severity": "error",
+          "message_key": "compiler.module.duplicate_id",
+          "arguments": {
+            "module_id": "t"
+          },
+          "span": {
+            "start": 12,
+            "end": 21
+          }
+        },
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "t.rec.name"
+          },
+          "span": {
+            "start": 325,
+            "end": 397
+          }
+        },
+        {
+          "rule_id": "RSPDL-LAYOUT-W001",
+          "severity": "warning",
+          "message_key": "semantic.layout.required_input_without_slot",
+          "arguments": {
+            "field_id": "t.rec.name",
+            "screen_id": "t.shared"
+          },
+          "span": {
+            "start": 325,
+            "end": 397
+          }
+        }
+      ]
+    }
+  ]
+}

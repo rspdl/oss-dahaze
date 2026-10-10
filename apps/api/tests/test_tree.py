@@ -104,12 +104,75 @@ async def test_add_requires_existing_parent_and_free_path(
         await tree.mkdir(actor_id=user.id, project_id=project.id, parent="/", name="a.rspdl")
 
 
-@pytest.mark.parametrize("name", ["../x.rspdl", "a.txt", "a b.rspdl", "", ".rspdl"])
+@pytest.mark.parametrize(
+    "name", ["../x.rspdl", "a.txt", "a b.rspdl", "", ".rspdl", "a.json", ".wireframe.json"]
+)
 async def test_rejects_bad_file_names(
     tree: TreeService, user: User, project: Project, name: str
 ) -> None:
     with pytest.raises(Conflict):
         await tree.add(actor_id=user.id, project_id=project.id, parent="/", name=name, content="")
+
+
+async def test_wireframe_layout_file_sits_next_to_document(
+    tree: TreeService, user: User, project: Project
+) -> None:
+    await tree.add(actor_id=user.id, project_id=project.id, parent="/", name="a.rspdl", content="")
+    await tree.add(
+        actor_id=user.id,
+        project_id=project.id,
+        parent="/",
+        name="a.wireframe.json",
+        content="{}",
+    )
+    assert await _paths(tree, user, project) == ["/a.rspdl", "/a.wireframe.json"]
+
+    # 종류를 바꾸는 이동은 막는다. 배치 파일이 컴파일 대상이 되면 안 된다.
+    with pytest.raises(Conflict):
+        await tree.move(
+            actor_id=user.id, project_id=project.id, source="/a.wireframe.json", target="/b.rspdl"
+        )
+    await tree.move(
+        actor_id=user.id,
+        project_id=project.id,
+        source="/a.wireframe.json",
+        target="/b.wireframe.json",
+    )
+
+
+@pytest.mark.parametrize(
+    ("content", "problem"),
+    [
+        ("{ broken", "JSON 이 아니다"),
+        ("[]", "JSON 객체"),
+        ('{"screens": []}', "`screens`"),
+        ('{"screens": {"a": {"layout": {"type": "element"}}}}', "루트 노드"),
+        ('{"theme": "tailwind-pro"}', "`theme`"),
+    ],
+)
+async def test_wireframe_layout_file_must_be_readable(
+    tree: TreeService, user: User, project: Project, content: str, problem: str
+) -> None:
+    """배치는 컴파일러가 보지 않으므로 저장할 때 모양을 본다. AI 도 이 오류를 받고 고친다."""
+    with pytest.raises(Conflict, match=problem):
+        await tree.add(
+            actor_id=user.id,
+            project_id=project.id,
+            parent="/",
+            name="a.wireframe.json",
+            content=content,
+        )
+    await tree.add(
+        actor_id=user.id,
+        project_id=project.id,
+        parent="/",
+        name="a.wireframe.json",
+        content='{"version": 1, "theme": "shadcn", "screens": {}}',
+    )
+    with pytest.raises(Conflict, match=problem):
+        await tree.edit(
+            actor_id=user.id, project_id=project.id, path="/a.wireframe.json", content=content
+        )
 
 
 async def test_error_text_is_saved_as_is(tree: TreeService, user: User, project: Project) -> None:

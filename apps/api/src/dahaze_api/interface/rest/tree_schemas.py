@@ -56,7 +56,9 @@ class FolderResponse(BaseModel):
 
 class CreateFileRequest(BaseModel):
     parent: str = Field(description="상위 폴더 경로. 루트는 `/`", examples=["/주문"])
-    name: str = Field(description="`.rspdl` 로 끝나는 파일 이름", examples=["결제.rspdl"])
+    name: str = Field(
+        description="`.rspdl` 이나 `.wireframe.json` 으로 끝나는 파일 이름", examples=["결제.rspdl"]
+    )
     content: str = Field(description="원문 전체")
 
 

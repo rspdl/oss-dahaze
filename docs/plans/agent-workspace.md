@@ -204,7 +204,7 @@ rspdl 0.1.4 에서 컴파일로 확인한 제약이 나누는 방식을 정한�
   commit 이력을 누르면 가운데에 그 commit의 diff가 열린다.
 - 가운데 위쪽의 뷰 선택 바가 같은 작업 트리를 어떤 뷰로 볼지 고른다. 뷰 목록과 주소 조각은
   `features/navigation/views.ts` 의 `PROJECT_VIEWS` 하나가 원본이다(`/projects/{id}/documents`,
-  `/projects/{id}/ia`). 모든 뷰가 `app/projects/[projectId]/layout.tsx` 를 공유하므로 뷰를 바꿔도
+  `/projects/{id}/ia`, `/projects/{id}/wireframe`). 모든 뷰가 `app/projects/[projectId]/layout.tsx` 를 공유하므로 뷰를 바꿔도
   트리·대화·이벤트 스트림이 다시 마운트되지 않는다. 예전 `/workspace` 주소는 기본 뷰로 보낸다.
   - **문서**: 파일 에디터, commit diff, 도구 호출 diff. 다른 뷰에서 파일·commit·도구 카드를 고르면
     이 뷰로 옮긴다.
@@ -213,6 +213,22 @@ rspdl 0.1.4 에서 컴파일로 확인한 제약이 나누는 방식을 정한�
     문서 뷰로 연다. `compile_tree` 와 `search` 는 IR 을 주지 않고 검색 결과에는 `parent_id`·분류
     배정이 없어서, 작업 트리 파일을 읽어 `compile_workspace` 에 넘긴다. 저장한 원문 기준이고, 파일
     수만큼 `read_tree_file` 을 부른다. 트리 크기가 커지면 IR 을 주는 트리 엔드포인트가 필요하다.
+  - **와이어프레임**: 같은 컴파일 결과의 `screens`·`screen_layouts`·`screen_paths` 로 화면을 회색
+    목업 카드로 그리고 경로로 잇는다(React Flow). 왼쪽 열로 돌아가는 경로는 카드 아래로 돈다.
+    카드를 더블클릭하면 Column·Row·Box 배치 트리 편집기가 열리고 Compose 코드도 보여준다.
+    기획 요소는 선언된 영역 안에서만 옮기고, 더하기·지우기는 문서를 고친다("원문 열기").
+    보드 위치와 배치 트리는 문서 옆 `<문서>.wireframe.json` 에 자동 저장한다(편집이 멈추고 0.7초 뒤).
+    바뀐 화면 항목만 고쳐 쓰므로, 오류로 컴파일러가 IR 을 내보내지 않은 문서의 배치는 지워지지
+    않는다. rspdl 0.1.4 는 의미 오류가 하나라도 있으면 그 문서의 `module` 을 비워 보내므로, 그런
+    문서는 "화면이 없다"가 아니라 "읽지 못한 문서"로 알린다. 정보구조에 담긴 화면은 앱 틀 안에
+    그린다 — 최상위 분류가 앱, 그 아래 분류가 왼쪽 메뉴 묶음, 담긴 화면이 메뉴 항목이고, 위쪽에
+    경로와 주소(분류·화면 id 끝 조각)를 보인다. 체험 모드에서는 메뉴로 화면을 옮기고, 버튼의 결과
+    (도착 화면·메시지·팝업)를 골라 본다. 문서마다 UI 스타일(회색·shadcn/ui·Material 3·Bootstrap 5)을
+    고르면 같은 구조를 그 프레임워크의 기본 모양으로 그리고, 편집기는 Compose 와 React·shadcn 코드를
+    낸다. 히어로·기능 소개·CTA 같은 랜딩 섹션은 디자인 전용 노드(큰 제목·이미지 자리·버튼) 템플릿이다.
+    편집기는 가운데 패널만 덮어 AI 대화를 열어 둔 채 편집한다. 메시지를 보낼 때 고른 화면을
+    `context` 로 함께 보내고(대화에는 화면 이름만 보인다), AI 는 그 화면의 배치 파일 항목을 고친다.
+    원본: `features/wireframe/`, `features/mockup/`.
 
 ## 기술 스택
 

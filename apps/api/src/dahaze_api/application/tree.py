@@ -41,15 +41,19 @@ from dahaze_api.domain.tree import (
     TreeFile,
     TreeFolder,
     describe_change,
+    file_kind,
     is_file_path,
     is_folder_path,
     is_under,
     join_path,
     parent_of,
     rebase,
+    wireframe_problem,
 )
 
 Clock = Callable[[], datetime]
+
+_FILE_SUFFIX_HINT = ".rspdl 이나 .wireframe.json 으로 끝나야 한다"
 
 
 def _utcnow() -> datetime:
@@ -186,9 +190,11 @@ class TreeService:
         snap = await self._begin_write(actor_id, project_id)
         path = join_path(parent, name)
         if not is_file_path(path):
-            raise Conflict(f"파일 경로가 올바르지 않다: {path!r} (.rspdl 로 끝나야 한다)")
+            raise Conflict(f"파일 경로가 올바르지 않다: {path!r} ({_FILE_SUFFIX_HINT})")
         self._require_parent(snap, path)
         self._require_free(snap, path)
+        if (problem := wireframe_problem(path, content)) is not None:
+            raise Conflict(f"배치 파일을 저장하지 않았다: {problem}")
         created = await self._tree.create_file(
             project_id=project_id, path=path, text=content, actor_id=actor_id
         )
@@ -208,6 +214,8 @@ class TreeService:
         """전문을 바꾼다. 사람의 저장 버튼도 이 경로다."""
         snap = await self._begin_write(actor_id, project_id)
         file = self._file(snap, path)
+        if (problem := wireframe_problem(path, content)) is not None:
+            raise Conflict(f"배치 파일을 저장하지 않았다: {problem}")
         await self._claim(snap, [file], actor_id=actor_id, holder=holder)
         updated = await self._tree.update_file(file.id, actor_id=actor_id, text=content)
         await self._tree_changed(project_id, [path], actor_id=actor_id, holder=holder)
@@ -233,8 +241,10 @@ class TreeService:
 
         if source in snap.live:
             if not is_file_path(target):
-                raise Conflict(f"파일 경로가 올바르지 않다: {target!r} (.rspdl 로 끝나야 한다)")
+                raise Conflict(f"파일 경로가 올바르지 않다: {target!r} ({_FILE_SUFFIX_HINT})")
             file = snap.live[source]
+            if file_kind(source) != file_kind(target):
+                raise Conflict(f"파일 종류는 옮기면서 바꿀 수 없다: {source!r} → {target!r}")
             await self._claim(snap, [file], actor_id=actor_id, holder=holder)
             moved_file = await self._tree.update_file(file.id, actor_id=actor_id, path=target)
             await self._tree_changed(project_id, [source, target], actor_id=actor_id, holder=holder)

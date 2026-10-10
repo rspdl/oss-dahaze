@@ -1,16 +1,9 @@
 'use client'
 
 import { useMemo, type ReactNode } from 'react'
-import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
-import {
-  compileWorkspace,
-  deterministicAnalysisOptions,
-  getReadTreeFileQueryOptions,
-  useListTree,
-  type TreeEntryResponse,
-} from '@dahaze/api-client'
 import { Button, EmptyState, ErrorState, Skeleton, cn } from '@dahaze/ui'
 
+import { isRspdlPath } from '@/features/wireframe/wireframe-file'
 import { errorMessage } from '@/shared/api/errors'
 import { FileTextIcon, FlowIcon, HierarchyIcon, WarningIcon } from '@/shared/ui/icons'
 import {
@@ -20,13 +13,15 @@ import {
   type IaLocation,
   type IaScreen,
 } from './ia-outline'
+import { useTreeCompilation } from './use-tree-compilation'
 
 /**
  * IA 뷰: 작업 트리를 컴파일한 결과에서 정보구조(분류 → 화면)와 화면 흐름을 계층으로 보여준다.
  *
  * 데이터 출처: 트리 컴파일(`compile_tree`)과 심볼 검색(`search_tree_symbols`)은 IR 을 돌려주지 않고,
- * 검색 결과에는 `parent_id`·`screen_categories` 같은 연결이 없다. 그래서 작업 트리 파일을 읽어
- * `compile_workspace` 에 그대로 넘기고, 돌아온 `result` 에서 목록 네 개만 읽는다(`ia-outline.ts`).
+ * 검색 결과에는 `parent_id`·`screen_categories` 같은 연결이 없다. 그래서 작업 트리 문서를 읽어
+ * `compile_workspace` 에 넘기고(`use-tree-compilation.ts`), 돌아온 `result` 에서 목록 네 개만
+ * 읽는다(`ia-outline.ts`).
  * 진단은 만들지 않는다. 읽지 못한 파일은 컴파일러가 준 오류 수만 알린다.
  *
  * 항목을 누르면 그 줄을 "문서" 뷰에서 연다.
@@ -38,39 +33,7 @@ export function IaView({
   projectId: string
   onOpen: (location: IaLocation) => void
 }) {
-  const tree = useListTree<TreeEntryResponse[]>(projectId)
-  const paths = useMemo(
-    () => (tree.data ?? []).filter((entry) => entry.kind === 'file').map((entry) => entry.path),
-    [tree.data],
-  )
-
-  /* 에디터와 같은 쿼리 키라 이미 연 파일은 다시 받지 않고, 이벤트 스트림의 무효화도 그대로 받는다. */
-  const reads = useQueries({
-    queries: paths.map((path) => getReadTreeFileQueryOptions(projectId, { path })),
-  })
-  const readError = reads.find((read) => read.isError)?.error ?? null
-  const files = reads.every((read) => read.isSuccess) ? reads.map((read) => read.data) : null
-
-  /* 원문 대신 경로와 수정 시각으로 키를 만든다. 원문을 키에 넣으면 캐시 키가 문서 전체만큼 커진다. */
-  const stamp = files?.map((file) => `${file.path}@${file.updated_at}`) ?? []
-  /*
-    컴파일한 원문을 응답과 함께 캐시에 둔다. span 을 줄 번호로 바꿀 때는 **컴파일한 그 원문**이
-    필요하다 — 이전 결과를 보여주는 동안(`keepPreviousData`) 새 원문으로 바꾸면 줄이 어긋난다.
-  */
-  const compile = useQuery({
-    queryKey: ['workspace-ia-compile', projectId, stamp],
-    queryFn: async ({ signal }) => {
-      const sources = (files ?? []).map((file) => ({ path: file.path, text: file.text }))
-      const response = await compileWorkspace({ sources }, { signal })
-      return {
-        response,
-        texts: new Map(sources.map((source) => [source.path, source.text] as const)),
-      }
-    },
-    enabled: files !== null && files.length > 0,
-    placeholderData: keepPreviousData,
-    ...deterministicAnalysisOptions,
-  })
+  const { tree, paths, readError, compile } = useTreeCompilation(projectId)
 
   const outline = useMemo(
     () =>
@@ -95,7 +58,7 @@ export function IaView({
       </Centered>
     )
   }
-  if (tree.isSuccess && paths.length === 0) {
+  if (tree.isSuccess && !paths.some(isRspdlPath)) {
     return (
       <Centered>
         <EmptyState
@@ -169,7 +132,7 @@ export function IaView({
               읽지 못한 파일
             </h2>
             <p className="mt-1 text-caption text-text-muted">
-              구문 오류가 있어 이 파일들의 화면은 위 목록에 없어요.
+              오류가 있으면 컴파일러가 그 파일의 구조를 내보내지 않아요. 이 파일들의 화면은 위 목록에 없어요.
             </p>
             <ul className="mt-2">
               {outline.unparsed.map((file) => (

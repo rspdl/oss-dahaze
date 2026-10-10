@@ -21,6 +21,20 @@ export type CenterView =
   | { kind: 'commit'; commitId: string }
   | { kind: 'call'; sessionId: string; callId: string }
 
+/**
+ * 사용자가 지금 보고 있는 화면. AI 대화에 메시지와 함께 실어 "이 화면" 을 풀게 한다.
+ * 와이어프레임 뷰가 고른 화면이 바뀔 때마다 갱신하고, 뷰를 떠나면 비운다.
+ */
+export interface ViewFocus {
+  view: 'documents' | 'ia' | 'wireframe'
+  documentPath?: string
+  screenId?: string
+  screenName?: string
+  wireframePath?: string
+  wireframeExists?: boolean
+  uiTheme?: string
+}
+
 interface WorkspaceState {
   projectId: string | null
   center: CenterView
@@ -41,6 +55,7 @@ interface WorkspaceState {
   bottomPanel: 'diagnostics' | 'symbols' | null | undefined
   symbolQuery: string
   symbol: { id: string; ownerId: string | null } | null
+  focus: ViewFocus | null
 
   enter: (projectId: string) => void
   openFile: (path: string, line?: number) => void
@@ -61,6 +76,7 @@ interface WorkspaceState {
   setBottomPanel: (panel: 'diagnostics' | 'symbols' | null) => void
   setSymbolQuery: (query: string) => void
   selectSymbol: (symbol: { id: string; ownerId: string | null } | null) => void
+  setFocus: (focus: ViewFocus | null) => void
 }
 
 function ancestors(path: string): string[] {
@@ -89,6 +105,7 @@ const EMPTY: Pick<
   | 'bottomPanel'
   | 'symbolQuery'
   | 'symbol'
+  | 'focus'
 > = {
   center: { kind: 'empty' },
   drafts: {},
@@ -99,6 +116,7 @@ const EMPTY: Pick<
   bottomPanel: undefined,
   symbolQuery: '',
   symbol: null,
+  focus: null,
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -117,6 +135,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   openCommit: (commitId) => set({ center: { kind: 'commit', commitId } }),
   openCall: (sessionId, callId) => set({ center: { kind: 'call', sessionId, callId } }),
   closeCenter: () => set({ center: { kind: 'empty' } }),
+  setFocus: (focus) => set({ focus }),
 
   setDraft: (path, text) => set((state) => ({ drafts: { ...state.drafts, [path]: text } })),
   dropDraft: (path) =>

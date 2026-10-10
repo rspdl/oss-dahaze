@@ -64,6 +64,24 @@ def test_items_become_responses_input_without_file_texts() -> None:
     assert converted[3] == {"role": "assistant", "content": "만들었어요"}
 
 
+def test_viewing_context_is_appended_for_the_model_only() -> None:
+    context = {
+        "view": "wireframe",
+        "document_path": "/주문/카페.rspdl",
+        "screen_id": "cafe_order.menu_screen",
+        "screen_name": "메뉴 목록 화면",
+        "wireframe_path": "/주문/카페.wireframe.json",
+        "wireframe_exists": False,
+    }
+    converted = to_input([item(ItemKind.USER_MESSAGE, text="히어로 넣어 줘", context=context)])
+
+    content = converted[0]["content"]
+    assert content.startswith("히어로 넣어 줘\n\n[사용자가 보고 있던 화면]")
+    assert "- 뷰: 와이어프레임" in content
+    assert "- 화면: 메뉴 목록 화면 (cafe_order.menu_screen)" in content
+    assert "- 배치 파일: /주문/카페.wireframe.json (아직 없음 — 만들려면 add)" in content
+
+
 def test_tool_specs_are_function_tools() -> None:
     tools = to_tools(TOOL_SPECS)
     assert {t["name"] for t in tools} == {

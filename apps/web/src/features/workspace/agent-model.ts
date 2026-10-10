@@ -27,7 +27,7 @@ export interface ToolResult {
 }
 
 export type AgentRow =
-  | { kind: 'user'; id: string; seq: number; createdAt: string; text: string }
+  | { kind: 'user'; id: string; seq: number; createdAt: string; text: string; screenName?: string }
   | { kind: 'assistant'; id: string; seq: number; createdAt: string; text: string }
   | {
       kind: 'tool'
@@ -74,6 +74,9 @@ export function toAgentRows(items: readonly AgentItemResponse[]): AgentRow[] {
         seq: item.seq,
         createdAt: item.created_at,
         text: stringOrNull(payload.text) ?? '',
+        ...(item.kind === 'user_message' && isRecord(payload.context)
+          ? { screenName: stringOrNull(payload.context.screen_name) ?? stringOrNull(payload.context.screen_id) ?? undefined }
+          : {}),
       })
       continue
     }

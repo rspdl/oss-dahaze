@@ -68,10 +68,29 @@ class AgentTurnResponse(BaseModel):
     created_at: datetime
 
 
+class AgentMessageContext(BaseModel):
+    """메시지를 보낼 때 사용자가 보고 있던 것. AI 가 "이 화면" 같은 말을 풀 때 쓴다."""
+
+    view: Literal["documents", "ia", "wireframe"] = Field(description="보고 있던 뷰")
+    document_path: str | None = Field(default=None, max_length=500, description="문서 경로")
+    screen_id: str | None = Field(default=None, max_length=200, description="화면 id")
+    screen_name: str | None = Field(default=None, max_length=200, description="화면 이름")
+    wireframe_path: str | None = Field(
+        default=None, max_length=500, description="그 문서의 배치 파일 경로"
+    )
+    wireframe_exists: bool | None = Field(
+        default=None, description="배치 파일이 작업 트리에 이미 있는지"
+    )
+    ui_theme: str | None = Field(default=None, max_length=40, description="지금 목업의 UI 스타일")
+
+
 class SendAgentMessageRequest(BaseModel):
     text: str = Field(min_length=1, max_length=20_000)
     request_id: UUID = Field(
         description="클라이언트가 만든 요청 ID. 같은 값으로 다시 보내면 메시지를 한 번만 기록한다"
+    )
+    context: AgentMessageContext | None = Field(
+        default=None, description="사용자가 보고 있던 화면. 대화에는 보이지 않고 AI 입력에만 붙는다"
     )
 
 

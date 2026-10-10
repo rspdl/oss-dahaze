@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
 import openai
@@ -31,6 +31,35 @@ from dahaze_api.infrastructure.llm.prompts import build_agent_instructions
 DEFAULT_AGENT_TIMEOUT_S = 120.0
 
 
+_VIEW_NAMES = {"documents": "문서", "ia": "IA", "wireframe": "와이어프레임"}
+
+
+def user_content(payload: Mapping[str, Any]) -> str:
+    """사용자 메시지에 보내는 순간 보고 있던 화면을 덧붙인다. "이 화면" 을 풀 수 있게."""
+    text = str(payload["text"])
+    context = payload.get("context")
+    if not isinstance(context, dict) or not context:
+        return text
+    lines = [f"- 뷰: {_VIEW_NAMES.get(str(context.get('view')), context.get('view'))}"]
+    if context.get("document_path"):
+        lines.append(f"- 문서: {context['document_path']}")
+    if context.get("screen_id"):
+        name = context.get("screen_name")
+        lines.append(
+            f"- 화면: {name} ({context['screen_id']})"
+            if name
+            else f"- 화면: {context['screen_id']}"
+        )
+    if context.get("wireframe_path"):
+        state = "있음" if context.get("wireframe_exists") else "아직 없음 — 만들려면 add"
+        lines.append(f"- 배치 파일: {context['wireframe_path']} ({state})")
+        if context.get("screen_id"):
+            lines.append(f"- screens 키: {context['screen_id']}")
+    if context.get("ui_theme"):
+        lines.append(f"- UI 스타일: {context['ui_theme']}")
+    return f"{text}\n\n[사용자가 보고 있던 화면]\n" + "\n".join(lines)
+
+
 def to_input(items: Sequence[AgentItem]) -> list[dict[str, Any]]:
     """대화 항목 → Responses API 입력.
 
@@ -41,7 +70,7 @@ def to_input(items: Sequence[AgentItem]) -> list[dict[str, Any]]:
     for item in items:
         payload = item.payload
         if item.kind is ItemKind.USER_MESSAGE:
-            converted.append({"role": "user", "content": str(payload["text"])})
+            converted.append({"role": "user", "content": user_content(payload)})
         elif item.kind is ItemKind.ASSISTANT_MESSAGE:
             converted.append({"role": "assistant", "content": str(payload["text"])})
         elif item.kind is ItemKind.TOOL_CALL:

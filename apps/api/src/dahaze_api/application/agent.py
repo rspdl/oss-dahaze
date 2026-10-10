@@ -11,10 +11,11 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from dahaze_api.application.agent_tools import TOOL_SPECS, AgentToolbox
@@ -163,9 +164,19 @@ class AgentService:
         return await self._s.agents.list_turns(session_id)
 
     async def send_message(
-        self, *, actor_id: UUID, session_id: UUID, text: str, request_id: UUID
+        self,
+        *,
+        actor_id: UUID,
+        session_id: UUID,
+        text: str,
+        request_id: UUID,
+        context: Mapping[str, Any] | None = None,
     ) -> AgentTurn:
-        """메시지를 기록하고 턴을 대기열에 넣는다. 같은 `request_id` 는 한 번만 처리한다."""
+        """메시지를 기록하고 턴을 대기열에 넣는다. 같은 `request_id` 는 한 번만 처리한다.
+
+        `context` 는 사용자가 보내는 순간 보고 있던 화면이다. 메시지와 함께 기록하고, 대화에는
+        보이지 않게 AI 입력에만 붙인다.
+        """
         session = await self.get_session(actor_id=actor_id, session_id=session_id)
         await self._s.tree.require_member(
             actor_id=actor_id, project_id=session.project_id, write=True
@@ -193,7 +204,7 @@ class AgentService:
             session_id=session_id,
             turn_id=turn.id,
             kind=ItemKind.USER_MESSAGE,
-            payload={"text": text},
+            payload={"text": text} if not context else {"text": text, "context": dict(context)},
         )
         # 제목을 정하지 않은 세션은 첫 메시지 앞부분을 제목으로 쓴다. 세션 목록에서 구분하려고.
         if item.seq == 1 and session.title == DEFAULT_SESSION_TITLE:

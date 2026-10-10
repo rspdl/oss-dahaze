@@ -72,6 +72,25 @@ async def test_session_message_flow(client: httpx.AsyncClient, project_id: str) 
     assert [s["id"] for s in listed.json()] == [session["id"]]
 
 
+async def test_message_keeps_viewing_context(client: httpx.AsyncClient, project_id: str) -> None:
+    session = await _session(client, project_id)
+    sent = await client.post(
+        f"/api/agent/sessions/{session['id']}/messages",
+        json={
+            "text": "이 화면을 shadcn 으로",
+            "request_id": str(uuid4()),
+            "context": {"view": "wireframe", "screen_id": "m.a", "screen_name": "가 화면"},
+        },
+    )
+    assert sent.status_code == 202, sent.text
+
+    items = await client.get(f"/api/agent/sessions/{session['id']}/items")
+    assert items.json()[0]["payload"] == {
+        "text": "이 화면을 shadcn 으로",
+        "context": {"view": "wireframe", "screen_id": "m.a", "screen_name": "가 화면"},
+    }
+
+
 async def test_cancel_queued_turn(client: httpx.AsyncClient, project_id: str) -> None:
     session = await _session(client, project_id)
     sent = await client.post(

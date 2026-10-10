@@ -26,7 +26,7 @@ from dahaze_api.domain.rspdl import (
     UnparsedFile,
     byte_offset_to_position,
 )
-from dahaze_api.domain.tree import InvalidPattern, TreeFile
+from dahaze_api.domain.tree import InvalidPattern, TreeFile, is_rspdl_path
 
 MAX_SEARCH_RESULTS = 200
 MAX_GREP_RESULTS = 200
@@ -292,12 +292,14 @@ class TreeInspector:
         return GrepResult(matches=tuple(matches), truncated=False)
 
     async def _index(self, files: Sequence[TreeFile]) -> tuple[RspdlIndex | None, RspdlRuntime]:
+        # 컴파일러에는 `.rspdl` 만 넘긴다. 와이어프레임 배치 파일은 RSPDL 이 아니다.
+        sources = [file for file in files if is_rspdl_path(file.path)]
         # 파일이 없으면 컴파일러를 부르지 않는다. SDK 가 빈 입력을 거부하기도 하고
         # (RSPDL-SDK-004), 결과를 지어내는 대신 결과가 없음을 그대로 돌려준다.
-        if not files:
+        if not sources:
             return None, self._runtime
         outcome = await self._analyzer.compile(
-            [RspdlSource(path=file.path, text=file.text) for file in files]
+            [RspdlSource(path=file.path, text=file.text) for file in sources]
         )
         return self._indexer.index(outcome.result), outcome.runtime
 

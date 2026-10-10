@@ -62,7 +62,7 @@ export interface IaOutline {
   recognized: boolean
   /** 분류나 화면이 하나라도 있는 파일만. */
   files: IaFile[]
-  /** 구문 오류로 `module` 이 비어 읽지 못한 파일. 이 파일의 화면은 `files` 에 없다. */
+  /** 오류(구문·의미)로 `module` 이 비어 읽지 못한 파일. 이 파일의 화면은 `files` 에 없다. */
   unparsed: { path: string; errorCount: number }[]
 }
 

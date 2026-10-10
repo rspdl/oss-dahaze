@@ -136,7 +136,11 @@ async def send_agent_message(
     """메시지를 기록하고 턴을 대기열에 넣는다. AI 가 아직 응답 중이면 409."""
     with _http_errors():
         turn = await agents.send_message(
-            actor_id=user.id, session_id=session_id, text=body.text, request_id=body.request_id
+            actor_id=user.id,
+            session_id=session_id,
+            text=body.text,
+            request_id=body.request_id,
+            context=None if body.context is None else body.context.model_dump(exclude_none=True),
         )
     return turn_out(turn)
 

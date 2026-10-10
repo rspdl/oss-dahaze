@@ -16,6 +16,7 @@ import {
   useSendAgentMessage,
   useUpdateAgentSettings,
   type AgentItemResponse,
+  type AgentMessageContext,
   type AgentSettingsBody,
   type AgentSessionResponse,
   type AgentTurnResponse,
@@ -50,6 +51,7 @@ import {
   ChatIcon,
   CheckIcon,
   ErrorIcon,
+  FlowIcon,
   PlusIcon,
   SendIcon,
   SettingsIcon,
@@ -67,7 +69,7 @@ import {
   type AgentRow,
 } from './agent-model'
 import { DiffStat } from './diff-view'
-import { useWorkspaceStore } from './workspace-store'
+import { useWorkspaceStore, type ViewFocus } from './workspace-store'
 
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'awaiting_approval'])
 
@@ -229,10 +231,10 @@ function NewConversation({
   const create = useCreateAgentSession()
   const send = useSendAgentMessage()
 
-  const start = async (text: string) => {
+  const start = async (text: string, context?: AgentMessageContext) => {
     try {
       const session = await create.mutateAsync({ projectId, data: {} })
-      await send.mutateAsync({ sessionId: session.id, data: { text, request_id: crypto.randomUUID() } })
+      await send.mutateAsync({ sessionId: session.id, data: { text, request_id: crypto.randomUUID(), context } })
       await queryClient.invalidateQueries({ queryKey: getListAgentSessionsQueryKey(projectId) })
       onStarted(session.id)
       return true
@@ -291,9 +293,9 @@ function Conversation({ sessionId }: { sessionId: string }) {
       queryClient.invalidateQueries({ queryKey: getListAgentTurnsQueryKey(sessionId) }),
     ])
 
-  const sendText = async (text: string) => {
+  const sendText = async (text: string, context?: AgentMessageContext) => {
     try {
-      await send.mutateAsync({ sessionId, data: { text, request_id: crypto.randomUUID() } })
+      await send.mutateAsync({ sessionId, data: { text, request_id: crypto.randomUUID(), context } })
       pinned.current = true
       await refresh()
       return true
@@ -427,8 +429,16 @@ function Row({
 }) {
   if (row.kind === 'user') {
     return (
-      <div className="ml-auto w-fit max-w-[85%] rounded-panel bg-surface-raised px-3.5 py-2.5 text-body break-words whitespace-pre-wrap text-text">
-        {row.text}
+      <div className="ml-auto flex w-fit max-w-[85%] flex-col items-end gap-1">
+        <div className="rounded-panel bg-surface-raised px-3.5 py-2.5 text-body break-words whitespace-pre-wrap text-text">
+          {row.text}
+        </div>
+        {row.screenName === undefined ? null : (
+          <span className="inline-flex items-center gap-1 text-caption text-text-subtle">
+            <FlowIcon className="size-3" />
+            {row.screenName}
+          </span>
+        )}
       </div>
     )
   }
@@ -570,20 +580,50 @@ function TurnStatus({
  * 입력창. Enter 로 보내고 Shift+Enter 로 줄을 바꾼다. 한글 조합 중의 Enter 는 보내지 않는다 —
  * 조합 중에 보내면 마지막 글자가 두 번 들어간다.
  */
-function Composer({ busy, onSend }: { busy: boolean; onSend: (text: string) => Promise<boolean> }) {
+/** 보고 있는 화면을 메시지에 실을 모양으로. 화면을 고르지 않았으면 싣지 않는다. */
+function messageContext(focus: ViewFocus | null): AgentMessageContext | undefined {
+  if (focus === null || focus.screenId === undefined) return undefined
+  return {
+    view: focus.view,
+    document_path: focus.documentPath,
+    screen_id: focus.screenId,
+    screen_name: focus.screenName,
+    wireframe_path: focus.wireframePath,
+    wireframe_exists: focus.wireframeExists,
+    ui_theme: focus.uiTheme,
+  }
+}
+
+function Composer({ busy, onSend }: { busy: boolean; onSend: (text: string, context?: AgentMessageContext) => Promise<boolean> }) {
   const [text, setText] = useState('')
   const trimmed = text.trim()
+  /* 보고 있는 화면을 붙일지. 화면이 바뀌면 다시 붙인다. */
+  const focus = useWorkspaceStore((state) => state.focus)
+  const [detachedFrom, setDetachedFrom] = useState<string | null>(null)
+  const focusKey = focus?.screenId === undefined ? null : `${focus.documentPath}:${focus.screenId}`
+  const attached = focusKey !== null && detachedFrom !== focusKey
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault()
     if (trimmed === '' || busy) return
-    const ok = await onSend(trimmed)
+    const ok = await onSend(trimmed, attached ? messageContext(focus) : undefined)
     if (ok) setText('')
   }
 
   return (
     <form onSubmit={submit} className="shrink-0 border-t p-3">
       <div className="rounded-control border border-border-control bg-surface focus-within:border-accent">
+        {focusKey === null || focus === null ? null : (
+          <div className="flex items-center gap-1.5 px-2 pt-2">
+            <span className={cn('inline-flex min-w-0 items-center gap-1 rounded-sm border px-1.5 py-0.5 text-caption', attached ? 'border-border bg-surface-raised text-text-muted' : 'border-dashed border-border text-text-subtle line-through')} title={attached ? 'AI가 이 화면을 기준으로 답해요' : '이 화면을 붙이지 않아요'}>
+              <FlowIcon className="size-3 shrink-0" />
+              <span className="truncate">{focus.screenName ?? focus.screenId}</span>
+            </span>
+            <button type="button" className="text-caption text-text-subtle hover:text-text" onClick={() => setDetachedFrom(attached ? focusKey : null)}>
+              {attached ? '빼기' : '붙이기'}
+            </button>
+          </div>
+        )}
         <label htmlFor="workspace-agent-input" className="sr-only">
           AI에게 보낼 메시지
         </label>
@@ -591,7 +631,7 @@ function Composer({ busy, onSend }: { busy: boolean; onSend: (text: string) => P
           id="workspace-agent-input"
           rows={3}
           value={text}
-          placeholder={busy ? 'AI가 작업하는 동안에는 기다려 주세요' : '무엇을 만들거나 고칠까요?'}
+          placeholder={busy ? 'AI가 작업하는 동안에는 기다려 주세요' : attached ? '이 화면을 어떻게 바꿀까요? 예: shadcn 스타일로, 위에 히어로 섹션' : '무엇을 만들거나 고칠까요?'}
           className="max-h-48 min-h-0 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import difflib
+import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -26,7 +27,13 @@ LOCK_TTL = timedelta(minutes=10)
 # 가리키는 문자열이 저장된다. `\w` 는 유니코드라 한글 이름도 받는다.
 _SEGMENT = r"[\w-]+"
 FOLDER_PATH_PATTERN = re.compile(rf"^(?:/{_SEGMENT})+$")
-FILE_PATH_PATTERN = re.compile(rf"^(?:/{_SEGMENT})*/{_SEGMENT}\.rspdl$")
+FILE_PATH_PATTERN = re.compile(rf"^(?:/{_SEGMENT})*/{_SEGMENT}(?:\.rspdl|\.wireframe\.json)$")
+
+# 작업 트리에 둘 수 있는 파일은 두 종류다. 컴파일러에 넘기는 것은 `.rspdl` 뿐이다.
+# `<문서>.wireframe.json` 은 그 문서 화면들의 와이어프레임 배치(보드 위치·Column/Row/Box 트리)다.
+# 기획 의미가 아니라 표시 방식이므로 컴파일하지 않지만, 같은 commit·잠금·diff 를 탄다.
+RSPDL_SUFFIX = ".rspdl"
+WIREFRAME_SUFFIX = ".wireframe.json"
 
 
 class InvalidPattern(ValueError):
@@ -46,6 +53,48 @@ def is_folder_path(path: str) -> bool:
 
 def is_file_path(path: str) -> bool:
     return len(path) <= MAX_PATH_LENGTH and FILE_PATH_PATTERN.match(path) is not None
+
+
+def is_rspdl_path(path: str) -> bool:
+    return path.endswith(RSPDL_SUFFIX)
+
+
+WIREFRAME_THEMES = frozenset({"wireframe", "shadcn", "material", "bootstrap"})
+
+
+def wireframe_problem(path: str, text: str) -> str | None:
+    """배치 파일이 읽을 수 있는 모양인지. 문제가 없으면 `None`.
+
+    배치는 컴파일러가 보지 않으므로 저장할 때 모양만 확인한다. 깨진 JSON 을 저장하면 화면이
+    그 문서의 배치를 통째로 잃는다. 노드의 세부 값은 화면이 기본값으로 채워 읽는다.
+    """
+    if not path.endswith(WIREFRAME_SUFFIX):
+        return None
+    if not text.strip():
+        return None
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return f"JSON 이 아니다 ({exc.lineno}행 {exc.colno}열: {exc.msg})"
+    if not isinstance(value, dict):
+        return "최상위는 JSON 객체여야 한다"
+    if "screens" in value and not isinstance(value["screens"], dict):
+        return "`screens` 는 화면 id 를 키로 하는 객체여야 한다"
+    for screen_id, entry in (value.get("screens") or {}).items():
+        if not isinstance(entry, dict):
+            return f"`screens.{screen_id}` 는 객체여야 한다"
+        layout = entry.get("layout")
+        if layout is not None and (not isinstance(layout, dict) or layout.get("type") != "group"):
+            return f'`screens.{screen_id}.layout` 은 `"type": "group"` 인 루트 노드여야 한다'
+    theme = value.get("theme")
+    if theme is not None and theme not in WIREFRAME_THEMES:
+        return f"`theme` 은 {', '.join(sorted(WIREFRAME_THEMES))} 중 하나여야 한다"
+    return None
+
+
+def file_kind(path: str) -> str:
+    """옮기기 전후로 종류가 같은지 볼 때 쓴다."""
+    return "wireframe" if path.endswith(WIREFRAME_SUFFIX) else "rspdl"
 
 
 def join_path(parent: str, name: str) -> str:

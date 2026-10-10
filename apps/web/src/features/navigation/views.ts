@@ -21,6 +21,11 @@ export const PROJECT_VIEWS = [
     label: 'IA',
     description: '작업 트리를 컴파일한 정보구조와 화면 흐름을 계층으로 본다',
   },
+  {
+    id: 'wireframe',
+    label: '와이어프레임',
+    description: '화면을 회색 목업으로 그리고 경로로 잇는다. 화면 안 배치를 고친다',
+  },
 ] as const
 
 export type ProjectViewId = (typeof PROJECT_VIEWS)[number]['id']

@@ -128,6 +128,22 @@ async def test_compile_empty_project_does_not_call_compiler(
     assert result.diagnostics == ()
 
 
+async def test_compile_skips_wireframe_layout_files(
+    inspector: TreeInspector, tree: TreeService, user: User, project: Project
+) -> None:
+    """배치 파일은 RSPDL 이 아니다. 컴파일러에 넘기면 구문 오류 진단이 생긴다."""
+    await tree.add(
+        actor_id=user.id,
+        project_id=project.id,
+        parent="/재고",
+        name="항목.wireframe.json",
+        content='{"version": 1, "screens": {}}',
+    )
+    result = await inspector.compile(actor_id=user.id, project_id=project.id)
+    assert result.compiled
+    assert not [d for d in result.diagnostics if d.path.endswith(".wireframe.json")]
+
+
 # ---------------------------------------------------------------------- search
 
 

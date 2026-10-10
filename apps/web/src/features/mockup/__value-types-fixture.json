@@ -1,0 +1,306 @@
+{
+  "files": [
+    {
+      "path": "booking.rspdl",
+      "module": {
+        "id": "booking",
+        "name": "예약",
+        "span": {
+          "start": 12,
+          "end": 27
+        },
+        "enums": [
+          {
+            "id": "booking.status",
+            "name": "예약 상태",
+            "enum_type": {
+              "id": "booking.status",
+              "variants": [
+                "booking.status.confirmed",
+                "booking.status.waiting"
+              ]
+            },
+            "variants": [
+              {
+                "id": "booking.status.waiting",
+                "local_id": "waiting",
+                "name": "대기",
+                "span": {
+                  "start": 343,
+                  "end": 358
+                }
+              },
+              {
+                "id": "booking.status.confirmed",
+                "local_id": "confirmed",
+                "name": "확정",
+                "span": {
+                  "start": 363,
+                  "end": 380
+                }
+              }
+            ],
+            "span": {
+              "start": 288,
+              "end": 380
+            }
+          }
+        ],
+        "models": [
+          {
+            "id": "booking.booking",
+            "name": "예약",
+            "fields": [
+              {
+                "id": "booking.booking.status",
+                "local_id": "status",
+                "name": "상태",
+                "required": true,
+                "value_type": {
+                  "kind": "enum",
+                  "definition": {
+                    "id": "booking.status",
+                    "variants": [
+                      "booking.status.confirmed",
+                      "booking.status.waiting"
+                    ]
+                  }
+                },
+                "span": {
+                  "start": 446,
+                  "end": 482
+                }
+              },
+              {
+                "id": "booking.booking.start_date",
+                "local_id": "start_date",
+                "name": "시작일",
+                "required": true,
+                "value_type": {
+                  "kind": "date"
+                },
+                "span": {
+                  "start": 487,
+                  "end": 523
+                }
+              },
+              {
+                "id": "booking.booking.start_time",
+                "local_id": "start_time",
+                "name": "시작 시각",
+                "required": true,
+                "value_type": {
+                  "kind": "time"
+                },
+                "span": {
+                  "start": 528,
+                  "end": 568
+                }
+              },
+              {
+                "id": "booking.booking.amount",
+                "local_id": "amount",
+                "name": "금액",
+                "required": true,
+                "value_type": {
+                  "kind": "integer"
+                },
+                "span": {
+                  "start": 573,
+                  "end": 602
+                }
+              },
+              {
+                "id": "booking.booking.memo",
+                "local_id": "memo",
+                "name": "메모",
+                "required": false,
+                "value_type": {
+                  "kind": "string"
+                },
+                "span": {
+                  "start": 607,
+                  "end": 637
+                }
+              }
+            ],
+            "span": {
+              "start": 382,
+              "end": 637
+            }
+          }
+        ],
+        "screens": [
+          {
+            "id": "booking.booking_form",
+            "name": "예약 화면",
+            "operations": [
+              {
+                "kind": "create",
+                "model_id": "booking.booking",
+                "span": {
+                  "start": 639,
+                  "end": 707
+                }
+              },
+              {
+                "kind": "input",
+                "model_id": "booking.booking",
+                "field_ids": [
+                  "booking.booking.amount",
+                  "booking.booking.memo",
+                  "booking.booking.start_date",
+                  "booking.booking.start_time",
+                  "booking.booking.status"
+                ],
+                "span": {
+                  "start": 708,
+                  "end": 828
+                }
+              }
+            ],
+            "span": {
+              "start": 639,
+              "end": 707
+            }
+          }
+        ],
+        "screen_layouts": [
+          {
+            "screen_id": "booking.booking_form",
+            "kind": "popup",
+            "elements": [
+              {
+                "kind": "form",
+                "inputs": [
+                  {
+                    "kind": "input",
+                    "field_id": "booking.booking.status",
+                    "span": {
+                      "start": 115,
+                      "end": 121
+                    }
+                  },
+                  {
+                    "kind": "input",
+                    "field_id": "booking.booking.start_date",
+                    "span": {
+                      "start": 142,
+                      "end": 148
+                    }
+                  },
+                  {
+                    "kind": "input",
+                    "field_id": "booking.booking.start_time",
+                    "span": {
+                      "start": 172,
+                      "end": 178
+                    }
+                  },
+                  {
+                    "kind": "input",
+                    "field_id": "booking.booking.amount",
+                    "span": {
+                      "start": 206,
+                      "end": 212
+                    }
+                  },
+                  {
+                    "kind": "input",
+                    "field_id": "booking.booking.memo",
+                    "span": {
+                      "start": 233,
+                      "end": 239
+                    }
+                  }
+                ],
+                "span": {
+                  "start": 98,
+                  "end": 101
+                }
+              },
+              {
+                "kind": "placeholder",
+                "text": "좌석 배치도",
+                "span": {
+                  "start": 256,
+                  "end": 262
+                }
+              }
+            ],
+            "span": {
+              "start": 39,
+              "end": 52
+            }
+          }
+        ],
+        "constraints": [],
+        "roles": [],
+        "actions": [],
+        "policies": []
+      },
+      "diagnostics": [
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "booking.booking.amount"
+          },
+          "span": {
+            "start": 708,
+            "end": 828
+          }
+        },
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "booking.booking.memo"
+          },
+          "span": {
+            "start": 708,
+            "end": 828
+          }
+        },
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "booking.booking.start_date"
+          },
+          "span": {
+            "start": 708,
+            "end": 828
+          }
+        },
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "booking.booking.start_time"
+          },
+          "span": {
+            "start": 708,
+            "end": 828
+          }
+        },
+        {
+          "rule_id": "RSPDL-DATA-W001",
+          "severity": "warning",
+          "message_key": "semantic.lifecycle.produced_field_unread",
+          "arguments": {
+            "field_id": "booking.booking.status"
+          },
+          "span": {
+            "start": 708,
+            "end": 828
+          }
+        }
+      ]
+    }
+  ]
+}
