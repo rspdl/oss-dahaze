@@ -16,23 +16,6 @@
       ]
     },
     {
-      "id": "customer-mobile",
-      "name": "고객 모바일 · 390×844",
-      "width": 390,
-      "height": 844,
-      "screenMode": "selected",
-      "screenKeys": [
-        "airline-planning.rspdl:planning_airline.search_screen",
-        "airline-planning.rspdl:planning_airline.search_results",
-        "airline-planning.rspdl:planning_airline.mobile_passenger",
-        "airline-planning.rspdl:planning_airline.mobile_contact",
-        "airline-planning.rspdl:planning_airline.mobile_payment",
-        "airline-planning.rspdl:planning_airline.booking_complete",
-        "airline-planning.rspdl:planning_airline.customer_lookup",
-        "airline-planning.rspdl:planning_airline.customer_detail"
-      ]
-    },
-    {
       "id": "backoffice-desktop",
       "name": "운영자 PC · 1440×1024",
       "width": 1440,
@@ -161,21 +144,6 @@
           { "id": "payment-3", "values": { "planning_airline.payment.method_token": "wallet_demo_1003", "planning_airline.payment.amount": 128000 } },
           { "id": "payment-4", "values": { "planning_airline.payment.method_token": "card_demo_1004", "planning_airline.payment.amount": 117000 } },
           { "id": "payment-5", "values": { "planning_airline.payment.method_token": "wallet_demo_1005", "planning_airline.payment.amount": 142000 } }
-        ]
-      },
-      "planning_airline.member": {
-        "normal": [
-          { "id": "member-normal", "values": { "planning_airline.member.member_contact": "010-2468-1357" } }
-        ],
-        "empty": [],
-        "long": [
-          { "id": "member-long", "values": { "planning_airline.member.member_contact": "회원 프로필의 해외 체류용 보조 연락처 +82-10-2468-1357" } }
-        ],
-        "many": [
-          { "id": "member-1", "values": { "planning_airline.member.member_contact": "010-2000-2001" } },
-          { "id": "member-2", "values": { "planning_airline.member.member_contact": "010-2000-2002" } },
-          { "id": "member-3", "values": { "planning_airline.member.member_contact": "010-2000-2003" } },
-          { "id": "member-4", "values": { "planning_airline.member.member_contact": "010-2000-2004" } }
         ]
       }
     }
