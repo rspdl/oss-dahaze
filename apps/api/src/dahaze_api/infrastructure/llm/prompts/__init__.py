@@ -1,7 +1,7 @@
-"""LLM 에게 RSPDL 을 가르치는 프롬프트 자원.
+"""에이전트에게 RSPDL 을 알려주는 프롬프트 자원.
 
-**프롬프트는 컴파일러 버전과 함께 늙는다** (ADR-0005). 문법이 바뀌면 여기 문장도 바꿔야
-하고, 안 바꾸면 LLM 이 옛 문법을 계속 만들어낸다. 재컴파일 리포트로는 드러나지 않는
+**프롬프트는 특정 컴파일러 버전의 문법에 맞춰 써 있다** (ADR-0005). 문법이 바뀌면 여기 문장도
+바꿔야 하고, 안 바꾸면 LLM 이 옛 문법을 계속 만들어낸다. 재컴파일 리포트로는 드러나지 않는
 종류의 회귀이므로, 프롬프트를 한곳에 모아 `upgrade-rspdl` 절차가 볼 곳을 하나로 만든다.
 
 문장 자체는 `.md` 로 둔다. 프롬프트를 고치는 사람이 파이썬 문자열 이스케이프와
@@ -10,20 +10,13 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import Mapping, Sequence
 from importlib import resources
-from typing import Any
 
 # 이 프롬프트가 설명하는 문법의 rspdl 버전. 컴파일러 핀을 올릴 때 이 값도 함께 올리고,
 # 올리기 전에 위 `.md` 들이 새 문법을 설명하는지 확인한다.
 PROMPT_RSPDL_VERSION = "0.1.4"
-PLANNING_PROMPT_CAPABILITY = "rspdl.planning-contracts.v1"
+# planning contracts 는 RSPDL 문법 확장 profile 이다. 컴파일러가 지원할 때만 싣는다.
 _PLANNING_SECTION = "<!-- planning-contracts-v1 -->"
-
-# 진단을 몇 개까지 프롬프트에 실을지. 문법이 깨진 초안은 진단을 수백 개 낼 수 있고,
-# 그걸 전부 넣으면 정작 고쳐야 할 첫 오류가 컨텍스트 뒤로 밀린다.
-MAX_DIAGNOSTICS_IN_PROMPT = 20
 
 
 def _read(name: str) -> str:
@@ -39,46 +32,74 @@ def _profile_text(name: str, *, planning: bool) -> str:
     return baseline.rstrip()
 
 
-SYSTEM_PROMPT = (
-    f"{_profile_text('system_ko.md', planning=False)}\n\n"
-    f"{_profile_text('examples_ko.md', planning=False)}"
-)
-PLANNING_SYSTEM_PROMPT = (
-    f"{_read('planning_system_ko.md').strip()}\n\n"
-    f"{_read('planning_examples_ko.md').strip()}"
-)
-INTERVIEW_SYSTEM_PROMPT = _read("planning_interview_ko.md")
-CHANGE_PLAN_SYSTEM_PROMPT = _read("planning_changes_ko.md")
+_GRAMMAR_HEADING = "# 문법 요약"
 
 
-def build_user_prompt(
-    *,
-    instruction: str,
-    current_text: str | None,
-    diagnostics: Sequence[Mapping[str, Any]],
-) -> str:
-    """지시·현재 본문·진단을 한 덩어리의 사용자 메시지로 엮는다.
+def _grammar_reference(*, planning: bool) -> str:
+    """`system_ko.md` 에서 출력 규칙을 뺀 문법 설명.
 
-    진단은 컴파일러가 준 모양 그대로 JSON 으로 싣는다. 사람이 읽기 좋게 문장으로
-    풀어쓰지 않는 이유는 그게 곧 재해석이기 때문이다 — `rule_id` 와 `span` 이 원본대로
-    가야 LLM 이 어디를 고칠지 안다.
+    출력 규칙("RSPDL 전문 하나만 낸다")은 한 번에 문서 하나를 만드는 저작 호출용이다. 도구를
+    부르며 대화하는 에이전트에게는 맞지 않으므로 문법 요약부터 쓴다.
     """
-    blocks = [f"# 지시\n\n{instruction.strip()}"]
+    text = _profile_text("system_ko.md", planning=planning)
+    _, heading, rest = text.partition(_GRAMMAR_HEADING)
+    return f"{heading}{rest}".strip()
 
-    if current_text is not None and current_text.strip():
-        blocks.append(f"# 현재 소스\n\n{current_text}")
 
-    if diagnostics:
-        shown = list(diagnostics[:MAX_DIAGNOSTICS_IN_PROMPT])
-        payload = json.dumps(shown, ensure_ascii=False, indent=2)
-        omitted = len(diagnostics) - len(shown)
-        tail = f"\n\n(진단 {omitted}건 생략)" if omitted > 0 else ""
-        blocks.append(
-            "# 방금 낸 초안의 컴파일 진단\n\n"
-            "위 `현재 소스` 는 컴파일에 실패했다. 아래 진단을 해소한 전문을 다시 써라. "
-            "진단과 무관한 부분은 그대로 둔다.\n\n"
-            f"```json\n{payload}\n```{tail}"
-        )
+# `agent_system_ko.md` 안에서 MCP 서버 instructions 와 함께 쓰는 구간의 구분자. 규칙 원문을 한 곳에
+# 두어 앱 AI 와 MCP 가 같은 문장을 받게 한다.
+_TREE_LAYOUT_START = "<!-- tree-layout -->"
+_TREE_LAYOUT_END = "<!-- /tree-layout -->"
+_WIREFRAME_START = "<!-- wireframe -->"
+_WIREFRAME_END = "<!-- /wireframe -->"
+_MARKERS = (_TREE_LAYOUT_START, _TREE_LAYOUT_END, _WIREFRAME_START, _WIREFRAME_END)
 
-    blocks.append("# 출력\n\nRSPDL 소스 전문만 출력한다.")
-    return "\n\n".join(blocks)
+
+def _agent_system() -> str:
+    text = _read("agent_system_ko.md")
+    missing = [marker for marker in _MARKERS if marker not in text]
+    if missing:
+        raise RuntimeError(f"agent_system_ko.md 에 구분자가 없다: {', '.join(missing)}")
+    lines = [line for line in text.splitlines() if line.strip() not in _MARKERS]
+    return "\n".join(lines).strip()
+
+
+def _section(start: str, end: str) -> str:
+    text = _read("agent_system_ko.md")
+    _, found_start, rest = text.partition(start)
+    body, found_end, _ = rest.partition(end)
+    if not found_start or not found_end:
+        raise RuntimeError(f"agent_system_ko.md 에 {start} 구분자가 없다")
+    return body.strip()
+
+
+def tree_layout_guide() -> str:
+    """파일 구성 규칙과 쓰기 전 판단 절차. 앱 AI 프롬프트와 MCP instructions 가 함께 쓴다.
+
+    파일 하나가 모듈 하나이고 백틱 참조가 파일 밖으로 나가지 않는다는 규칙은 rspdl 0.1.4 에서
+    실제 컴파일로 확인한 것이다. 컴파일러가 파일 사이 참조를 지원하면 이 구간을 고친다.
+    """
+    return _section(_TREE_LAYOUT_START, _TREE_LAYOUT_END)
+
+
+def wireframe_guide() -> str:
+    """와이어프레임 배치 파일과 디자인 시스템 형식. 앱 AI 프롬프트와 MCP instructions 가 함께 쓴다.
+
+    형식의 원본은 웹의 `features/mockup/design-system.ts`·`layout-tree.ts` 다. 컴포넌트·축·파트·토큰
+    이름이 그쪽과 어긋나지 않는지 웹 테스트(`ui-components.test.tsx`)가 이 문서를 읽어 확인한다.
+    """
+    return _section(_WIREFRAME_START, _WIREFRAME_END)
+
+
+def build_agent_instructions(*, project_name: str, planning: bool, grammar: str) -> str:
+    """앱 AI 의 시스템 프롬프트. 역할·도구 규칙, 문법 요약, 예시, EBNF 스냅샷 순서다."""
+    return "\n\n".join(
+        [
+            _agent_system(),
+            f"# 현재 프로젝트\n\n{project_name}",
+            _grammar_reference(planning=planning),
+            _profile_text("examples_ko.md", planning=planning),
+            "# RSPDL EBNF 참고\n\n아래 EBNF 는 문법 참고용이다. 판정은 컴파일러가 한다.\n\n"
+            f"```ebnf\n{grammar.strip()}\n```",
+        ]
+    )

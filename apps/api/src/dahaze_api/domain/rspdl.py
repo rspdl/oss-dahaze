@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -57,34 +57,6 @@ class AnalysisOutcome:
     result: Mapping[str, Any]
 
 
-@dataclass(frozen=True, slots=True)
-class RspdlEditOutcome:
-    """구조화 편집 SDK 호출 결과.
-
-    지원되는 런타임에서는 ``response`` 가 SDK 응답 전문이다. dahaze 는 그 값을 다시
-    구성하지 않고, 후보 원문을 초안으로 넘기는 데 필요한 최소 필드만 읽는다. 현재 런타임이
-    편집 SDK 를 제공하지 않으면 ``supported`` 가 거짓이고 응답은 없다.
-    """
-
-    runtime: RspdlRuntime
-    supported: bool
-    response: Mapping[str, Any] | None
-    unsupported_reason: str | None = None
-
-
-class InvalidRspdlEditRequest(ValueError):
-    """구조화 편집 요청 envelope가 SDK 계약에 맞지 않는다."""
-
-
-def source_fingerprint(text: str) -> str:
-    """원문 UTF-8 바이트의 소문자 SHA-256.
-
-    컴파일러 편집 계약의 ``source_hash`` 와 같은 알고리즘이다. 줄바꿈이나 유니코드를
-    정규화하지 않는다. 저장된 원문과 사용자가 검토한 원문이 정확히 같은지 확인하는 값이다.
-    """
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 def workspace_hash(
     sources: Sequence[RspdlSource],
     *,
@@ -110,10 +82,108 @@ def workspace_hash(
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def project_source_hash(sources: Sequence[RspdlSource]) -> str:
-    """프로젝트 원문 집합의 canonical hash.
+@dataclass(frozen=True, slots=True)
+class TextPosition:
+    """원문 위치. 줄과 열은 1부터 세고, 열은 유니코드 코드 포인트 단위다."""
 
-    컴파일 캐시와 같은 직렬화 규칙을 재사용하되 locale 은 원문 정체의 일부가 아니므로
-    빈 값으로 고정한다. 적용 경쟁 검사가 별도의 해시 구현과 어긋나지 않게 한다.
+    line: int
+    column: int
+
+
+def byte_offset_to_position(text: str, offset: int) -> TextPosition:
+    """UTF-8 byte 오프셋 → 줄·열.
+
+    RSPDL 의 span 은 UTF-8 byte 오프셋이다 (ADR-0006). 한국어 원문에서 문자 인덱스로 쓰면
+    위치가 어긋난다. 문자 중간이나 범위 밖을 가리키면 던지지 않고 가장 가까운 앞쪽 경계로
+    자른다 — 위치 하나 때문에 진단 목록 전체를 못 보여주는 것보다 낫다.
     """
-    return workspace_hash(sources, locale="")
+    encoded = text.encode("utf-8")
+    offset = max(0, min(offset, len(encoded)))
+    # 문자 중간이면 앞쪽 문자 경계로 옮긴다. UTF-8 연속 바이트는 0b10xxxxxx 이다.
+    while offset > 0 and offset < len(encoded) and encoded[offset] & 0xC0 == 0x80:
+        offset -= 1
+    before = encoded[:offset].decode("utf-8")
+    line = before.count("\n") + 1
+    column = len(before) - (before.rfind("\n") + 1) + 1
+    return TextPosition(line=line, column=column)
+
+
+@dataclass(frozen=True, slots=True)
+class RspdlSymbol:
+    """IR 에서 `id` 와 `span` 을 가진 노드 하나.
+
+    `kind` 는 IR 의 컬렉션 경로다 (`models`, `models.fields`, `screens` …). dahaze 가 종류
+    목록을 따로 정의하지 않으므로, 컴파일러가 종류를 추가해도 그대로 검색된다.
+    """
+
+    id: str
+    kind: str
+    name: str | None
+    path: str
+    span_start: int
+    span_end: int
+
+
+@dataclass(frozen=True, slots=True)
+class UnparsedFile:
+    """모듈을 만들지 못해 심볼을 읽을 수 없는 파일."""
+
+    path: str
+    error_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class FileDiagnostic:
+    """파일 하나에 붙은 진단. `diagnostic` 은 컴파일러가 준 그대로다."""
+
+    path: str
+    diagnostic: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolLocator:
+    """참조의 한쪽 끝. `owner_id` 는 local ID 의 소속이다(전역 ID 면 없음)."""
+
+    kind: str
+    id: str
+    owner_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RspdlReference:
+    """컴파일러가 해석한 참조 하나 (rspdl-core#41).
+
+    `source` 의 `field` 가 `target` 을 가리킨다. span 은 참조하는 레코드의 UTF-8 byte 범위다.
+    """
+
+    path: str
+    source: SymbolLocator
+    target: SymbolLocator
+    field: str
+    span_start: int
+    span_end: int
+
+
+@dataclass(frozen=True, slots=True)
+class ScreenElement:
+    """화면 레이아웃에 선언된 요소 하나. `owner_id` 는 담긴 영역(머리말·구역·폼)의 요소 id 다."""
+
+    id: str
+    kind: str
+    owner_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RspdlIndex:
+    """컴파일 결과에서 읽어 낸 심볼·진단·참조."""
+
+    symbols: tuple[RspdlSymbol, ...]
+    unparsed: tuple[UnparsedFile, ...]
+    diagnostics: tuple[FileDiagnostic, ...]
+    references: tuple[RspdlReference, ...] = ()
+    # 컴파일러가 참조 목록을 주는가. 주지 않는 버전에서는 "참조 없음" 과 구분해야 한다.
+    references_supported: bool = False
+    # (파일 경로, 화면 id) → 그 화면에 선언된 요소. id 가 없는 요소는 싣지 않는다.
+    screen_elements: Mapping[tuple[str, str], tuple[ScreenElement, ...]] = field(
+        default_factory=dict
+    )

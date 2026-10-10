@@ -1,68 +1,45 @@
 /**
- * 프로젝트 하나를 보는 여러 관점.
+ * 프로젝트 하나를 보는 뷰.
  *
- * 이 목록이 왼쪽 메뉴의 원본이고 라우트 조각의 원본이기도 하다. 뷰를 추가할 때 고칠 곳이
- * 하나여야 메뉴와 주소가 어긋나지 않는다.
+ * 이 목록이 메인 영역 위쪽 뷰 선택 바의 원본이고 라우트 조각의 원본이기도 하다. 뷰를 추가할 때
+ * 고칠 곳이 하나여야 선택 바와 주소가 어긋나지 않는다.
  *
- * 뷰를 주소에 담는 이유: 새로고침·공유·뒤로가기가 전부 뷰 단위로 보존된다. 탭 상태를
- * 메모리에만 두면 "정책 검토 화면을 보내 줘" 를 링크로 할 수 없다.
+ * 뷰를 주소에 담는 이유: 새로고침·공유·뒤로가기가 전부 뷰 단위로 보존된다.
+ *
+ * 소스는 전부 작업 트리의 문서다. 뷰는 같은 작업 트리를 다르게 보여줄 뿐이고, 왼쪽 파일 트리와
+ * 오른쪽 AI 대화는 뷰를 바꿔도 그대로 남는다. 그래서 모든 뷰가 `app/projects/[projectId]/layout.tsx`
+ * 하나를 공유한다 (docs/plans/agent-workspace.md "화면").
  */
 export const PROJECT_VIEWS = [
   {
-    id: 'planning',
-    label: '기획 워크스페이스',
-    description: '인터뷰, 검토, 변경안과 프로젝트 버전을 함께 다룬다',
-  },
-  {
     id: 'documents',
-    label: '문서 편집',
-    /** 목록에서 이 뷰가 무엇을 하는 곳인지. 좁은 기둥에서는 tooltip 이 된다. */
-    description: 'RSPDL 문서를 쓰고 컴파일 진단을 본다',
-  },
-  {
-    id: 'policies',
-    label: '정책 검토',
-    description: '프로젝트 전체의 정책을 표로 가로질러 본다',
-  },
-  {
-    id: 'data-models',
-    label: '데이터 모델',
-    description: '컴파일된 모델과 필드를 한 곳에서 살핀다',
+    label: '문서',
+    description: '파일을 열어 고치고, commit 과 도구 호출의 diff 를 본다',
   },
   {
     id: 'ia',
-    label: '화면 구조',
-    description: '선언된 분류와 화면을 트리로 본다',
+    label: 'IA',
+    description: '작업 트리를 컴파일한 정보구조와 화면 흐름을 계층으로 본다',
   },
   {
-    id: 'screen-flow',
-    label: '화면 흐름',
-    description: '선언된 레이아웃을 그리고 화면 사이 경로를 잇는다',
+    id: 'wireframe',
+    label: '와이어프레임',
+    description: '화면을 회색 목업으로 그리고 경로로 잇는다. 화면 안 배치를 고친다',
   },
 ] as const
 
 export type ProjectViewId = (typeof PROJECT_VIEWS)[number]['id']
 
-/**
- * 프로젝트에 들어갔을 때 처음 보는 뷰. `/projects/{id}` 가 여기로 간다.
- *
- * 문서 편집이 기본인 이유: 정책 검토는 **쓴 것이 있어야** 볼 것이 생긴다. 빈 프로젝트에서
- * 정책 표를 먼저 보여 주면 처음 온 사람에게 빈 표를 내미는 셈이 된다.
- */
-export const DEFAULT_PROJECT_VIEW: ProjectViewId = 'planning'
+/** 프로젝트에 들어갔을 때 처음 보는 뷰. `/projects/{id}` 가 여기로 간다. */
+export const DEFAULT_PROJECT_VIEW: ProjectViewId = 'documents'
 
 export function viewHref(projectId: string, view: ProjectViewId): string {
   return `/projects/${projectId}/${view}`
 }
 
-export function documentHref(projectId: string, documentId: string): string {
-  return `/projects/${projectId}/documents/${documentId}`
-}
-
 export interface ActiveRoute {
   projectId: string | null
   view: ProjectViewId | null
-  documentId: string | null
 }
 
 /**
@@ -72,17 +49,11 @@ export interface ActiveRoute {
  * 있지도 않은 곳에 있다고 믿게 된다.
  */
 export function activeRoute(pathname: string): ActiveRoute {
-  const match = /^\/projects\/([^/]+)(?:\/([^/]+))?(?:\/([^/]+))?/.exec(pathname)
-  if (match === null) return { projectId: null, view: null, documentId: null }
+  const match = /^\/projects\/([^/]+)(?:\/([^/]+))?/.exec(pathname)
+  if (match === null) return { projectId: null, view: null }
 
-  const [, projectId, viewSegment, documentId] = match
-  const view =
-    PROJECT_VIEWS.find((entry) => entry.id === viewSegment)?.id ?? null
+  const [, projectId, viewSegment] = match
+  const view = PROJECT_VIEWS.find((entry) => entry.id === viewSegment)?.id ?? null
 
-  return {
-    projectId: projectId ?? null,
-    view,
-    // 문서 id 는 문서 편집 뷰 아래에서만 뜻이 있다.
-    documentId: view === 'documents' ? (documentId ?? null) : null,
-  }
+  return { projectId: projectId ?? null, view }
 }

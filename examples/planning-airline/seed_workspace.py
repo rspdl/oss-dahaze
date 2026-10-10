@@ -143,7 +143,7 @@ def main() -> int:
             "slug": slug,
             "name": args.project_name,
             "description": (
-                "가상 항공사 별하늘 항공의 PC·모바일 고객 예약과 운영 업무 통합 검증용 프로젝트"
+                "가상 항공사 별하늘 항공의 PC 고객 예약과 운영 업무 통합 검증용 프로젝트"
             ),
         },
     )

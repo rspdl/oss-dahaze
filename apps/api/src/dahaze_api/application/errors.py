@@ -24,3 +24,28 @@ class AccessDenied(ApplicationError):
 
 class Conflict(ApplicationError):
     """이미 존재하거나 현재 상태와 모순된다."""
+
+
+class Locked(Conflict):
+    """다른 보유자가 잠근 파일을 바꾸려 했다 (ADR-0008).
+
+    AI는 이 오류를 받으면 사용자에게 알리고 턴을 끝낸다. 누가 잡고 있는지 알려야
+    사용자가 기다릴지 판단할 수 있다.
+    """
+
+    def __init__(self, message: str, *, paths: list[str], holders: list[str]) -> None:
+        super().__init__(message)
+        self.paths = paths
+        self.holders = holders
+
+
+class FolderNotEmpty(Conflict):
+    """비어 있지 않은 폴더를 재귀 삭제 없이 지우려 했다.
+
+    에이전트 계층은 이 오류를 사용자 승인 요청으로 바꾼다. 유스케이스는 승인을 모른다.
+    """
+
+    def __init__(self, message: str, *, path: str, entries: int) -> None:
+        super().__init__(message)
+        self.path = path
+        self.entries = entries

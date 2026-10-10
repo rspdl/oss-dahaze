@@ -1,19 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ProjectCompileResponse } from '@dahaze/api-client'
+import type { CompileResult } from '@/features/mockup/screen-layouts'
 import screenStructure from './__screen-structure-fixture.json'
 import valueTypes from './__value-types-fixture.json'
 import { collectScreenMockups, findScreenMockup } from './screen-layouts'
 
 /** 실제 rspdl 0.1.2 컴파일 결과를 쓴다. 화면용 adapter 가 상상한 IR 에만 맞지 않게 한다. */
-function response(result: unknown): ProjectCompileResponse {
-  return {
-    rspdl_version: '0.1.2',
-    wire_schema_version: 1,
-    locale: 'ko-KR',
-    result: result as ProjectCompileResponse['result'],
-    documents: [],
-  }
+function response(result: unknown): CompileResult {
+  return { result }
 }
 
 const collected = collectScreenMockups(response(screenStructure))

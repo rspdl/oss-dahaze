@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { byteOffsetToIndex, spanToLineColumn, spanToRange } from './offsets'
+import { byteOffsetToIndex, lineToByteSpan, spanToLineColumn, spanToRange } from './offsets'
 
 /**
  * 이 변환이 틀리면 모든 진단이 엉뚱한 곳에 표시된다. 그리고 영어 예제만으로 테스트하면
@@ -102,5 +102,20 @@ describe('spanToLineColumn', () => {
     const text = 'a🎉b'
     // 'b' 는 바이트 5. 사람이 보기에 3번째 글자다.
     expect(spanToLineColumn(text, { start: 5, end: 6 }).column).toBe(3)
+  })
+})
+
+describe('lineToByteSpan', () => {
+  it('counts Korean text in UTF-8 bytes', () => {
+    const text = '@모듈 재고(inventory)\n\n재고 항목(item)'
+    // "@모듈 재고(inventory)" = 1 + 3*2 + 1 + 3*2 + 11 = 25 bytes
+    expect(lineToByteSpan(text, 1)).toEqual({ start: 0, end: 25 })
+    expect(lineToByteSpan(text, 2)).toEqual({ start: 26, end: 26 })
+    expect(lineToByteSpan(text, 3)).toEqual({ start: 27, end: 27 + 6 + 1 + 6 + 6 })
+  })
+
+  it('clamps lines outside the document', () => {
+    expect(lineToByteSpan('가\n나', 9)).toEqual({ start: 4, end: 7 })
+    expect(lineToByteSpan('', 1)).toEqual({ start: 0, end: 0 })
   })
 })

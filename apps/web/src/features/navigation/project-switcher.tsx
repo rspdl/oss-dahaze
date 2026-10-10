@@ -130,7 +130,7 @@ export function ProjectSwitcher({
             >
               <span className="min-w-0 flex-1 truncate">{project.name}</span>
               {project.id === activeProjectId ? (
-                <CheckIcon className="size-4 shrink-0 text-accent" />
+                <CheckIcon className="size-4 shrink-0 text-accent-text" />
               ) : null}
             </DropdownMenuItem>
           ))

@@ -1,47 +1,21 @@
-"""LLM constrained decoding에 쓰는 RSPDL 문법 자원."""
+"""에이전트 프롬프트에 싣는 RSPDL EBNF 스냅샷."""
 
 from __future__ import annotations
 
 from functools import lru_cache
 from importlib import resources
 
-from dahaze_api.domain.llm import EbnfGrammar
-
 GRAMMAR_RSPDL_VERSION = "0.1.4"
-PLANNING_GRAMMAR_CAPABILITY = "rspdl.planning-contracts.v1"
 
 
 @lru_cache
-def load_rspdl_grammar() -> EbnfGrammar:
-    """사람이 유지하는 저작용 EBNF 제약 스냅샷을 읽는다.
+def load_rspdl_ebnf() -> str:
+    """사람이 유지하는 EBNF 스냅샷.
 
-    RSPDL 규범 문법은 rspdl-core가 소유한다. 이 자원은 모델의 출력 공간을 줄이는 입력이며,
-    최종 판정은 언제나 설치된 컴파일러가 한다.
+    RSPDL 규범 문법은 rspdl-core 가 소유한다. 이 자원은 모델에게 문법을 알려주는 참고 자료이고,
+    판정은 언제나 설치된 컴파일러가 한다 (ADR-0005).
     """
-
-    definition = resources.files(__package__).joinpath("rspdl.ebnf").read_text(encoding="utf-8")
-    return EbnfGrammar(
-        name=f"rspdl-{GRAMMAR_RSPDL_VERSION}",
-        start_rule="document",
-        definition=definition,
-    )
+    return resources.files(__package__).joinpath("rspdl.ebnf").read_text(encoding="utf-8")
 
 
-@lru_cache
-def load_planning_rspdl_grammar() -> EbnfGrammar:
-    """compiler probe로 planning capability가 확인된 runtime의 저작 문법을 읽는다."""
-
-    definition = resources.files(__package__).joinpath("rspdl.ebnf").read_text(encoding="utf-8")
-    return EbnfGrammar(
-        name="rspdl-planning-contracts-v1",
-        start_rule="planning_document",
-        definition=definition,
-    )
-
-
-__all__ = [
-    "GRAMMAR_RSPDL_VERSION",
-    "PLANNING_GRAMMAR_CAPABILITY",
-    "load_planning_rspdl_grammar",
-    "load_rspdl_grammar",
-]
+__all__ = ["GRAMMAR_RSPDL_VERSION", "load_rspdl_ebnf"]

@@ -57,26 +57,36 @@ API)과 `feat(api): 저장 계층과 인증 추가`(DB·OAuth·워크스페이�
 | 도메인 엔티티·값 객체 | [`apps/api/src/dahaze_api/domain/`](../apps/api/src/dahaze_api/domain/) | 완성. 프레임워크 의존 없음 |
 | RSPDL 컴파일러 어댑터 | [`apps/api/src/dahaze_api/infrastructure/rspdl/local_adapter.py`](../apps/api/src/dahaze_api/infrastructure/rspdl/local_adapter.py) | `compile` · `check` · `find_model` |
 | 분석 유스케이스 + 캐시 | [`application/analysis.py`](../apps/api/src/dahaze_api/application/analysis.py), [`infrastructure/db/analysis_cache.py`](../apps/api/src/dahaze_api/infrastructure/db/analysis_cache.py) | Postgres 캐시. 인메모리 LRU도 있음([`infrastructure/cache.py`](../apps/api/src/dahaze_api/infrastructure/cache.py))이나 현재 배선되지 않음 |
-| 프로젝트·문서·리비전 | [`application/workspace.py`](../apps/api/src/dahaze_api/application/workspace.py), [`infrastructure/db/repositories.py`](../apps/api/src/dahaze_api/infrastructure/db/repositories.py) | CRUD·소프트 삭제·멤버십·역할 |
+| 프로젝트·멤버 | [`application/projects.py`](../apps/api/src/dahaze_api/application/projects.py), [`infrastructure/db/repositories.py`](../apps/api/src/dahaze_api/infrastructure/db/repositories.py) | 생성·보관·멤버십·역할 |
+| 작업 트리·commit·잠금 | [`application/tree.py`](../apps/api/src/dahaze_api/application/tree.py), [`application/tree_inspection.py`](../apps/api/src/dahaze_api/application/tree_inspection.py) | ADR-0008. search·grep·compile 포함 |
 | GitHub OAuth + 세션 | [`infrastructure/auth/`](../apps/api/src/dahaze_api/infrastructure/auth/) | JWT 쿠키 세션, 서명된 state, MCP Bearer 토큰 |
-| LLM 저작 루프 | [`application/authoring.py`](../apps/api/src/dahaze_api/application/authoring.py), [`infrastructure/llm/`](../apps/api/src/dahaze_api/infrastructure/llm/) | 초안 → 컴파일 → 수리 재시도. 저장하지 않음 |
-| MCP 서버 | [`interface/mcp/`](../apps/api/src/dahaze_api/interface/mcp/) | `/mcp` Streamable HTTP, 도구 7종 |
-| REST 계약 | [`interface/rest/`](../apps/api/src/dahaze_api/interface/rest/) → [`apps/api/openapi.json`](../apps/api/openapi.json) | 25개 오퍼레이션 (`/mcp` 는 OpenAPI 밖) |
+| AI 대화 턴 | [`application/agent.py`](../apps/api/src/dahaze_api/application/agent.py), [`infrastructure/llm/`](../apps/api/src/dahaze_api/infrastructure/llm/) | worker 가 도구 호출 루프 실행. 작업 트리에 바로 저장 |
+| MCP 서버 | [`interface/mcp/`](../apps/api/src/dahaze_api/interface/mcp/) | `/mcp` Streamable HTTP, 도구 22종 |
+| REST 계약 | [`interface/rest/`](../apps/api/src/dahaze_api/interface/rest/) → [`apps/api/openapi.json`](../apps/api/openapi.json) | 44개 오퍼레이션 (`/mcp`, SSE 스트림은 OpenAPI 밖) |
 | 타입 API 클라이언트 | [`packages/api-client/`](../packages/api-client/) | orval 생성물. 커밋하지 않음 |
-| DB 마이그레이션 | [`apps/api/alembic/versions/`](../apps/api/alembic/versions/) | 초기 스키마 1개 |
+| DB 마이그레이션 | [`apps/api/alembic/versions/`](../apps/api/alembic/versions/) | 8개 |
 | 검사 하네스 | [`scripts/`](../scripts/) | §5 |
 
-테스트는 2026-08-17 로컬(Linux x86_64, rspdl 0.1.0, Postgres 17)에서 `uv run pytest -q` 로 실제
-실행해 **87개 전부 통과**했다.
+테스트는 2026-09-26 로컬(macOS arm64, rspdl 0.1.4, Postgres)에서 `uv run pytest -q` 로 실제
+실행해 **202개 전부 통과**했다(`TEST_DATABASE_URL` 설정).
 
 | 파일 | 개수 | 무엇을 고정하는가 |
 |---|---|---|
-| [`tests/test_mcp.py`](../apps/api/tests/test_mcp.py) | 34 | MCP 인증(audience 교차 거부), 도구별 접근 격리, JSON-RPC 왕복 |
-| [`tests/test_workspace_api.py`](../apps/api/tests/test_workspace_api.py) | 23 | 접근 격리, 역할, 리비전 규칙, 경로 검증 |
-| [`tests/test_authoring_api.py`](../apps/api/tests/test_authoring_api.py) | 10 | 수리 루프, 저장하지 않음, 비멤버 시 LLM 미호출 |
-| [`tests/test_rspdl_adapter.py`](../apps/api/tests/test_rspdl_adapter.py) | 8 | 어댑터 계약, 순서 무관성, locale 거부 |
+| [`tests/test_mcp.py`](../apps/api/tests/test_mcp.py) | 41 | MCP 인증(audience 교차 거부), 도구별 접근 격리, JSON-RPC 왕복 |
+| [`tests/test_auth_api.py`](../apps/api/tests/test_auth_api.py) | 24 | OAuth·비밀번호 로그인, 세션 쿠키 |
+| [`tests/test_tree.py`](../apps/api/tests/test_tree.py) | 22 | 작업 트리 쓰기, commit 변경 분류, 잠금·만료, 권한 |
+| [`tests/test_agent.py`](../apps/api/tests/test_agent.py) | 15 | AI 턴 루프: 도구 상한, 잠금 충돌·만료, 승인·거절, 취소, 재개 |
+| [`tests/test_tree_inspection.py`](../apps/api/tests/test_tree_inspection.py) | 15 | search·grep·compile, byte span → 줄·열, RE2 선형 시간 |
+| [`tests/test_projects_api.py`](../apps/api/tests/test_projects_api.py) | 15 | 프로젝트·멤버 HTTP 계약, 접근 격리 |
+| [`tests/test_rspdl_adapter.py`](../apps/api/tests/test_rspdl_adapter.py) | 13 | 어댑터 계약, 순서 무관성, locale 거부 |
+| [`tests/test_tree_api.py`](../apps/api/tests/test_tree_api.py) | 10 | 작업 트리 HTTP 계약, 409 `locked`·`folder_not_empty` |
+| [`tests/test_agent_api.py`](../apps/api/tests/test_agent_api.py) | 10 | AI 세션 HTTP 계약, 이벤트, 실제 LISTEN 으로 SSE 깨우기 |
+| [`tests/test_agent_adapter.py`](../apps/api/tests/test_agent_adapter.py) | 9 | Responses API 입력 변환, 스트림 해석 |
+| [`tests/test_mcp_tree.py`](../apps/api/tests/test_mcp_tree.py) | 7 | MCP 트리 도구, `mcp:<user>` 잠금과 `unlock` |
+| [`tests/test_airline_booking_examples.py`](../apps/api/tests/test_airline_booking_examples.py) | 7 | 예제 원문 컴파일 |
 | [`tests/test_config_guard.py`](../apps/api/tests/test_config_guard.py) | 6 | 약한 시크릿·꺼진 secure 쿠키로 뜨지 않음 |
 | [`tests/test_analysis_api.py`](../apps/api/tests/test_analysis_api.py) | 6 | HTTP 계약, "진단은 200" |
+| [`tests/test_tree_races.py`](../apps/api/tests/test_tree_races.py) | 2 | 실제 연결 여러 개의 동시 쓰기에서 잠금 하나 |
 
 ### 스캐폴딩만 있고 비어 있는 것
 
@@ -117,17 +127,15 @@ OIDC 와 repository variables 로만 받는다. 로컬 Postgres용
   모든 요청을 가져가서, 나중 호출이 무시된 것을 알아채기 어렵다.
 - **MCP 토큰은 폐기할 수 없다.** 세션과 같은 비밀로 서명하되 audience(`dahaze:mcp`)와 TTL(90일)만
   다르다. 토큰 id 테이블이 없어 blocklist 를 만들 수 없다. ADR-0005 가 인정한 한계다.
-- **저작 엔드포인트는 문서를 쓰지 않는다.** 초안과 진단만 돌려준다. 저장은 사람이
-  `PUT /api/documents/{id}` 로 한다.
+- **AI 쓰기는 작업 트리에 바로 저장되고 파일을 잠근다** (ADR-0008). 이력은 commit 으로만 남는다.
 - **진단을 severity 로 거르지 않는다.** 경고를 무시해도 된다고 판단하는 순간 dahaze 가 컴파일러를
   재해석하는 것이 된다.
-- **LLM 프롬프트와 출력 EBNF는 rspdl 버전과 함께 늙는다.** 프롬프트는
-  [`infrastructure/llm/prompts/`](../apps/api/src/dahaze_api/infrastructure/llm/prompts/), 저작용 EBNF
+- **에이전트 프롬프트와 EBNF 스냅샷은 특정 rspdl 버전의 문법에 맞춰 써 있다.** 프롬프트는
+  [`infrastructure/llm/prompts/`](../apps/api/src/dahaze_api/infrastructure/llm/prompts/), EBNF
   스냅샷은 [`infrastructure/llm/grammars/`](../apps/api/src/dahaze_api/infrastructure/llm/grammars/)에
-  모아 두었다. OpenAI 어댑터는 호출 직전에 EBNF를 Lark custom tool grammar로 바꾼다.
-  Lark는 OpenAI 전송 형식으로만 쓰고, custom tool input은 다시 파싱하지 않고 Rust RSPDL
-  컴파일러에 넘긴다. 재컴파일 리포트만으로는 앞으로 생성될 텍스트의 회귀가 드러나지 않으므로
-  승격 절차에서 프롬프트와 EBNF를 함께 점검한다.
+  있다. 둘 다 시스템 프롬프트로 모델에 전달되고 출력에 문법 제약은 걸지 않는다(ADR-0005 v4).
+  재컴파일 리포트만으로는 앞으로 AI 가 쓸 원문의 회귀가 드러나지 않으므로 승격 절차에서 함께
+  점검한다.
 
 ---
 
@@ -161,8 +169,9 @@ packages/api-client/src/fetcher.ts        credentials: 'include'
                               ▼
                         Postgres 17 (pgvector 이미지)
                         users · user_identities · projects ·
-                        project_members · documents ·
-                        document_revisions · compilations
+                        project_members · tree_folders · tree_files ·
+                        file_locks · commits · agent_* ·
+                        project_events · compilations
 ```
 
 요청 하나의 경로는 이렇다. 라우터가 쿠키에서 사용자를 복원하고
@@ -170,8 +179,8 @@ packages/api-client/src/fetcher.ts        credentials: 'include'
 `Annotated[..., Depends(...)]` 로 주입받는다. 유스케이스는 port만 보므로 어떤 어댑터가 붙었는지
 모른다. 분석 요청이면 `AnalyzeWorkspace` 가 먼저 `compilations` 캐시를 조회하고, 없으면
 `LocalRspdlCompiler` 가 `asyncio.to_thread` 로 동기 SDK를 호출한 뒤 응답의 `result` 를 **손대지
-않고** 감싸서 캐시에 넣는다. 워크스페이스 요청이면 `WorkspaceService` 가
-`_require_membership` 으로 접근을 확인한 뒤 저장소를 부른다. 계약은 라우터에서만 나온다 —
+않고** 감싸서 캐시에 넣는다. 프로젝트·작업 트리 요청이면 `ProjectService`·`TreeService` 가
+멤버십을 확인한 뒤 저장소를 부른다. 계약은 라우터에서만 나온다 —
 `interface/rest/**` → `apps/api/openapi.json` → `packages/api-client/src/generated/**` 가 단방향
 이고, CI가 각 화살표를 검사한다.
 
@@ -277,10 +286,10 @@ RSPDL은 timeout을 성공으로 근사하지 않고 `unknown` 으로 남기므�
 
 구체적으로 지켜지는 형태:
 
-- 라우터는 저장소를 직접 부르지 않는다. 전부 `WorkspaceService` 를 지난다.
-- 모든 검사가
-  [`WorkspaceService._require_membership`](../apps/api/src/dahaze_api/application/workspace.py)
-  하나로 수렴한다. `ProjectRepositoryPort.membership_of` 가 그 유일한 질의다.
+- 라우터와 MCP 도구는 저장소를 직접 부르지 않는다. 전부 application 유스케이스를 지난다.
+- 모든 검사가 `ProjectRepositoryPort.membership_of` 하나로 수렴한다. `ProjectService` 와
+  `TreeService` 가 이 질의로 멤버십을 확인하고, AI 세션·이벤트는 `TreeService.require_member` 를
+  재사용한다.
 - 멤버가 아니면 `AccessDenied`(403)가 아니라 **`NotFound`(404)** 를 낸다. 남의 프로젝트가 존재한다는
   사실 자체를 노출하지 않기 위해서다. 403은 "대상은 보이지만 이 동작은 안 된다"일 때만 쓴다
   (예: viewer의 쓰기, 비소유자의 멤버 추가).
@@ -326,11 +335,10 @@ RSPDL은 timeout을 성공으로 근사하지 않고 `unknown` 으로 남기므�
   [`registry.py`](../apps/api/src/dahaze_api/infrastructure/auth/registry.py) 가 그렇게 만든다.
   `GITHUB_CLIENT_ID` 를 안 넣으면 `/api/auth/providers` 가 빈 목록을 주고 로그인 경로는 404다 —
   버그가 아니다.
-- **본문이 같으면 리비전을 만들지 않는다.** 에디터 자동 저장이 이력을 무의미한 항목으로 채우지
-  않게 하기 위한 것이고, 테스트가 이를 고정한다.
-- **문서 경로 정규식은 의도적으로 빡빡하다.**
-  `DOCUMENT_PATH_PATTERN` 이 `..` 과 선행 `/` 를 막는다. 지금은 경로를 파일시스템에 쓰지 않지만
-  export나 git 연동이 생기면 그대로 traversal이 되기 때문이다.
+- **작업 트리 경로 정규식은 의도적으로 빡빡하다.**
+  [`domain/tree.py`](../apps/api/src/dahaze_api/domain/tree.py) 의 패턴이 `..` 과 빈 조각을 막는다.
+  지금은 경로를 파일시스템에 쓰지 않지만 export나 git 연동이 생기면 그대로 traversal이 되기
+  때문이다.
 - **세션 TTL이 두 곳에 있다.** `SESSION_TTL = timedelta(days=14)`
   ([`auth/session.py`](../apps/api/src/dahaze_api/infrastructure/auth/session.py))와
   `max_age=14 * 24 * 3600` ([`rest/auth.py`](../apps/api/src/dahaze_api/interface/rest/auth.py)).
@@ -445,10 +453,10 @@ interface/rest/**  →  apps/api/openapi.json  →  packages/api-client/src/gene
 - **`fixtures/corpus/` 만으로 rspdl 승격을 검증하지 않는다.** 대표 예제 둘
   ([`inventory.rspdl`](../fixtures/corpus/inventory.rspdl),
   [`broken.rspdl`](../fixtures/corpus/broken.rspdl))일 뿐 실사용 문법의 일부만 덮는다. 승격 전에는
-  DB에서 실제 문서를 내보내 `--corpus` 로 넘겨야 한다. **그 내보내기 스크립트는 아직 없다** —
+  DB에서 작업 트리 원문을 내보내 `--corpus` 로 넘겨야 한다. **그 내보내기 스크립트는 아직 없다** —
   스킬이 "스크립트를 돌린 뒤"라고만 적어 두었다.
-- **재컴파일 리포트는 LLM 프롬프트·출력 EBNF 회귀를 잡지 못한다.** 코퍼스는 이미 존재하는
-  문서만 검사하고 앞으로 생성될 텍스트는 검사하지 않는다. 두 자원 점검은 별도 단계다.
+- **재컴파일 리포트는 에이전트 프롬프트·EBNF 스냅샷 회귀를 잡지 못한다.** 코퍼스는 이미 있는
+  원문만 검사하고 앞으로 AI 가 쓸 원문은 검사하지 않는다. 두 자원 점검은 별도 단계다.
 - **사라진 진단을 개선으로 단정하지 않는다.** 검증이 조용히 약해진 것일 수도 있다.
 
 ---
@@ -518,7 +526,7 @@ cd apps/api && uv run pytest -q                     # Postgres 컨테이너가 �
 3. **배포** — 비공개 저장소 `dahaze-infra` 가 소유한다. 여기서 할 일은 아니지만,
    [ADR-0004](adr/0004-deployment-infrastructure.md)의 아키텍처 가드·시크릿 흐름·컨테이너 하드닝
    요구는 그대로 유효하다 — 그 저장소를 고칠 때 함께 읽는다.
-4. **rspdl 0.2.0 승격 준비** — DB의 `documents.text` 를 `.rspdl` 파일로 내보내는 스크립트가 없다
+4. **rspdl 0.2.0 승격 준비** — DB의 `tree_files.text` 를 `.rspdl` 파일로 내보내는 스크립트가 없다
    (§6.1). 승격이 필요해지기 전에 만들어 두는 편이 낫다.
 
 ---

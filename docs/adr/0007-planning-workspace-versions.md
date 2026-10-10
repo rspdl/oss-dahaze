@@ -2,7 +2,7 @@
 id: planning-workspace-versions
 title: Planning Workspace Versions
 type: adr
-status: accepted
+status: superseded
 version: "1"
 summary: Separates editable planning context, compiled candidate changes, accepted source revisions, and immutable whole-project handoff snapshots.
 topics:
@@ -12,12 +12,15 @@ topics:
 related:
   - document-storage-model
   - mcp-and-llm-authoring
-last_updated: "2026-09-23"
+last_updated: "2026-09-26"
+superseded_by: working-tree-commits-and-locks
 owners:
   - rspdl-maintainers
 ---
 
 # Planning Workspace Versions
+
+> [ADR-0008](0008-working-tree-commits-and-locks.md)이 이 결정을 대체한다. 초안 보관·명시적 apply·전달본 스냅샷은 공유 작업 트리와 commit으로 바뀌었다.
 
 ## 배경
 

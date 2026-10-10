@@ -3,7 +3,7 @@ id: document-storage-model
 title: Document Storage Model
 type: adr
 status: accepted
-version: "1"
+version: "2"
 summary: Stores RSPDL source text as the only truth and treats every compiler output as a regenerable cache keyed by source hash and rspdl version.
 topics:
   - storage
@@ -12,7 +12,7 @@ topics:
 related:
   - rspdl-compiler-integration
   - monorepo-structure-and-stack
-last_updated: "2026-08-17"
+last_updated: "2026-09-26"
 owners:
   - rspdl-maintainers
 ---
@@ -81,13 +81,11 @@ rspdl 버전이 키에 있으므로, 버전을 올리면 캐시가 저절로 무
 원칙: **재생성할 수 없는 것만 정규화한다.** 사용자가 친 텍스트, 누가 언제 썼는지, 프로젝트 소속
 관계는 재생성할 수 없으므로 정규화한다. 컴파일러가 뱉은 것은 전부 재생성 가능하다.
 
-### 프로젝트 기획 상태와 전달본
+### 작업 트리와 commit
 
-인터뷰·결정 근거·디자인 설정은 원문에서 재생성할 수 없는 사용자 작업 상태로 보관한다.
-이 상태를 기능 의미의 또 다른 원본으로 해석하지 않는다. 여러 문서의 초안 적용과
-원문·디자인을 함께 담은 전체 프로젝트 스냅샷은
-[ADR-0007](0007-planning-workspace-versions.md)의 독립적인 버전 계약을 따른다.
-스냅샷 속 compiler JSON도 당시 런타임에 종속된 파생물이라는 원칙은 바뀌지 않는다.
+문서 이력은 [ADR-0008](0008-working-tree-commits-and-locks.md)의 commit이 맡는다.
+`document_revisions`와 전달본 스냅샷은 commit으로 대체한다. commit도 사용자가 친 텍스트이므로
+정규화 대상이고, 진단 같은 컴파일러 산출물은 commit에 넣지 않는다.
 
 ## 결과
 

@@ -9,7 +9,7 @@ description: Add or change shared UI components, shadcn primitives, and design t
 
 | 패키지 | 담는 것 | 담지 않는 것 |
 |---|---|---|
-| `packages/design-system` | 색·간격·타이포 토큰, 테마, Tailwind preset | React 컴포넌트 |
+| `packages/design-system` | 색·간격·타이포 토큰(jwdesign), 테마, 웹폰트 | React 컴포넌트 |
 | `packages/ui` | 도메인을 모르는 재사용 컴포넌트 (Button, Dialog, DataTable) | API 호출, 라우팅, 제품 용어 |
 | `packages/rspdl-editor` | CodeMirror RSPDL 언어 모드, 진단 표시 | 문서 저장·불러오기 |
 | `apps/web` | 화면, 라우팅, 데이터 연결, 제품 고유 컴포넌트 | — |
@@ -51,7 +51,32 @@ pnpm dlx shadcn@latest add dialog
 
 ## 디자인 토큰 변경
 
-토큰은 `packages/design-system` 이 소유한다. CSS 변수로 노출하고 Tailwind preset이 그걸 참조한다.
+토큰은 `packages/design-system` 이 소유한다. 값의 원본은 **jwdesign** 디자인 시스템이다
+(`jwsong98/jwplugin` 의 `skills/jwdesign`). 구조는 두 층이다.
+
+1. `src/jwdesign/tokens.jw.css` — jwdesign 원본 토큰(`--jw-*`). jwplugin 에서 생성된 파일을
+   그대로 가져온 것이다. **손으로 고치지 않는다.** 값을 바꾸려면 jwplugin 의 `tokens.json` 을 고치고
+   `build_tokens.py` 로 다시 만든 뒤 이 파일을 통째로 교체한다.
+2. `src/theme.css` — dahaze 의미 이름(`canvas`, `surface-raised`, `text-muted`, `diagnostic-error` …)을
+   jwdesign 토큰에 연결하는 `@theme inline` 매핑. 매핑표는 파일 주석에 있다. 새 이름이 필요하면 먼저
+   jwdesign 에 맞는 토큰이 있는지 찾고, 있으면 여기서 연결만 한다.
+
+UI 규칙(한 화면에 채움 강조 하나, 시맨틱 토큰만, 4px 간격, 반경 스케일, 해요체 문구 등)은
+jwdesign 스킬을 따른다. 스킬이 없으면 `npx skills add https://github.com/jwsong98/jwplugin --skill jwdesign`.
+
+자주 쓰는 jwdesign 대응:
+
+| 하려는 것 | 클래스 |
+|---|---|
+| 채움 강조 버튼 | `Button` 기본(`bg-accent text-accent-fg`) — 한 화면에 하나 |
+| 약한 강조 | `Button variant="weak"`, `Badge`(기본이 연한 배경) |
+| 링크·강조 글자 | `text-accent-text` (`text-accent` 는 다크에서 대비가 모자란다) |
+| 파괴적 확정 | `Button variant="destructive"` (`bg-danger text-on-danger`) |
+| 입력 테두리 | `border-border-control` (면 위 3:1) |
+| hover 오버레이 | `hover:bg-state-hover` |
+| 떠 있는 면 | `bg-surface-overlay shadow-md`(메뉴) · `shadow-lg`(모달) |
+| 키보드 포커스 | `focus-visible:focus-ring` |
+| 타입 | `text-title-1/2/3`, `text-headline`, `text-body`, `text-body-sm`, `text-caption` |
 
 토큰을 바꾸면 **두 테마 모두** 확인한다. 한쪽만 고치면 다른 쪽에서 대비가 무너진다.
 

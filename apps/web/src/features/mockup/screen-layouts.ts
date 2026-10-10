@@ -1,4 +1,7 @@
-import type { ProjectCompileResponse } from '@dahaze/api-client'
+/** 컴파일 응답에서 읽는 부분. `compile_workspace` 의 `AnalysisResponse` 가 이 모양이다. */
+export interface CompileResult {
+  result?: unknown
+}
 
 /**
  * 컴파일러가 준 화면 레이아웃을 화면이 그릴 수 있는 최소 단위로만 좁힌다.
@@ -110,6 +113,7 @@ function controlFor(typeKind: string | null): ControlKind {
       return 'time'
     case 'date_time':
     case 'zoned_date_time':
+    case 'local_date_time':
       return 'datetime'
     case 'enum':
       return 'select'
@@ -266,7 +270,7 @@ function toElement(
  * 파일 여러 개를 한 번에 컴파일하므로 전부 이어 붙인다.
  */
 export function collectScreenMockups(
-  response: ProjectCompileResponse | undefined,
+  response: CompileResult | undefined,
 ): CollectedMockups {
   if (response === undefined) return EMPTY
   if (response.result === null || response.result === undefined) {

@@ -22,6 +22,9 @@ dependencies = [
     "pyjwt>=2.10.0",
     "openai>=1.60.0",
     "mcp>=1.9.0",
+    # grep 은 사용자와 AI 가 넣은 정규식을 실행한다. RE2 는 선형 시간이라 역추적 폭발
+    # (ReDoS)로 워커 스레드가 멈추지 않는다. `import re2` 는 infrastructure/text/ 안에서만.
+    "google-re2>=1.1",
 ]
 
 [project.optional-dependencies]
@@ -61,3 +64,9 @@ python_version = "3.12"
 strict = true
 files = ["src", "tests", "scripts"]
 mypy_path = "src"
+
+[[tool.mypy.overrides]]
+# 둘 다 타입 정보를 배포하지 않는다. re2 는 infrastructure/text/, asyncpg 는 이벤트 LISTEN
+# (infrastructure/event_feed.py)에서만 직접 쓴다.
+module = ["re2", "asyncpg"]
+ignore_missing_imports = true

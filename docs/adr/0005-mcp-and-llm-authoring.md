@@ -3,8 +3,8 @@ id: mcp-and-llm-authoring
 title: MCP Server and LLM Authoring Loop
 type: adr
 status: accepted
-version: "3"
-summary: Serves MCP and a provider-independent, grammar-constrained LLM authoring loop from the API, and requires every generated draft to pass the compiler before a human sees it.
+version: "4"
+summary: Serves MCP and an in-app agent from the API with one shared tool set over the project working tree, grammar given as prompt context, symbol search over compiler IR, and diagnostics shown rather than used as a save gate.
 topics:
   - mcp
   - llm
@@ -14,7 +14,8 @@ related:
   - rspdl-compiler-integration
   - document-storage-model
   - monorepo-structure-and-stack
-last_updated: "2026-09-23"
+  - working-tree-commits-and-locks
+last_updated: "2026-09-26"
 owners:
   - rspdl-maintainers
 ---
@@ -32,89 +33,62 @@ dahaze의 제품 전제는 **"문법 파일을 사람이 직접 쓸 수도 있�
 없다. 이 ADR은 그 생성 경로를 정한다.
 
 RSPDL은 한국어 선언형 문법이고 `0.x`다. LLM이 그럴듯하지만 컴파일되지 않는 텍스트를 만들 확률이
-높다. 그리고 그 텍스트가 그대로 저장되면 dahaze는 "검증된 기획" 이라는 약속을 스스로 어긴다.
+높다. v3까지는 이를 막으려고 컴파일을 통과하지 못한 초안의 저장을 막았다. v4부터는 저장을 막지 않고,
+진단을 원문 위치와 함께 항상 보여주는 쪽으로 바꿨다(ADR-0008).
 
 ## 결정
 
-### 생성물은 컴파일러를 통과하기 전에는 결과가 아니다
+### AI는 도구로 작업 트리를 다룬다
 
-**LLM이 만든 텍스트는 컴파일 결과와 함께가 아니면 호출자에게 돌아가지 않는다.**
+앱 안의 AI와 외부 MCP 클라이언트는 같은 도구 세트를 쓴다: `ls`·`read`·`search`·`grep`·
+`compile`·`mkdir`·`add`·`edit`·`mv`·`delete`·`commit`, 그리고 MCP 전용 `unlock`.
+도구 명세는 [에이전트 작업공간 계획](../plans/agent-workspace.md)에 있다. 쓰기 도구는
+공유 작업 트리를 바로 바꾸며 저장·이력·잠금 계약은
+[ADR-0008](0008-working-tree-commits-and-locks.md)을 따른다.
 
-```
-지시 → LLM 초안 → 컴파일 → 진단이 있으면 진단을 다시 넣어 재시도 → 최종 초안 + 진단
-```
+- `search`는 작업 트리 전체를 컴파일한 IR의 심볼(ID·이름·종류)만 찾는다. 텍스트 일치는
+  `grep`이 따로 맡는다. 심볼 검색에 텍스트 일치를 섞으면 AI가 문자열 일치를 정의로 착각한다.
+- 구문 오류로 심볼을 읽지 못한 파일은 search 결과에 따로 알린다.
+- `compile`은 진단과 그 위치(`path`, 줄·열)를 돌려준다. IR span은 UTF-8 byte 오프셋이다.
+- 한 턴의 도구 호출은 최대 100회다. 닿으면 사용자에게 계속할지 묻고 턴을 끝낸다.
 
-- 재시도는 유한하다 (`MAX_REPAIR_ATTEMPTS`). 무한히 고치려 들지 않는다.
-- 재시도해도 진단이 남으면 **실패로 만들지 않고 진단과 함께 돌려준다.** 사람이 판단할 재료를
-  뺏지 않는다.
-- 시도 이력(각 시도의 진단 수)을 응답에 남긴다. 왜 이 초안이 최종인지 설명 가능해야 한다.
+### 컴파일 진단은 저장을 막지 않고 표시만 한다
 
-이건 `AGENTS.md`의 "LLM 출력도 사람 출력과 같은 컴파일러 게이트를 통과한다" 를 코드로 옮긴 것이다.
-RSPDL `AGENTS.md`에도 같은 원칙이 있다.
+이전에는 진단이 남은 후보가 확정 원문이 될 수 없었다. 이제 오류가 있는 원문도 작업 트리에
+저장하고 commit할 수 있다. 대신 **진단은 컴파일러가 준 그대로, 원문 위치와 함께 보여준다.**
+AI는 `compile` 도구로 자기 작업을 확인하고, 사람은 에디터와 도구 카드에서 진단을 본다.
+의미 정합성의 유일한 판정자가 RSPDL 컴파일러라는 점은 바뀌지 않는다.
 
-### 문법 정합성은 디코딩 시점에 강제한다
+### 문법은 맥락으로 알려주고, 판정은 컴파일러가 한다
 
-프롬프트에 "RSPDL만 출력하라"고 쓰는 것은 형식 보장이 아니다. 모델이 코드 펜스나 설명을
-붙인 뒤 사후 처리로 걷어내는 방식도 새로운 해석 규칙을 dahaze에 만든다. 따라서 LLM 호출에는
-항상 **공급자 독립 EBNF 문법**을 함께 전달하고, 어댑터가 자신의 constrained decoding 형식으로
-변환한다.
+v3까지는 EBNF를 Lark CFG로 바꿔 OpenAI custom tool의 constrained decoding으로 강제했다.
+custom tool은 문법으로 제약된 문자열 하나만 받으므로, 경로와 원문을 함께 받아야 하는
+`add`·`edit`에 쓸 수 없다. 첫 줄을 경로로 쓰는 문법을 따로 정의하거나 호출을 두 번으로 나누는 방법이 있지만, 둘 다 쓰지 않고 제약 디코딩을 제거한다.
 
-- dahaze 저작용 canonical EBNF 스냅샷은 `infrastructure/llm/grammars/rspdl.ebnf`에 둔다.
-  RSPDL의 규범 문법 소유권은 계속 `rspdl-core`에 있다.
-- `LlmPort`는 EBNF 값만 받는다. OpenAI SDK나 xgrammar 타입은 port 밖으로 나오지 않는다.
-- OpenAI 어댑터는 EBNF를 Lark CFG로 바꾸고 Responses API custom tool의
-  `format: {type: "grammar", syntax: "lark", definition: ...}`으로 보낸다. 생성 전문은 이름이
-  일치하는 `custom_tool_call.input`에서만 꺼낸다.
-- self-hosted 어댑터는 같은 EBNF를 xgrammar 등 해당 런타임의 요청 형식으로 바꿀 수 있다.
+- 쓰기 도구는 일반 function tool이다. `content`는 JSON 문자열 인자로 받는다.
+- RSPDL 문법은 시스템 프롬프트의 맥락으로 알려준다. 문법 스냅샷(`infrastructure/llm/grammars/`)과
+  프롬프트(`infrastructure/llm/prompts/`)는 계속 rspdl 버전과 함께 관리한다.
+- 구문 정합성도 의미 정합성도 판정자는 RSPDL 컴파일러 하나다. AI는 `compile` 도구로 진단을
+  받아 스스로 고친다.
+- dahaze는 도구 인자의 `content`를 그대로 저장한다. 코드 펜스 제거 같은 사후 처리를 하지 않는다.
+  AI가 형식을 어기면 그 원문이 그대로 컴파일 진단으로 드러난다.
 
-Lark는 OpenAI에 문법을 전달하는 **직렬화 형식**으로만 쓴다. dahaze가 Python Lark 파서로
-출력을 다시 해석하지 않는다. custom tool input은 순수 RSPDL 전문으로 보고 그대로 컴파일러에
-전달한다. 불완전한 접두사나 구문 오류도 RSPDL 컴파일 진단이 되며 기존 피드백 루프가 고친다.
-이렇게 해야 규범 문법을 소유한 Rust RSPDL 컴파일러가 유일한 판정자로 남는다.
+### 저장과 이력
 
-문법 제약은 **구문 정합성**만 보장한다. 참조가 존재하는지, 데이터 lifecycle이 닫히는지,
-정책이 충돌하는지 같은 의미 정합성의 유일한 판정자는 여전히 RSPDL 컴파일러다. 그래서
-constrained decoding을 도입해도 기존 컴파일-진단-유한 재시도 루프를 제거하지 않는다.
+AI 도구는 작업 트리를 바로 바꾼다. 이력은 사람이나 AI가 파일을 골라 만드는 commit에만
+남는다. 도구 호출마다 호출 전후 원문을 대화 기록에 남겨, 사용자가 각 호출의 변경을
+추적할 수 있게 한다. v3의 "자동 저장 금지" 규칙은 사용자가 변경을 추적할 수 있게 하려는 것이었다. v4에서는 commit 기록과 도구 호출별 전후 원문으로 같은 추적을 한다.
 
-### 자동 저장하지 않는다
+기존의 인터뷰는 대화의 한 형태다. 결정·보류·제안 같은 구조화 기획 상태와 후보 보관,
+명시적 apply는 두지 않는다. 대화는 세션 단위로 보관하고 이어 갈 수 있다.
 
-저작 엔드포인트는 **초안을 돌려줄 뿐 문서를 쓰지 않는다.** 저장은 기존
-`PUT /api/documents/{id}` 로 사람이 명시적으로 한다.
+에이전트 턴은 PostgreSQL 작업 큐와 worker·lease로 실행한다. 도구 호출과 응답은 이벤트
+테이블에 기록하고 웹은 SSE로 받는다. 턴이 끝나면(사용자 응답 대기, 강제 종료, 오류) 그 턴의 파일 잠금을
+모두 푼다.
 
-이유: 저장은 리비전을 만들고, 리비전은 되돌릴 수 없는 이력이다. LLM이 문서를 조용히 덮어쓰면
-사용자는 자기 문서에 무슨 일이 일어났는지 추적할 수 없게 된다.
+### 프롬프트는 rspdl 버전을 올릴 때 함께 고친다
 
-### 프로젝트 인터뷰와 후보 보관
-
-프로젝트 기획 작업공간에서는 인터뷰 대화·미정 제안과 컴파일된 후보를 작업 이력으로
-보관할 수 있다. 이 보관은 확정 문서 적용과 다르다. 후보에 오류가 남아도 보관하며,
-확정 원문은 사람이 변경 전후와 compiler 결과를 보고 명시적으로 적용할 때만 바뀐다.
-여러 문서 적용과 복원 계약은 [ADR-0007](0007-planning-workspace-versions.md)을 따른다.
-
-인터뷰 질문·추천·결정 이유는 사용자 의도를 정리하는 맥락이다. 이 자연어를 compiler가
-검증한 정책이나 진단으로 표시하지 않는다. 생성된 RSPDL 원문은 기존과 동일하게
-compiler를 거친 결과와 함께만 노출한다. AI가 추천한 정책도 사용자가 채택하고 원문에
-표현하기 전에는 검증된 의미가 아니다.
-
-대화의 저장 상태와 저작 작업의 진행 상태를 분리한다. 요청 재시도가 동일 후보를 조용히
-적용하거나 확정 원문을 덮어쓰지 않아야 한다. 이 계약의 구현 여부는 기획 작업공간 검수
-기록에서 따로 추적한다.
-
-프로젝트 AI 작업은 PostgreSQL 행으로 먼저 enqueue하고 별도 worker가 lease를 얻어 실행한다.
-요청 ID는 사용자 메시지 저장과 작업 생성을 함께 중복 제거한다. worker의 heartbeat가 끊기면
-다른 worker가 회수할 수 있고, 모든 checkpoint·완료 쓰기는 lease token으로 fencing한다.
-문서별 생성 결과는 compiler를 지난 뒤에만 checkpoint하며 원문은 작업 조회 응답에 싣지 않는다.
-재시도는 원래의 frozen 대화·원문·compiler/profile 정체를 그대로 쓰는 새 작업이고, 최신 맥락을
-쓰려면 새 작업을 시작한다. 취소·실패·stale 결과도 검토 근거로 남는다.
-
-인터뷰의 구조화 자연어 응답과 RSPDL 생성은 서로 다른 호출이다. 질문·미지원 범위·정책 제안은
-기획 상태에 미정 항목으로 보관하고, 사용자가 채택한 결정과 명시적 지시만 생성의 규범 근거가
-된다. 생성된 여러 문서는 프로젝트 전체 compiler gate를 거친 하나의 변경 초안으로 보관하며
-확정 원문은 명시적 apply 전까지 바뀌지 않는다.
-
-### 프롬프트는 rspdl 버전에 묶인다
-
-LLM에게 RSPDL 문법을 알려주는 프롬프트(문법 요약과 예제)는 **컴파일러 버전과 함께 늙는다.**
+LLM에게 RSPDL 문법을 알려주는 프롬프트(문법 요약과 예제)는 **특정 컴파일러 버전의 문법에 맞춰 써 있다.**
 문법이 바뀌면 프롬프트도 바꿔야 하며, 안 바꾸면 LLM이 옛 문법을 계속 만들어낸다.
 
 따라서 프롬프트 자원은 한곳(`infrastructure/llm/prompts/`)에 모으고, `upgrade-rspdl` 스킬의
@@ -143,21 +117,20 @@ MCP 클라이언트는 브라우저 쿠키를 쓸 수 없다. 완전한 MCP OAut
 
 ## 대안
 
-- **LLM 출력을 그대로 저장** — 가장 빠르지만 제품 약속과 정면으로 충돌한다.
-- **프롬프트와 사후 파싱만으로 형식을 교정** — 공급자가 형식을 어기면 재시도를 낭비하고,
-  dahaze가 코드 펜스 제거 같은 비공식 문법을 소유하게 된다.
-- **OpenAI Lark를 port 계약으로 사용** — 당장은 단순하지만 self-hosted xgrammar 구현까지
-  OpenAI 전송 형식에 결합된다.
-- **프론트에서 LLM 직접 호출** — API 키가 브라우저로 나가고, 컴파일 게이트를 우회할 수 있다.
+- **초안만 돌려주고 사람이 apply** — v3까지의 방식. AI가 여러 파일을 연속으로 다루는 턴과 맞지 않아 ADR-0008로 대체했다.
+- **constrained decoding 유지(v3)** — custom tool 입력이 문자열 하나라 경로를 함께 받을 수 없다.
+  첫 줄을 경로로 쓰는 문법을 정의하면 dahaze가 비공식 문법을 소유하게 되고, 두 번 호출은 도구 상한을
+  빨리 소모하고 호출 사이 상태를 서버가 기억해야 한다.
+- **프론트에서 LLM 직접 호출** — API 키가 브라우저로 나가고, 도구 유스케이스의 접근 검사를 우회할 수 있다.
 - **MCP를 별도 앱으로 분리** — 수명주기는 분리되지만 인증·DB 접근이 이중화된다. 도구가 결국
   같은 유스케이스를 부르므로 이득이 비용보다 작다.
 
 ## 결과
 
-- MCP와 REST가 같은 접근 검사와 같은 컴파일 게이트를 지난다.
-- EBNF 원본 하나를 공급자별 constrained decoding 형식으로 변환할 수 있다.
+- MCP와 앱 AI와 REST가 같은 유스케이스와 같은 접근 검사를 지난다.
+- 문법 제약 없이 쓰므로 구문 오류 원문이 작업 트리에 들어올 수 있다. compile 진단으로 드러난다.
 - OpenAI와 self-hosted LLM 구현이 같은 port를 구현하고 애플리케이션을 바꾸지 않는다.
-- Lark는 OpenAI 전송 경계 밖으로 나오지 않고, 생성 결과는 Rust RSPDL 컴파일러만 해석한다.
-- LLM이 만든 어떤 텍스트도 진단 없이 사용자에게 도달하지 않는다.
+- 생성 결과는 Rust RSPDL 컴파일러만 해석한다.
+- AI가 쓴 원문은 작업 트리에 바로 저장되며, 진단은 차단하지 않고 위치와 함께 표시된다.
 - MCP 토큰은 폐기할 수 없다. TTL 안에서만 유효하며, 폐기가 필요하면 후속 작업이 필요하다.
 - rspdl 버전을 올릴 때 프롬프트 점검이 절차에 포함된다.
